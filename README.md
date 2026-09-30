@@ -39,7 +39,7 @@ Android 12 and newer: *Nearby devices* (Bluetooth scan and connect). Android 11 
 
 On the Training tab, *Score from photo* opens the camera. Then:
 
-1. **Mark the face:** choose the face (40, 60, 80, 122 cm or a 40 cm spot) and the environment (outdoor/indoor), tap the centre, then five or more points on the outer edge of the blue ring. The app fits the ellipse and removes the perspective; the rings appear on the photo. *Skip face* works without this, then you pick each arrow's ring by hand.
+1. **Mark the face:** choose the face (40, 60, 80, 122 cm or a 40 cm spot) and the environment (outdoor/indoor), tap the centre, then five or more points on the outer edge of the blue ring. The app fits the ellipse and removes the perspective; the rings appear on the photo. *Skip face* works without this, then you pick each arrow's ring by hand. The marking is kept: on the next photo the centre and edge points are already there, so with the phone held as before you only check them. Drag a point to adjust, *Undo* removes the last one, *Clear* removes them all to mark anew.
 2. **Mark the arrows:** tap each arrow where it enters the face. The ring appears next to the mark (line-cutter rule with the arrow diameter from the settings). Drag a mark to move it; tap it to change the ring or delete it. Pinch or use the + / − buttons to zoom. With a finger, a magnifier shows the spot under the fingertip while dragging; with a stylus the tip is used as is.
 3. **Use scores** fills the keypad entries in tap order. Save the end as usual; the sight's shot count is compared as always. The arrow positions are kept with the end and shown on a face in the session details, together with the group centre.
 

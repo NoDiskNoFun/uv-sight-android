@@ -152,6 +152,7 @@ data class PhotoPrefs(
     val collect: Boolean = false,        // keep photos and marks as training data
     val environment: String = "outdoor", // "outdoor" / "indoor", remembered choice
     val modelConf: Double = 0.4,         // confidence threshold of the detection model
+    val faceMarks: List<Double>? = null, // last face marking as image fractions: [cx, cy, e1x, e1y, ...], reused on the next photo
 )
 
 /** The sight's aiming-range signal right now (mirrors the LED): warn = "low" / "high" / "", ok = aim fits. */

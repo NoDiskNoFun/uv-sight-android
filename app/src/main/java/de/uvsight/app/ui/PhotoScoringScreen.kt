@@ -107,6 +107,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var center by remember { mutableStateOf<Offset?>(null) }
     var edge by remember { mutableStateOf(listOf<Offset>()) }
     var skipFace by remember { mutableStateOf(false) }
+    var faceRestored by remember { mutableStateOf(false) }   // marking taken over from the last photo
     var marks by remember { mutableStateOf(listOf<Mark>()) }
     var selected by remember { mutableStateOf<Int?>(null) }
     var scale by remember { mutableStateOf(1f) }
@@ -134,6 +135,14 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             val fw = if (exifRot % 180 == 0) bounds.outWidth else bounds.outHeight
             val fh = if (exifRot % 180 == 0) bounds.outHeight else bounds.outWidth
             rotation = exifRot; fullSize = IntSize(fw, fh); bitmap = upright
+            // Take over the face marking of the last photo: the face lands in the same place when
+            // the phone is held as before, so only a check or a small adjustment is needed.
+            val fm = prefs.faceMarks
+            if (fm != null && fm.size >= 12 && fm.size % 2 == 0) {
+                center = Offset((fm[0] * upright.width).toFloat(), (fm[1] * upright.height).toFloat())
+                edge = (2 until fm.size step 2).map { Offset((fm[it] * upright.width).toFloat(), (fm[it + 1] * upright.height).toFloat()) }
+                faceRestored = true
+            }
         }
     }
     // Fit the image into the container once both are known
@@ -165,6 +174,12 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         selected = null
         vm.toast(if (proposed.isEmpty()) "No arrows found. Mark them by hand." else "${proposed.size} ${if (proposed.size == 1) "arrow" else "arrows"} found. Check and correct them.")
     }
+    fun nearestFacePoint(p: Offset, radiusPx: Float): Int? {
+        val pts = listOfNotNull(center) + edge
+        if (center == null) return null
+        val i = pts.indices.minByOrNull { (pts[it] - p).getDistance() } ?: return null
+        return i.takeIf { (pts[it] - p).getDistance() <= radiusPx }
+    }
     fun nearest(p: Offset, radiusPx: Float): Int? = marks.indices.minByOrNull { (marks[it].pos - p).getDistance() }?.takeIf { (marks[it].pos - p).getDistance() <= radiusPx }
     fun zoomAround(factor: Float, pivot: Offset) {
         val ns = (scale * factor).coerceIn(0.2f, 12f)
@@ -191,6 +206,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     val tool = when (down.type) { PointerType.Stylus -> "stylus"; PointerType.Mouse -> "mouse"; else -> "finger" }
                     val startImg = toImage(down.position)
                     val dragIdx = if (step == 2) nearest(startImg, 28.dp.toPx() / scale) else null
+                    val faceIdx = if (step == 1) nearestFacePoint(startImg, 28.dp.toPx() / scale) else null
                     var moved = false; var zoomed = false
                     val slop = viewConfiguration.touchSlop
                     do {
@@ -212,6 +228,10 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                     val np = m.pos + delta / scale
                                     marks = marks.toMutableList().also { it[dragIdx] = m.copy(pos = np, ringAuto = ringAt(np), ring = if (m.ring == m.ringAuto || m.ringAuto == -1 && m.ring == -1) ringAt(np) else m.ring, moved = true) }
                                     selected = dragIdx
+                                    if (tool == "finger") magPos = ch.position
+                                } else if (faceIdx != null) {
+                                    if (faceIdx == 0) center = center?.plus(delta / scale)
+                                    else edge = edge.toMutableList().also { it[faceIdx - 1] = it[faceIdx - 1] + delta / scale }
                                     if (tool == "finger") magPos = ch.position
                                 } else offset += delta
                             }
@@ -269,16 +289,23 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     FilterChip(selected = environment == "indoor", onClick = { environment = "indoor" }, label = { Text("Indoor") })
                 }
                 Text(when {
+                    faceRestored && geometry != null -> "Marking from the last photo. Drag a point to adjust, or Clear to mark anew."
                     center == null -> "Tap the centre of the face."
                     edge.size < 5 -> "Tap 5 or more points on the outer edge of the blue ring (${edge.size} of 5)."
                     geometry == null -> "These points don't form an ellipse. Undo and tap again on the blue edge."
                     else -> "Face found. Add more edge points for precision, or continue."
                 }, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SecondaryButton("Undo", enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null }
+                    SecondaryButton("Undo", enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null; faceRestored = false }
+                    SecondaryButton("Clear", enabled = center != null) { center = null; edge = emptyList(); faceRestored = false }
                     SecondaryButton("Skip face") { skipFace = true; center = null; edge = emptyList(); step = 2 }
                     Spacer(Modifier.weight(1f))
-                    PrimaryButton("Next", enabled = geometry != null) { ctl.setPhotoPrefs(prefs.copy(face = faceType.name, environment = environment)); step = 2 }
+                    PrimaryButton("Next", enabled = geometry != null) {
+                        // keep the marking for the next photo, as fractions of the image
+                        val b = bitmap; val c = center
+                        val fm = if (b != null && c != null) listOf(c.x / b.width.toDouble(), c.y / b.height.toDouble()) + edge.flatMap { listOf(it.x / b.width.toDouble(), it.y / b.height.toDouble()) } else prefs.faceMarks
+                        ctl.setPhotoPrefs(prefs.copy(face = faceType.name, environment = environment, faceMarks = fm)); step = 2
+                    }
                 }
             } else {
                 val sightShots = state.session?.takeIf { it.active }?.endShots
