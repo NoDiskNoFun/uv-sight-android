@@ -100,7 +100,7 @@ class TfliteArrowDetector(file: File) : AutoCloseable {
         val oq = output.quantizationParams()
         for (i in 0 until count) values[i] = when (outType) {
             DataType.FLOAT32 -> outBuf.getFloat()
-            DataType.UINT8 -> (outBuf.get().toInt() and 0xFF - oq.zeroPoint) * oq.scale
+            DataType.UINT8 -> ((outBuf.get().toInt() and 0xFF) - oq.zeroPoint) * oq.scale
             else -> (outBuf.get().toInt() - oq.zeroPoint) * oq.scale
         }
         // TFLite exports of YOLO give normalised coordinates: scale them to input pixels
