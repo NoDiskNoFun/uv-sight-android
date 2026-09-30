@@ -110,8 +110,9 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
+            val cfg = state.cfg
             if (!connected) EmptyBox("Connect to the sight on the Status tab to change settings.")
-            else if (state.cfg == null) EmptyBox(if (state.cfgGaveUp) "The settings didn't arrive completely. Move closer to the sight and try again." else "Loading settings…") {
+            else if (cfg == null) EmptyBox(if (state.cfgGaveUp) "The settings didn't arrive completely. Move closer to the sight and try again." else "Loading settings…") {
                 if (state.cfgGaveUp) SecondaryButton("Try again") { ctl.retryCfg() }
             }
             else {
@@ -149,7 +150,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 }
                 Spacer(Modifier.height(14.dp))
 
-                val byKey = state.cfg.associateBy { it.k }
+                val byKey = cfg.associateBy { it.k }
                 val autoMode = byKey["bright_mode"]?.v == 1.0
                 val used = HashSet<String>()
                 for (g in GROUPS) {
@@ -188,7 +189,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     }
                     Spacer(Modifier.height(14.dp))
                 }
-                val rest = state.cfg.filter { !used.contains(it.k) }
+                val rest = cfg.filter { !used.contains(it.k) }
                 if (rest.isNotEmpty()) {
                     UvCard { Text("Other", fontWeight = FontWeight.SemiBold, fontSize = 17.sp); rest.forEachIndexed { i, it -> SettingRow(it, first = i == 0) { v -> ctl.sendSet(it.k, v) } } }
                     Spacer(Modifier.height(14.dp))

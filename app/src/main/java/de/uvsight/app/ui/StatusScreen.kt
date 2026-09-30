@@ -80,8 +80,9 @@ fun StatusScreen(state: AppState, ctl: SightController, connect: () -> Unit) {
         ReadingRow("UV light", ledText, modeText)
         ReadingRow("Ambient light", if (s.dark) "Dark" else "Bright", s.light.toString())
         val lv = state.level
+        val tilt = s.tilt
         val tiltText = when {
-            s.tilt != null -> fmt(s.tilt, 1) + "°"
+            tilt != null -> fmt(tilt, 1) + "°"
             lv == null || lv.mode == "off" -> "Off"
             !lv.cal -> "Not calibrated"
             lv.mode == "auto" -> "Waits for a session"
@@ -91,7 +92,8 @@ fun StatusScreen(state: AppState, ctl: SightController, connect: () -> Unit) {
         ReadingRow("Cant", tiltText, lvDetail)
         val tap = state.cfgValue("tap_ths")
         val thr = if (tap == null) "" else "threshold ${fmt(ceil(tap / 2) * 0.5, 1)} g"
-        ReadingRow("Last shot", if (s.lastShotG != null) (if (s.lastShotClip) "≥ 16 g" else fmt(s.lastShotG, 1) + " g") else "No shot yet", thr)
+        val shotG = s.lastShotG
+        ReadingRow("Last shot", if (shotG != null) (if (s.lastShotClip) "≥ 16 g" else fmt(shotG, 1) + " g") else "No shot yet", thr)
         val full = state.bat?.full?.takeIf { s.chg == "charging" }?.let { ", full in ${fmtDuration(it / 60.0)}" } ?: ""
         ReadingRow("Charging", ctl.chargeLabel(s.chg) + full)
         val rg = state.range

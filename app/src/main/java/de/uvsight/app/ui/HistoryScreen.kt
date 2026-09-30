@@ -243,10 +243,11 @@ private fun EndsBars(ends: List<EndDetail>) {
         val small = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = uv.muted)
         ends.forEachIndexed { i, e ->
             val cx = l + slot * (i + 0.5f)
-            if (e.valid && e.arrows > 0 && e.sum != null) {
-                val avg = e.sum.toDouble() / e.arrows
+            val sum = e.sum
+            if (e.valid && e.arrows > 0 && sum != null) {
+                val avg = sum.toDouble() / e.arrows
                 drawRect(Ring.forAvg(avg), Offset(cx - bw / 2, y(avg)), Size(bw, y(0.0) - y(avg)))
-                val tl = textMeasurer.measure(e.sum.toString(), small)
+                val tl = textMeasurer.measure(sum.toString(), small)
                 drawText(tl, topLeft = Offset(cx - tl.size.width / 2, y(avg) - tl.size.height - 2))
             } else {
                 drawRect(uv.line, Offset(cx - bw / 2, y(10.0)), Size(bw, y(0.0) - y(10.0)), style = Stroke(1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))))
