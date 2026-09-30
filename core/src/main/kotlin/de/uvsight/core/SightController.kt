@@ -4,7 +4,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -59,6 +61,9 @@ data class AppState(
     val console: List<ConsoleLine> = emptyList(),
     val consoleEnabled: Boolean = false,
     val view: View = View.STATUS,
+    // notifications / vibration
+    val notif: NotifPrefs = NotifPrefs(),
+    val rangeLive: RangeLive = RangeLive(),
 ) {
     val hasData get() = status != null
     fun cfgValue(k: String): Double? = cfg?.firstOrNull { it.k == k }?.v
@@ -104,11 +109,17 @@ class SightController(
         const val ONSIGHT_INIT_KEY = "uvsight.onsight.init"
         const val ENDS_BACKFILL_KEY = "uvsight.endsBackfill.v1"
         const val CONSOLE_KEY = "uvsight.console"
+        const val NOTIF_KEY = "uvsight.notif"
+        const val LOW_BAT_PCT = 15
     }
 
     val archive = Archive(store, clock)
     private val _state = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = _state
+    private val _events = MutableSharedFlow<CoreEvent>(extraBufferCapacity = 16)
+    /** Notification-worthy events (session ended by the sight, low battery, charged). */
+    val events: SharedFlow<CoreEvent> = _events
+    private var lowBatWarned = false
     private val s get() = _state.value
     private inline fun set(f: AppState.() -> AppState) { _state.update { it.f() } }
 
@@ -149,7 +160,7 @@ class SightController(
     private var endPut: EndPut? = null
     private var pendingDel: PendingDel? = null
 
-    private class LiveSlot(val epoch: Long?, val id: Long?, val stored: Boolean, val error: String?)
+    private class LiveSlot(val epoch: Long?, val id: Long?, val stored: Boolean, val error: String?, val manual: Boolean)
     private class AutoCopy(val queue: List<ArchiveSession>) { var i = 0; var added = 0; var timer: Job? = null; var wait: Job? = null }
     private class CopyState { var phase = "keys"; val keys = HashSet<String>(); var queue: List<ArchiveSession> = emptyList(); var done = 0; var added = 0; var exists = 0; var timer: Job? = null }
     private class EndPut(val r: ArchiveSession, val list: List<EndDetail>, val done: () -> Unit) { var i = 0; var timer: Job? = null; var wait: Job? = null }
@@ -159,8 +170,9 @@ class SightController(
         // 3.3 repair of the web app: fetch the whole log once
         if (store.get("uvsight.logseq.repair") != "3.3") { archive.logSeq = 0; store.put("uvsight.logseq.repair", "3.3") }
         loadTraining()
+        val notif = store.get(NOTIF_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(NotifPrefs.serializer(), it) }.getOrNull() } ?: NotifPrefs()
         set { copy(distM = store.get(DIST_KEY)?.toIntOrNull() ?: 0, showHidden = store.get(SHOW_HIDDEN_KEY) == "1",
-            autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1") }
+            autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif) }
         refreshHistory()
     }
 
@@ -204,6 +216,8 @@ class SightController(
         stopPolling()
         stopAutoCopy()
         fullScan = false; syncSeen = null; syncEpoch = null; inLogAnswer = false; syncRetries = 0
+        lowBatWarned = false
+        set { copy(rangeLive = RangeLive()) }
         val wasConnected = s.conn == ConnState.CONNECTED
         setConn(ConnState.OFF)
         if (wasConnected && !s.sightAsleep) startAutoReconnect()
@@ -288,7 +302,11 @@ class SightController(
                 helloWait?.complete(true); helloWait = null
                 scope.launch { delay(1500); autoSync() }
             }
-            "status" -> set { copy(status = m.toStatus()) }
+            "status" -> {
+                val st = m.toStatus()
+                set { copy(status = st) }
+                if (!lowBatWarned && st.pct < LOW_BAT_PCT && st.chg == "no USB" && s.conn == ConnState.CONNECTED) { lowBatWarned = true; _events.tryEmit(CoreEvent.LowBattery(st.pct)) }
+            }
             "bat" -> set { copy(bat = m.toBat()) }
             "cfgStart" -> { cfgBuf = ArrayList(); cfgN = m.int("n") ?: 0 }
             "cfgItem" -> cfgBuf?.add(m.toCfgItem())
@@ -333,7 +351,7 @@ class SightController(
                 set { copy(entries = emptyList(), lastEnd = null) }
                 setAwaiting(false)
                 if (!m.has("epoch")) { liveSlot = null; toast("Empty session, nothing saved.") }
-                else liveSlot = LiveSlot(m.long("epoch"), m.long("id"), m.bool("stored") ?: false, m.str("error"))
+                else liveSlot = LiveSlot(m.long("epoch"), m.long("id"), m.bool("stored") ?: false, m.str("error"), m.bool("manual") ?: true)
                 send("shots")
                 saveTraining()
             }
@@ -372,8 +390,9 @@ class SightController(
             "cal" -> onCal(m.toCal())
             "event" -> when (m.str("e")) {
                 "idle" -> { set { copy(sightAsleep = true) }; toast("Bow at rest. The sight went to sleep.") }
-                "lowbat" -> toast("Battery empty. LED is off until you charge.", true)
-                "charge" -> toast(chargeLabel(m.str("state") ?: ""))
+                "lowbat" -> { toast("Battery empty. LED is off until you charge.", true); lowBatWarned = true; _events.tryEmit(CoreEvent.LowBattery(s.status?.pct ?: 0)) }
+                "charge" -> { val st = m.str("state") ?: ""; toast(chargeLabel(st)); if (st == "full") _events.tryEmit(CoreEvent.ChargeFull) }
+                "range" -> set { copy(rangeLive = RangeLive(m.str("warn") ?: "", m.bool("ok") ?: false)) }
             }
             "err" -> {
                 if (copyState?.phase == "put") copyOnAck("error", null, null)
@@ -546,6 +565,7 @@ class SightController(
         if (stored) toast("Session saved: ${sl.scored} arrows, average ${fmt(sl.avg, 2)}, ${sl.x} X")
         else toast("The sight could not store this session" + (ls?.error?.let { " ($it)" } ?: "") + ". It is kept on this phone.", true)
         if (stored && sl.seq != null && sl.seq == archive.logSeq + 1) archive.logSeq = sl.seq
+        if (ls != null && !ls.manual) _events.tryEmit(CoreEvent.SessionAutoEnded(sl.ends, sl.scored, sl.avg, sl.x, sl.min))
         liveSlot = null
         refreshHistory()
     }
@@ -896,6 +916,11 @@ class SightController(
     fun setupDelete(id: Int) = send("setup del $id")
 
     fun dfu() = send("dfu")
+
+    fun setNotifPrefs(p: NotifPrefs) {
+        store.put(NOTIF_KEY, kotlinx.serialization.json.Json.encodeToString(NotifPrefs.serializer(), p))
+        set { copy(notif = p) }
+    }
     fun setConsoleEnabled(on: Boolean) { store.put(CONSOLE_KEY, if (on) "1" else "0"); set { copy(consoleEnabled = on, view = if (!on && view == View.CONSOLE) View.STATUS else view) } }
     fun sendRaw(cmd: String) { if (s.conn != ConnState.CONNECTED) { toast("Not connected.", true); return }; send(cmd) }
 }

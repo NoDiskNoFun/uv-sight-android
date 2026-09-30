@@ -131,3 +131,26 @@ data class ConsoleLine(val text: String, val kind: String)   // kind: "", "in", 
 data class ConfirmPrompt(val end: Int, val counted: Int, val entered: Int, val canSplit: Boolean)
 
 data class ImportResult(val added: Int, val filled: Int, val skipped: Int, val what: String)
+
+/** Phone-side settings for notifications and the vibration motor. */
+@Serializable
+data class NotifPrefs(
+    val session: Boolean = true,       // ongoing notification while connected / in a session (keeps the link alive in the background)
+    val rangeVibe: Boolean = true,     // vibrate with the aiming-range signal while setting up a sight (aiming angle "on")
+    val vibeStrength: String = "medium",   // light / medium / strong
+    val autoEnd: Boolean = true,       // notification when the sight ended a session on its own
+    val lowBat: Boolean = true,        // notification when the sight's battery is low
+    val chargeFull: Boolean = true,    // notification when the sight is fully charged
+)
+
+/** The sight's aiming-range signal right now (mirrors the LED): warn = "low" / "high" / "", ok = aim fits. */
+data class RangeLive(val warn: String = "", val ok: Boolean = false) {
+    val active: Boolean get() = warn.isNotEmpty() || ok
+}
+
+/** Things the platform layer turns into notifications. */
+sealed class CoreEvent {
+    data class SessionAutoEnded(val ends: Int, val scored: Int, val avg: Double, val x: Int, val min: Int) : CoreEvent()
+    data class LowBattery(val pct: Int) : CoreEvent()
+    object ChargeFull : CoreEvent()
+}

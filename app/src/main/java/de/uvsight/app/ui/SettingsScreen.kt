@@ -240,6 +240,20 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
             Spacer(Modifier.height(14.dp))
 
+            // Notifications and vibration (phone-side settings)
+            UvCard {
+                val n = state.notif
+                Text("Notifications and vibration", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                SwitchRow("Session notification", "Shows the running session (end, arrow, average) and keeps the connection alive while the phone is in your pocket. Off: the connection only lasts while the app is open.", n.session, first = true) { ctl.setNotifPrefs(n.copy(session = it)) }
+                SwitchRow("Vibrate while setting up a sight", "Only with the aiming angle set to On: 2 pulses = aiming too low, 3 = too high, one long pulse = the aim fits.", n.rangeVibe) { ctl.setNotifPrefs(n.copy(rangeVibe = it)) }
+                if (n.rangeVibe) SegRow("Vibration strength", "", n.vibeStrength, listOf("light", "medium", "strong")) { ctl.setNotifPrefs(n.copy(vibeStrength = it)) }
+                SwitchRow("Session ended by the sight", "Tells you when the sight closed a session on its own after a long pause.", n.autoEnd) { ctl.setNotifPrefs(n.copy(autoEnd = it)) }
+                SwitchRow("Sight battery low", "Warns below ${SightController.LOW_BAT_PCT} % and when the sight locks the light.", n.lowBat) { ctl.setNotifPrefs(n.copy(lowBat = it)) }
+                SwitchRow("Charging finished", "Tells you when the sight is full while it is connected over USB.", n.chargeFull) { ctl.setNotifPrefs(n.copy(chargeFull = it)) }
+                Note("If the notification disappears when the screen is off, exclude UV-Sight from your phone's battery optimisation.")
+            }
+            Spacer(Modifier.height(14.dp))
+
             // App and firmware
             UvCard {
                 Text("App and firmware", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)

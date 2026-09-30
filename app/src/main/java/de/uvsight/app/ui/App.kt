@@ -67,10 +67,16 @@ fun UvSightApp(vm: SightViewModel) {
         vm.toasts.collect { t -> snackError = t.error; snackbar.showSnackbar(t.text, duration = SnackbarDuration.Short) }
     }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        if (granted.values.all { it }) ctl.connect() else vm.toast("Bluetooth permission is needed to find the sight.", true)
+        // Notifications are optional; Bluetooth is not
+        val bleOk = SightBle.requiredPermissions().all { granted[it] == true }
+        if (bleOk) ctl.connect() else vm.toast("Bluetooth permission is needed to find the sight.", true)
     }
     val connect = {
-        if (SightBle.hasPermissions(context)) ctl.connect() else permLauncher.launch(SightBle.requiredPermissions())
+        val wanted = SightBle.requiredPermissions().toMutableList()
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            wanted.add(android.Manifest.permission.POST_NOTIFICATIONS)
+        if (SightBle.hasPermissions(context) && wanted.size == SightBle.requiredPermissions().size) ctl.connect() else permLauncher.launch(wanted.toTypedArray())
     }
 
     Scaffold(

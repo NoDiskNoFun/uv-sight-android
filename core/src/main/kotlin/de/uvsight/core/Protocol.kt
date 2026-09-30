@@ -11,7 +11,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 
-const val PROTO_EXPECTED = 15
+const val PROTO_EXPECTED = 16
 const val NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 const val NUS_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"   // app -> device (write)
 const val NUS_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"   // device -> app (notify)
