@@ -92,6 +92,9 @@ def main():
     if not recs:
         sys.exit("no records found")
     train, val = split_by_session(recs, args.val)
+    if not val:
+        print("only one session: validating on the training photos (optimistic numbers)", file=sys.stderr)
+        val = train
     n_tr = write_split(train, args.out, "train", args.faces)
     n_va = write_split(val, args.out, "val", args.faces)
     cls = "face" if args.faces else "arrow"
