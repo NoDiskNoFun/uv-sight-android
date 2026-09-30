@@ -275,6 +275,34 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { t.replace(',', '.').toDoubleOrNull()?.let { v -> ctl.setPhotoPrefs(ph.copy(arrowMm = v.coerceIn(3.0, 12.0))) } }))
                 }
+                // Detection model
+                val modelStore = remember { de.uvsight.app.ModelStore(context) }
+                var modelVersion by remember { mutableIntStateOf(0) }
+                val modelInfo = remember(modelVersion) { modelStore.info() }
+                val modelLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                    uri?.let { u -> scope.launch {
+                        val name = u.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.tflite"
+                        val res = withContext(Dispatchers.IO) { runCatching { val bytes = context.contentResolver.openInputStream(u)?.use { it.readBytes() } ?: throw IllegalArgumentException("could not read the file"); modelStore.import(bytes, name) } }
+                        res.onSuccess { vm.toast("Model imported: ${it.name}, input ${it.inputSize} px"); modelVersion++ }.onFailure { vm.toast(it.message ?: "Import failed", true) }
+                    } }
+                }
+                HorizontalDivider(color = uv.line)
+                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Detection model", color = uv.ink)
+                        Text(modelInfo?.let { "${it.name}, input ${it.inputSize} px. Proposes the arrow marks on a photo (Detect)." } ?: "None. Train one with the scripts in training/ and import the .tflite file; until then Detect stays greyed out.", color = uv.muted, fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    SecondaryButton("Import") { modelLauncher.launch(arrayOf("*/*")) }
+                    if (modelInfo != null) { Spacer(Modifier.width(8.dp)); SecondaryButton("Remove", danger = true) { modelStore.remove(); modelVersion++ } }
+                }
+                if (modelInfo != null) {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        Text("Confidence: ${(ph.modelConf * 100).roundToInt()} %", color = uv.muted, fontSize = 13.sp)
+                        Slider(value = ph.modelConf.toFloat(), onValueChange = { ctl.setPhotoPrefs(ph.copy(modelConf = (it * 20).roundToInt() / 20.0)) }, valueRange = 0.1f..0.9f,
+                            colors = SliderDefaults.colors(thumbColor = uv.gold, activeTrackColor = uv.gold))
+                    }
+                }
                 SwitchRow("Collect training data", "Keeps every scored photo with its marks on this phone, so a recognition model can be trained later. Photos never leave the phone unless you export them.", ph.collect) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
                 if (ph.collect || count > 0) {
                     HorizontalDivider(color = uv.line)

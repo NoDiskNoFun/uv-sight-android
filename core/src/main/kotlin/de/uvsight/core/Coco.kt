@@ -25,6 +25,7 @@ object Coco {
                 add(buildJsonObject {
                     put("id", i + 1); put("file_name", r.image); put("width", r.width); put("height", r.height)
                     put("uv_face", r.face); put("uv_environment", r.environment); put("uv_device", r.device); put("uv_timestamp", r.timestamp)
+                    r.model?.let { put("uv_model", it) }
                 })
             }
         }
@@ -36,7 +37,7 @@ object Coco {
                         put("bbox", num(a.px - ARROW_BOX_PX / 2, a.py - ARROW_BOX_PX / 2, ARROW_BOX_PX, ARROW_BOX_PX))
                         put("area", ARROW_BOX_PX * ARROW_BOX_PX); put("iscrowd", 0)
                         put("keypoints", num(a.px, a.py, 2.0)); put("num_keypoints", 1)
-                        put("uv_ring", a.ring); put("uv_ring_auto", a.ringAuto); put("uv_tool", a.tool); put("uv_moved", a.moved)
+                        put("uv_ring", a.ring); put("uv_ring_auto", a.ringAuto); put("uv_tool", a.tool); put("uv_moved", a.moved); put("uv_source", a.source)
                         if (!a.mmX.isNaN()) { put("uv_mm_x", a.mmX); put("uv_mm_y", a.mmY) }
                     })
                 }

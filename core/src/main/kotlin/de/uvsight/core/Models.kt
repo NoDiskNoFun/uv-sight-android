@@ -151,6 +151,7 @@ data class PhotoPrefs(
     val arrowMm: Double = 6.0,           // shaft diameter for the line-cutter rule
     val collect: Boolean = false,        // keep photos and marks as training data
     val environment: String = "outdoor", // "outdoor" / "indoor", remembered choice
+    val modelConf: Double = 0.4,         // confidence threshold of the detection model
 )
 
 /** The sight's aiming-range signal right now (mirrors the LED): warn = "low" / "high" / "", ok = aim fits. */

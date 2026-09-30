@@ -47,6 +47,10 @@ On the Training tab, *Score from photo* opens the camera. Then:
 
 Under *Settings → Photo scoring*, *Collect training data* (off by default) keeps every scored photo with its marks on the phone: the full photo, the tapped centre and edge points, the fitted ellipse, every arrow in pixels and in millimetres from the centre, the ring the app computed and the ring you confirmed, whether the mark was moved and whether a stylus or a finger placed it, the sight's shot count, distance, session and end, environment, camera exposure data, device and app version. *Export* writes a ZIP with the photos, one JSON per photo and a COCO keypoint file over everything; *Delete* removes the data from the phone. Photos never leave the phone unless you export them. The `training/` folder holds the scripts that turn an export into a model.
 
+### Detection model
+
+*Detect* on the photo page proposes the arrow marks from a trained model. Without a model the button is greyed out and the hint says so. A model is trained from your own exported data with the local web page in `training/` (see `training/README.md`) and imported under *Settings → Photo scoring → Detection model* as a `.tflite` file; the app checks it by loading it once. The confidence slider below sets how sure the model has to be before a mark is proposed. Proposed marks are blue and behave like your own: drag, tap to change the ring, delete. Pressing *Detect* again replaces the proposed marks only, hand-made marks stay. When training data is collected, the record notes whether a model was used and with which confidence.
+
 ## Notifications and vibration
 
 All of these are switched on by default and can be changed under *Settings → Notifications and vibration*.

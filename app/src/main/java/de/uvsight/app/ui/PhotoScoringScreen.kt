@@ -74,6 +74,7 @@ import de.uvsight.core.Pt
 import de.uvsight.core.Scoring
 import de.uvsight.core.fmt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.hypot
@@ -81,7 +82,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** One arrow placed on the photo (display-bitmap pixels). */
-private data class Mark(val pos: Offset, val ring: Int, val ringAuto: Int, val tool: String, val moved: Boolean = false)
+private data class Mark(val pos: Offset, val ring: Int, val ringAuto: Int, val tool: String, val moved: Boolean = false, val source: String = "user")
 
 /**
  * Score an end from a photo of the face: mark the face (centre + 5 or more points on the
@@ -113,6 +114,10 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var offset by remember { mutableStateOf(Offset.Zero) }
     var container by remember { mutableStateOf(IntSize.Zero) }
     var magPos by remember { mutableStateOf<Offset?>(null) }
+    val modelStore = remember { de.uvsight.app.ModelStore(context) }
+    val modelInfo = remember { modelStore.info() }
+    var detecting by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val geometry = remember(center, edge) { val c = center; if (c != null && edge.size >= 5) FaceGeometry.fit(Pt(c.x.toDouble(), c.y.toDouble()), edge.map { Pt(it.x.toDouble(), it.y.toDouble()) }) else null }
     val textMeasurer = rememberTextMeasurer()
 
@@ -227,7 +232,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 marks.forEachIndexed { i, m ->
                     val s = toScreen(m.pos)
                     val sel = i == selected
-                    drawCircle(if (sel) uv.gold else Color.White, if (sel) 12.dp.toPx() else 10.dp.toPx(), s, style = Stroke(3.dp.toPx()))
+                    drawCircle(if (sel) uv.gold else if (m.source == "model") uv.blue else Color.White, if (sel) 12.dp.toPx() else 10.dp.toPx(), s, style = Stroke(3.dp.toPx()))
                     drawCircle(uv.red, 3.dp.toPx(), s)
                     val label = if (m.ring < 0) "?" else Scoring.label(m.ring)
                     val tl = textMeasurer.measure(label, TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White))
@@ -266,6 +271,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     (gc?.let { " · group centre ${fmt(kotlin.math.abs(it.x) / 10, 1)} cm ${if (it.x < 0) "left" else "right"}, ${fmt(kotlin.math.abs(it.y) / 10, 1)} cm ${if (it.y < 0) "low" else "high"}" } ?: ""),
                     color = uv.muted, fontSize = 14.sp)
                 if (skipFace) Text("Without the face marking, pick the ring of each arrow below.", color = uv.muted, fontSize = 13.sp)
+                if (modelInfo == null) Text("Detect needs a detection model: import one under Settings → Photo scoring.", color = uv.muted, fontSize = 12.sp)
                 val sel = selected
                 if (sel != null && sel < marks.size) {
                     FlowRow(Modifier.padding(vertical = 4.dp)) {
@@ -279,6 +285,24 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                     SecondaryButton("Undo", enabled = marks.isNotEmpty()) { marks = marks.dropLast(1); selected = null }
                     if (!skipFace) SecondaryButton("Face") { step = 1 }
+                    // Model proposals; greyed out until a model was imported under Settings
+                    SecondaryButton(if (detecting) "…" else "Detect", enabled = modelInfo != null && !detecting && bitmap != null) {
+                        val b = bitmap
+                        if (b != null) {
+                            detecting = true
+                            scope.launch {
+                                val found = withContext(Dispatchers.IO) { runCatching { de.uvsight.app.TfliteArrowDetector(modelStore.modelFile).use { it.detect(b, prefs.modelConf) } } }
+                                detecting = false
+                                found.onFailure { vm.toast("Detection failed: ${it.message}", true) }.onSuccess { dets ->
+                                    val kept = marks.filter { it.source != "model" }
+                                    val proposed = dets.map { d -> val p = Offset(d.x.toFloat(), d.y.toFloat()); val r = ringAt(p); Mark(p, r, r, "model", false, "model") }
+                                    marks = kept + proposed
+                                    selected = null
+                                    vm.toast(if (proposed.isEmpty()) "No arrows found. Mark them by hand." else "${proposed.size} ${if (proposed.size == 1) "arrow" else "arrows"} proposed. Check and correct them.")
+                                }
+                            }
+                        }
+                    }
                     Spacer(Modifier.weight(1f))
                     PrimaryButton("Use scores", enabled = marks.isNotEmpty() && marks.all { it.ring >= 0 }) {
                         val rings = marks.map { it.ring }
@@ -299,10 +323,11 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                 arrows = marks.mapIndexed { i, m ->
                                     val u = geometry?.toFace(Pt(m.pos.x.toDouble(), m.pos.y.toDouble()))
                                     val h = hitList?.getOrNull(i)
-                                    ArrowMark(m.pos.x * k, m.pos.y * k, u?.x ?: Double.NaN, u?.y ?: Double.NaN, h?.mmX ?: Double.NaN, h?.mmY ?: Double.NaN, m.ringAuto, m.ring, m.tool, m.moved)
+                                    ArrowMark(m.pos.x * k, m.pos.y * k, u?.x ?: Double.NaN, u?.y ?: Double.NaN, h?.mmX ?: Double.NaN, h?.mmY ?: Double.NaN, m.ringAuto, m.ring, m.tool, m.moved, m.source)
                                 },
                                 sightShots = sightShots, distM = state.distM, sessionKey = state.currentSessionKey, endN = state.session?.takeIf { it.active }?.end,
                                 environment = environment, exif = exifMap, device = "${Build.MANUFACTURER} ${Build.MODEL}", app = APP_VERSION, timestamp = System.currentTimeMillis(),
+                                model = if (marks.any { it.source == "model" }) modelInfo?.name else null, modelConf = if (marks.any { it.source == "model" }) prefs.modelConf else null,
                             )
                             runCatching { TrainingStore(context).save(rec, file) }.onFailure { vm.toast("Could not keep the photo: ${it.message}", true) }
                         }

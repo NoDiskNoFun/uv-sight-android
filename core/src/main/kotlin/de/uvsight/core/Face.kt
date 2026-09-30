@@ -183,6 +183,7 @@ data class ArrowMark(
     val ring: Int,                           // ring after the user's correction
     val tool: String,                        // "stylus" / "finger" / "mouse"
     val moved: Boolean,                      // dragged after placing
+    val source: String = "user",             // "user" (tapped) or "model" (proposed by the detector)
 )
 
 /** Everything about one scored photo, saved as a training example. */
@@ -208,4 +209,6 @@ data class PhotoRecord(
     val device: String,
     val app: String,
     val timestamp: Long,
+    val model: String? = null,               // detection model that proposed marks, if any
+    val modelConf: Double? = null,           // confidence threshold used
 )
