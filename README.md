@@ -35,6 +35,18 @@ The core can be driven against the firmware running natively (the mock build of 
 
 Android 12 and newer: *Nearby devices* (Bluetooth scan and connect). Android 11 and older: *Location*, which Android requires for Bluetooth scanning; the app does not use the position. Location services must be switched on for scanning on those versions. Android 13 and newer also ask for *Notifications*; without it the app still works, but shows no notifications.
 
+## Photo scoring
+
+On the Training tab, *Score from photo* opens the camera. Then:
+
+1. **Mark the face:** choose the face (40, 60, 80, 122 cm or a 40 cm spot) and the environment (outdoor/indoor), tap the centre, then five or more points on the outer edge of the blue ring. The app fits the ellipse and removes the perspective; the rings appear on the photo. *Skip face* works without this, then you pick each arrow's ring by hand.
+2. **Mark the arrows:** tap each arrow where it enters the face. The ring appears next to the mark (line-cutter rule with the arrow diameter from the settings). Drag a mark to move it; tap it to change the ring or delete it. Pinch or use the + / − buttons to zoom. With a finger, a magnifier shows the spot under the fingertip while dragging; with a stylus the tip is used as is.
+3. **Use scores** fills the keypad entries in tap order. Save the end as usual; the sight's shot count is compared as always. The arrow positions are kept with the end and shown on a face in the session details, together with the group centre.
+
+### Training data
+
+Under *Settings → Photo scoring*, *Collect training data* (off by default) keeps every scored photo with its marks on the phone: the full photo, the tapped centre and edge points, the fitted ellipse, every arrow in pixels and in millimetres from the centre, the ring the app computed and the ring you confirmed, whether the mark was moved and whether a stylus or a finger placed it, the sight's shot count, distance, session and end, environment, camera exposure data, device and app version. *Export* writes a ZIP with the photos, one JSON per photo and a COCO keypoint file over everything; *Delete* removes the data from the phone. Photos never leave the phone unless you export them. The `training/` folder holds the scripts that turn an export into a model.
+
 ## Notifications and vibration
 
 All of these are switched on by default and can be changed under *Settings → Notifications and vibration*.
@@ -50,7 +62,7 @@ Some phones (Xiaomi, Huawei, Samsung with aggressive power saving) stop foregrou
 ## Using the app
 
 1. Move the bow so the sight wakes up, then tap **Connect** on the Status tab. The app remembers the sight and reconnects on its own after a lost link.
-2. **Training:** scores of the open end, keypad in target ring colours, Save / Skip / End session. Scoring works without a connection; Save reconnects.
+2. **Training:** scores of the open end, keypad in target ring colours or scoring from a photo of the face, Save / Skip / End session. Scoring works without a connection; Save reconnects.
 3. **History:** sessions stored on the phone, chart, per-end details, CSV export, JSON backup and import, removal on the phone or on the sight.
 4. **Settings:** shot counter, cant and aiming angle, LED, all settings with slider and description, guided calibration, setups, sync options, notifications and vibration, firmware update mode.
 5. **Console:** raw messages and free command input (enable it under Settings → App and firmware).

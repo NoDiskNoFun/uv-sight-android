@@ -47,7 +47,7 @@ import de.uvsight.core.points
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
+fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, onPhoto: (java.io.File) -> Unit = {}) {
     val uv = LocalUv.current
     val context = LocalContext.current
     val connected = state.conn == ConnState.CONNECTED
@@ -112,6 +112,20 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     }
 
     val busy = state.awaitingEnd || state.reconnecting
+    // Score from a photo of the face (system camera)
+    var pendingPhoto by remember { mutableStateOf<java.io.File?>(null) }
+    val takePicture = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok ->
+        val f = pendingPhoto; pendingPhoto = null
+        if (ok && f != null && f.exists()) onPhoto(f) else f?.delete()
+    }
+    SecondaryButton("Score from photo", Modifier.fillMaxWidth(), enabled = !busy) {
+        val dir = java.io.File(context.cacheDir, "photos").apply { mkdirs() }
+        val f = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
+        pendingPhoto = f
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
+        runCatching { takePicture.launch(uri) }.onFailure { vm.toast("No camera app found.", true); pendingPhoto = null }
+    }
+    Spacer(Modifier.height(10.dp))
     val keysEnabled = !busy && state.entries.size < SightController.MAX_ARROWS
     val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "X", "M")
     val vibrator = remember { context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator }

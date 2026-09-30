@@ -64,6 +64,9 @@ data class AppState(
     // notifications / vibration
     val notif: NotifPrefs = NotifPrefs(),
     val rangeLive: RangeLive = RangeLive(),
+    // photo scoring
+    val photo: PhotoPrefs = PhotoPrefs(),
+    val pendingHits: List<Hit>? = null,   // positions behind the current entries, if they came from a photo
 ) {
     val hasData get() = status != null
     fun cfgValue(k: String): Double? = cfg?.firstOrNull { it.k == k }?.v
@@ -110,6 +113,7 @@ class SightController(
         const val ENDS_BACKFILL_KEY = "uvsight.endsBackfill.v1"
         const val CONSOLE_KEY = "uvsight.console"
         const val NOTIF_KEY = "uvsight.notif"
+        const val PHOTO_KEY = "uvsight.photo"
         const val LOW_BAT_PCT = 15
     }
 
@@ -133,6 +137,7 @@ class SightController(
     private var cfgRetryJob: Job? = null
     private var expectDefaults = false
     private var lastSentScores: List<String>? = null
+    private var lastSentHits: List<Hit>? = null
     private var distPresetAt = 0L
     private var levelResyncJob: Job? = null
     private var autoReconnectJob: Job? = null
@@ -171,8 +176,9 @@ class SightController(
         if (store.get("uvsight.logseq.repair") != "3.3") { archive.logSeq = 0; store.put("uvsight.logseq.repair", "3.3") }
         loadTraining()
         val notif = store.get(NOTIF_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(NotifPrefs.serializer(), it) }.getOrNull() } ?: NotifPrefs()
+        val photo = store.get(PHOTO_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(PhotoPrefs.serializer(), it) }.getOrNull() } ?: PhotoPrefs()
         set { copy(distM = store.get(DIST_KEY)?.toIntOrNull() ?: 0, showHidden = store.get(SHOW_HIDDEN_KEY) == "1",
-            autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif) }
+            autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif, photo = photo) }
         refreshHistory()
     }
 
@@ -341,14 +347,14 @@ class SightController(
                 val e = m.toEnd()
                 set { copy(lastEnd = e) }
                 recordEnd(e)
-                if (s.awaitingEnd) { set { copy(entries = emptyList()) }; setAwaiting(false) }
+                if (s.awaitingEnd) { set { copy(entries = emptyList(), pendingHits = null) }; setAwaiting(false) }
                 if (e.valid) toast("End ${e.n} saved: ${e.sum} points") else toast("End ${e.n} marked invalid")
                 saveTraining()
             }
             "confirm" -> { setAwaiting(false); val c = m.toConfirm(); set { copy(confirm = ConfirmPrompt(c.end, c.counted, c.entered, c.split || c.entered < c.counted)) } }
             "discarded" -> { setAwaiting(false); toast("Not saved. Correct the scores and save again.") }
             "sessionEnd" -> {
-                set { copy(entries = emptyList(), lastEnd = null) }
+                set { copy(entries = emptyList(), lastEnd = null, pendingHits = null) }
                 setAwaiting(false)
                 if (!m.has("epoch")) { liveSlot = null; toast("Empty session, nothing saved.") }
                 else liveSlot = LiveSlot(m.long("epoch"), m.long("id"), m.bool("stored") ?: false, m.str("error"), m.bool("manual") ?: true)
@@ -463,10 +469,21 @@ class SightController(
 
     fun pushEntry(v: String) {
         if (s.entries.size >= MAX_ARROWS || s.awaitingEnd || s.reconnecting) return
-        set { copy(entries = entries + v) }
+        set { copy(entries = entries + v, pendingHits = null) }     // edited by hand: positions no longer match
         saveTraining()
     }
-    fun undoEntry() { set { copy(entries = entries.dropLast(1)) }; saveTraining() }
+    fun undoEntry() { set { copy(entries = entries.dropLast(1), pendingHits = null) }; saveTraining() }
+
+    /** Scores from a photo: rings as entries plus the positions behind them. */
+    fun applyPhotoScores(rings: List<Int>, hits: List<Hit>?) {
+        if (s.awaitingEnd || s.reconnecting) return
+        set { copy(entries = rings.take(MAX_ARROWS).map { Scoring.entry(it) }, pendingHits = hits?.take(MAX_ARROWS)) }
+        saveTraining()
+    }
+    fun setPhotoPrefs(p: PhotoPrefs) {
+        store.put(PHOTO_KEY, kotlinx.serialization.json.Json.encodeToString(PhotoPrefs.serializer(), p))
+        set { copy(photo = p) }
+    }
 
     private fun setAwaiting(on: Boolean) {
         set { copy(awaitingEnd = on) }
@@ -481,6 +498,7 @@ class SightController(
             withConnection {
                 val tokens = s.entries.map { when (it) { "X" -> "x"; "M" -> "0"; else -> it } }
                 lastSentScores = s.entries.toList()
+                lastSentHits = s.pendingHits
                 setAwaiting(true)
                 send("score " + tokens.joinToString(" ") + distSuffix())
             }
@@ -503,9 +521,9 @@ class SightController(
     fun startSession() = send("shots start")
 
     private fun recordEnd(m: EndMsg) {
-        val key = s.currentSessionKey ?: run { lastSentScores = null; return }
-        archive.recordEnd(key, m, lastSentScores)
-        lastSentScores = null
+        val key = s.currentSessionKey ?: run { lastSentScores = null; lastSentHits = null; return }
+        archive.recordEnd(key, m, lastSentScores, lastSentHits)
+        lastSentScores = null; lastSentHits = null
         refreshHistory()
     }
 

@@ -25,7 +25,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -100,6 +108,7 @@ private fun shownValue(it: CfgItem, v: Double): String {
 @Composable
 fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     val uv = LocalUv.current
+    val context = LocalContext.current
     val connected = state.conn == ConnState.CONNECTED
     var askDefaults by remember { mutableStateOf(false) }
     var askDfu by remember { mutableStateOf(false) }
@@ -237,6 +246,49 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         SecondaryButton("Delete", danger = true) { askClear = true }
                     }
                 }
+            }
+            Spacer(Modifier.height(14.dp))
+
+            // Photo scoring and training data (phone-side settings)
+            UvCard {
+                val ph = state.photo
+                val store = remember { de.uvsight.app.TrainingStore(context) }
+                var dataVersion by remember { mutableIntStateOf(0) }
+                val count = remember(dataVersion) { store.count() }
+                val sizeMb = remember(dataVersion) { store.sizeBytes() / 1_048_576.0 }
+                val scope = rememberCoroutineScope()
+                val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+                    uri?.let { u -> scope.launch { withContext(Dispatchers.IO) { runCatching { context.contentResolver.openOutputStream(u)?.use { store.exportZip(it) } } }.onFailure { vm.toast("Export failed: ${it.message}", true) }.onSuccess { vm.toast("Training data exported.") } } }
+                }
+                var askDelete by remember { mutableStateOf(false) }
+                Text("Photo scoring", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                SegRow("Face", "Preselected on the photo screen; change it there per session.", runCatching { de.uvsight.core.FaceType.valueOf(ph.face) }.getOrDefault(de.uvsight.core.FaceType.WA40).label,
+                    de.uvsight.core.FaceType.values().map { it.label }, first = true) { l -> de.uvsight.core.FaceType.values().firstOrNull { it.label == l }?.let { ctl.setPhotoPrefs(ph.copy(face = it.name)) } }
+                HorizontalDivider(color = uv.line)
+                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Arrow diameter", color = uv.ink)
+                        Text("Shaft diameter for the line-cutter rule: a shaft touching a line counts the higher ring.", color = uv.muted, fontSize = 13.sp)
+                    }
+                    var t by remember(ph.arrowMm) { mutableStateOf(fmt(ph.arrowMm, 1)) }
+                    OutlinedTextField(value = t, onValueChange = { t = it }, singleLine = true, modifier = Modifier.width(96.dp), suffix = { Text("mm") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { t.replace(',', '.').toDoubleOrNull()?.let { v -> ctl.setPhotoPrefs(ph.copy(arrowMm = v.coerceIn(3.0, 12.0))) } }))
+                }
+                SwitchRow("Collect training data", "Keeps every scored photo with its marks on this phone, so a recognition model can be trained later. Photos never leave the phone unless you export them.", ph.collect) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
+                if (ph.collect || count > 0) {
+                    HorizontalDivider(color = uv.line)
+                    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("$count ${if (count == 1) "photo" else "photos"}, ${fmt(sizeMb, 1)} MB", color = uv.muted, modifier = Modifier.weight(1f))
+                        SecondaryButton("Export", enabled = count > 0) { exportLauncher.launch("uv-sight-training-${java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())}.zip") }
+                        Spacer(Modifier.width(8.dp))
+                        SecondaryButton("Delete", enabled = count > 0, danger = true) { askDelete = true }
+                    }
+                }
+                if (askDelete) AlertDialog(onDismissRequest = { askDelete = false }, title = { Text("Delete the training data?") },
+                    text = { Text("All $count photos and their marks on this phone are deleted. Export them first if you want to keep them.") },
+                    confirmButton = { TextButton(onClick = { askDelete = false; store.deleteAll(); dataVersion++ }) { Text("Delete", color = uv.red) } },
+                    dismissButton = { TextButton(onClick = { askDelete = false }) { Text("Cancel") } })
             }
             Spacer(Modifier.height(14.dp))
 

@@ -50,6 +50,7 @@ data class EndDetail(
     val cantMax: Double? = null,
     val canted: Int? = null,
     val cantN: Int? = null,
+    val hits: List<Hit>? = null,           // arrow positions from photo scoring, face mm (x right, y up)
 )
 
 @Serializable
@@ -141,6 +142,15 @@ data class NotifPrefs(
     val autoEnd: Boolean = true,       // notification when the sight ended a session on its own
     val lowBat: Boolean = true,        // notification when the sight's battery is low
     val chargeFull: Boolean = true,    // notification when the sight is fully charged
+)
+
+/** Phone-side settings of the photo scoring. */
+@Serializable
+data class PhotoPrefs(
+    val face: String = "WA40",           // FaceType name used last
+    val arrowMm: Double = 6.0,           // shaft diameter for the line-cutter rule
+    val collect: Boolean = false,        // keep photos and marks as training data
+    val environment: String = "outdoor", // "outdoor" / "indoor", remembered choice
 )
 
 /** The sight's aiming-range signal right now (mirrors the LED): warn = "low" / "high" / "", ok = aim fits. */

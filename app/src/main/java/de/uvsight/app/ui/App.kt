@@ -71,6 +71,7 @@ fun UvSightApp(vm: SightViewModel) {
         val bleOk = SightBle.requiredPermissions().all { granted[it] == true }
         if (bleOk) ctl.connect() else vm.toast("Bluetooth permission is needed to find the sight.", true)
     }
+    var photoFile by remember { mutableStateOf<java.io.File?>(null) }
     val connect = {
         val wanted = SightBle.requiredPermissions().toMutableList()
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -108,13 +109,15 @@ fun UvSightApp(vm: SightViewModel) {
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (state.view) {
                 View.STATUS -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) { StatusScreen(state, ctl, connect) }
-                View.TRAINING -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) { TrainingScreen(state, ctl, vm) }
+                View.TRAINING -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) { TrainingScreen(state, ctl, vm, onPhoto = { photoFile = it }) }
                 View.HISTORY -> HistoryScreen(state, ctl, vm)
                 View.SETTINGS -> SettingsScreen(state, ctl, vm)
                 View.CONSOLE -> ConsoleScreen(state, ctl)
             }
         }
     }
+
+    photoFile?.let { f -> PhotoScoringScreen(vm, f, onClose = { photoFile = null }) }
 
     // ---- dialogs driven by the controller ----
     state.confirm?.let { c ->
