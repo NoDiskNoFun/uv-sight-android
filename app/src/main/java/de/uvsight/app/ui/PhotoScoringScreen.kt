@@ -74,7 +74,6 @@ import de.uvsight.core.Pt
 import de.uvsight.core.Scoring
 import de.uvsight.core.fmt
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.hypot
@@ -116,8 +115,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var magPos by remember { mutableStateOf<Offset?>(null) }
     val modelStore = remember { de.uvsight.app.ModelStore(context) }
     val modelInfo = remember { modelStore.info() }
-    var detecting by remember { mutableStateOf(false) }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var detections by remember { mutableStateOf<List<de.uvsight.core.Detection>?>(null) }   // model proposals, null until the model ran
+    var proposalsShown by remember { mutableStateOf(false) }
     val geometry = remember(center, edge) { val c = center; if (c != null && edge.size >= 5) FaceGeometry.fit(Pt(c.x.toDouble(), c.y.toDouble()), edge.map { Pt(it.x.toDouble(), it.y.toDouble()) }) else null }
     val textMeasurer = rememberTextMeasurer()
 
@@ -148,6 +147,24 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     fun toImage(p: Offset) = Offset((p.x - offset.x) / scale, (p.y - offset.y) / scale)
     fun toScreen(p: Offset) = Offset(p.x * scale + offset.x, p.y * scale + offset.y)
     fun ringAt(p: Offset): Int = geometry?.let { g -> Scoring.ring(g.toFace(Pt(p.x.toDouble(), p.y.toDouble())), faceType, prefs.arrowMm) } ?: -1
+    // With a model installed, the arrows are looked for as soon as the photo is decoded; the
+    // proposals appear when the arrow step is reached (the rings need the face marking).
+    LaunchedEffect(bitmap) {
+        val b = bitmap ?: return@LaunchedEffect
+        if (modelInfo == null) return@LaunchedEffect
+        val found = withContext(Dispatchers.IO) { runCatching { de.uvsight.app.TfliteArrowDetector(modelStore.modelFile).use { it.detect(b, prefs.modelConf) } } }
+        found.onFailure { vm.toast("Arrow detection failed: ${it.message}", true); detections = emptyList() }
+        found.onSuccess { detections = it }
+    }
+    LaunchedEffect(step, detections) {
+        val dets = detections ?: return@LaunchedEffect
+        if (step != 2 || proposalsShown) return@LaunchedEffect
+        proposalsShown = true
+        val proposed = dets.map { d -> val p = Offset(d.x.toFloat(), d.y.toFloat()); val r = ringAt(p); Mark(p, r, r, "model", false, "model") }
+        marks = marks + proposed
+        selected = null
+        vm.toast(if (proposed.isEmpty()) "No arrows found. Mark them by hand." else "${proposed.size} ${if (proposed.size == 1) "arrow" else "arrows"} found. Check and correct them.")
+    }
     fun nearest(p: Offset, radiusPx: Float): Int? = marks.indices.minByOrNull { (marks[it].pos - p).getDistance() }?.takeIf { (marks[it].pos - p).getDistance() <= radiusPx }
     fun zoomAround(factor: Float, pivot: Offset) {
         val ns = (scale * factor).coerceIn(0.2f, 12f)
@@ -271,7 +288,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     (gc?.let { " · group centre ${fmt(kotlin.math.abs(it.x) / 10, 1)} cm ${if (it.x < 0) "left" else "right"}, ${fmt(kotlin.math.abs(it.y) / 10, 1)} cm ${if (it.y < 0) "low" else "high"}" } ?: ""),
                     color = uv.muted, fontSize = 14.sp)
                 if (skipFace) Text("Without the face marking, pick the ring of each arrow below.", color = uv.muted, fontSize = 13.sp)
-                if (modelInfo == null) Text("Detect needs a detection model: import one under Settings → Photo scoring.", color = uv.muted, fontSize = 12.sp)
+                if (modelInfo != null && detections == null) Text("Looking for arrows…", color = uv.muted, fontSize = 12.sp)
                 val sel = selected
                 if (sel != null && sel < marks.size) {
                     FlowRow(Modifier.padding(vertical = 4.dp)) {
@@ -285,30 +302,12 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                     SecondaryButton("Undo", enabled = marks.isNotEmpty()) { marks = marks.dropLast(1); selected = null }
                     if (!skipFace) SecondaryButton("Face") { step = 1 }
-                    // Model proposals; greyed out until a model was imported under Settings
-                    SecondaryButton(if (detecting) "…" else "Detect", enabled = modelInfo != null && !detecting && bitmap != null) {
-                        val b = bitmap
-                        if (b != null) {
-                            detecting = true
-                            scope.launch {
-                                val found = withContext(Dispatchers.IO) { runCatching { de.uvsight.app.TfliteArrowDetector(modelStore.modelFile).use { it.detect(b, prefs.modelConf) } } }
-                                detecting = false
-                                found.onFailure { vm.toast("Detection failed: ${it.message}", true) }.onSuccess { dets ->
-                                    val kept = marks.filter { it.source != "model" }
-                                    val proposed = dets.map { d -> val p = Offset(d.x.toFloat(), d.y.toFloat()); val r = ringAt(p); Mark(p, r, r, "model", false, "model") }
-                                    marks = kept + proposed
-                                    selected = null
-                                    vm.toast(if (proposed.isEmpty()) "No arrows found. Mark them by hand." else "${proposed.size} ${if (proposed.size == 1) "arrow" else "arrows"} proposed. Check and correct them.")
-                                }
-                            }
-                        }
-                    }
                     Spacer(Modifier.weight(1f))
                     PrimaryButton("Use scores", enabled = marks.isNotEmpty() && marks.all { it.ring >= 0 }) {
                         val rings = marks.map { it.ring }
                         val hitList: List<Hit>? = geometry?.let { g -> marks.map { m -> val mm = Scoring.mmFromCenter(g.toFace(Pt(m.pos.x.toDouble(), m.pos.y.toDouble())), faceType); Hit(mm.x, mm.y, m.ring) } }
                         ctl.applyPhotoScores(rings, hitList)
-                        if (prefs.collect && bitmap != null) {
+                        if (prefs.collect && modelInfo == null && bitmap != null) {
                             val b = bitmap!!
                             val k = fullSize.width.toDouble() / b.width
                             val exif = runCatching { ExifInterface(file.path) }.getOrNull()

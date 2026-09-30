@@ -49,7 +49,9 @@ Under *Settings → Photo scoring*, *Collect training data* (off by default) kee
 
 ### Detection model
 
-*Detect* on the photo page proposes the arrow marks from a trained model. Without a model the button is greyed out and the hint says so. A model is trained from your own exported data with the local web page in `training/` (see `training/README.md`) and imported under *Settings → Photo scoring → Detection model* as a `.tflite` file; the app checks it by loading it once. The confidence slider below sets how sure the model has to be before a mark is proposed. Proposed marks are blue and behave like your own: drag, tap to change the ring, delete. Pressing *Detect* again replaces the proposed marks only, hand-made marks stay. When training data is collected, the record notes whether a model was used and with which confidence.
+Once a model is imported under *Settings → Photo scoring → Detection model* (a `.tflite` file trained with the local web page in `training/`, see `training/README.md`), *Score from photo* uses it: the arrows are looked for while you mark the face, and when you reach the arrow step the found arrows are already marked in blue. Check them, drag, change the ring or delete as with your own marks, add the ones it missed. The confidence slider sets how sure the model has to be before an arrow is proposed. Without a model the button works by hand as described above. The app checks a model by loading it once and refuses files of the wrong shape.
+
+Importing a model switches *Collect training data* off and keeps it off while the model is installed, so model proposals never end up in the training set. Remove the model to collect hand-marked photos again; data already collected stays and can still be exported.
 
 ## Notifications and vibration
 

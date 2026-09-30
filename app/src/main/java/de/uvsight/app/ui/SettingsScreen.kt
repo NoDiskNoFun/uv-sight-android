@@ -283,14 +283,14 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     uri?.let { u -> scope.launch {
                         val name = u.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.tflite"
                         val res = withContext(Dispatchers.IO) { runCatching { val bytes = context.contentResolver.openInputStream(u)?.use { it.readBytes() } ?: throw IllegalArgumentException("could not read the file"); modelStore.import(bytes, name) } }
-                        res.onSuccess { vm.toast("Model imported: ${it.name}, input ${it.inputSize} px"); modelVersion++ }.onFailure { vm.toast(it.message ?: "Import failed", true) }
+                        res.onSuccess { vm.toast("Model imported: ${it.name}, input ${it.inputSize} px"); modelVersion++; if (ph.collect) ctl.setPhotoPrefs(ph.copy(collect = false)) }.onFailure { vm.toast(it.message ?: "Import failed", true) }
                     } }
                 }
                 HorizontalDivider(color = uv.line)
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Detection model", color = uv.ink)
-                        Text(modelInfo?.let { "${it.name}, input ${it.inputSize} px. Proposes the arrow marks on a photo (Detect)." } ?: "None. Train one with the scripts in training/ and import the .tflite file; until then Detect stays greyed out.", color = uv.muted, fontSize = 13.sp)
+                        Text(modelInfo?.let { "${it.name}, input ${it.inputSize} px. Score from photo finds the arrows with it; check and correct the marks." } ?: "None. Score from photo works by hand; train a model with the trainer in training/ and import the .tflite file.", color = uv.muted, fontSize = 13.sp)
                     }
                     Spacer(Modifier.width(8.dp))
                     SecondaryButton("Import") { modelLauncher.launch(arrayOf("*/*")) }
@@ -303,7 +303,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             colors = SliderDefaults.colors(thumbColor = uv.gold, activeTrackColor = uv.gold))
                     }
                 }
-                SwitchRow("Collect training data", "Keeps every scored photo with its marks on this phone, so a recognition model can be trained later. Photos never leave the phone unless you export them.", ph.collect) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
+                SwitchRow("Collect training data", if (modelInfo != null) "Off while a detection model is installed. Remove the model to collect hand-marked photos again." else "Keeps every scored photo with its marks on this phone, so a recognition model can be trained later. Photos never leave the phone unless you export them.", ph.collect && modelInfo == null, enabled = modelInfo == null) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
                 if (ph.collect || count > 0) {
                     HorizontalDivider(color = uv.line)
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
