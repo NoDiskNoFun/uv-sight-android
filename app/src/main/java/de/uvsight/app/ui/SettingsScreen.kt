@@ -1,0 +1,375 @@
+package de.uvsight.app.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import de.uvsight.app.SightViewModel
+import de.uvsight.core.APP_VERSION
+import de.uvsight.core.AppState
+import de.uvsight.core.CfgItem
+import de.uvsight.core.ConnState
+import de.uvsight.core.LevelInfo
+import de.uvsight.core.SightController
+import de.uvsight.core.fmt
+import kotlin.math.pow
+import kotlin.math.roundToInt
+
+private data class Group(val title: String, val keys: List<String>, val light: Boolean = false, val cal: Boolean = false)
+private val GROUPS = listOf(
+    Group("Light sensor", listOf("dark_on", "dark_off", "confirm"), light = true),
+    Group("UV light", listOf("bright_mode", "bright", "bright_min", "fade", "vf")),
+    Group("Cant and aiming range", listOf("level_tol", "tilt_offset", "tilt_full", "blink_min", "blink_max", "tilt_smooth"), cal = true),
+    Group("Shot detection and sessions", listOf("tap_ths", "lockout", "session_end")),
+    Group("Battery", listOf("cutoff", "bat_mah")),
+    Group("Power and Bluetooth", listOf("ths", "timeout", "report", "tx_power")),
+)
+private val DESCS = mapOf(
+    "dark_on" to "Fixed: the light turns on below this reading. Auto: full brightness from here down.",
+    "dark_off" to "Fixed: the light turns off above this reading. Auto: the light starts dimly here. Keep it higher than Dark below.",
+    "confirm" to "Readings in a row (one every 2 s) before switching. Higher is calmer, lower reacts faster.",
+    "bright" to "Fixed: brightness of the light. Auto: brightness at Dark below and darker. More drains the battery faster.",
+    "bright_min" to "Auto: brightness at Bright above, where the light starts. It rises to Brightness as it gets darker.",
+    "tilt_offset" to "How much darker the cant blinking is than the normal light. 0 = same brightness.",
+    "fade" to "Auto: how long the light takes to follow a change in darkness. 0 = instantly.",
+    "tilt_full" to "From this cant on the blinking no longer changes. A smaller angle makes small differences easier to see.",
+    "blink_min" to "Blinks per second at the slow end of the range.",
+    "blink_max" to "Blinks per second at the fast end of the range. Above about 10 it looks like a steady light.",
+    "tilt_smooth" to "Higher is calmer against hand tremor, lower reacts faster.",
+    "session_end" to "A session ends automatically after this long without a shot.",
+    "vf" to "Only change this if you fit a different LED.",
+    "level_tol" to "A cant up to this angle counts as level.",
+    "tap_ths" to "Lower it if shots are missed, raise it if carrying the bow counts as a shot. The Status tab shows how strong your last shot was.",
+    "lockout" to "After a shot, further impacts are ignored and the cant indicator pauses.",
+    "cutoff" to "Below this voltage the light switches off to protect the battery. This is 0 %.",
+    "ths" to "Lower wakes the sight with smaller movements.",
+    "timeout" to "The sight sleeps after this time without movement.",
+    "report" to "How often the sight sends its readings to the app while connected. Off saves a little power.",
+    "tx_power" to "Higher reaches farther but uses a little more battery.",
+    "bat_mah" to "The capacity printed on the battery. Used for the remaining runtime.",
+)
+private val LABELS = mapOf(
+    "dark_on" to "Dark below", "dark_off" to "Bright above", "confirm" to "Readings before switching",
+    "bright" to "Brightness", "bright_min" to "Start brightness", "tilt_offset" to "Blink dimming", "vf" to "LED voltage",
+    "fade" to "Fade time", "tilt_full" to "Blinking range up to", "blink_min" to "Slowest blinking", "blink_max" to "Fastest blinking",
+    "tilt_smooth" to "Smoothing", "session_end" to "End session after",
+    "level_tol" to "Tolerance", "tap_ths" to "Shot threshold", "lockout" to "Pause after a shot",
+    "cutoff" to "Cutoff voltage", "ths" to "Wake-up sensitivity", "timeout" to "Sleep after", "report" to "Update the app every",
+    "tx_power" to "Bluetooth range", "bat_mah" to "Battery capacity",
+)
+
+private fun shownValue(it: CfgItem, v: Double): String {
+    if (it.k == "tap_ths") return fmt(v * 0.25, 2) + " g"
+    if (it.k == "ths") return "${(v * 125).roundToInt()} mg"
+    if (it.zero && v == 0.0) return "off"
+    val u = when (it.unit) { "deg" -> "°"; "Hz" -> " per s"; "" -> ""; else -> " " + it.unit }
+    return fmt(v, it.dec) + u
+}
+
+@Composable
+fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
+    val uv = LocalUv.current
+    val connected = state.conn == ConnState.CONNECTED
+    var askDefaults by remember { mutableStateOf(false) }
+    var askDfu by remember { mutableStateOf(false) }
+    var askClear by remember { mutableStateOf(false) }
+    var newSetup by remember { mutableStateOf(false) }
+    var setupMenu by remember { mutableStateOf<de.uvsight.core.SetupItem?>(null) }
+    var rename by remember { mutableStateOf<de.uvsight.core.SetupItem?>(null) }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
+            if (!connected) EmptyBox("Connect to the sight on the Status tab to change settings.")
+            else if (state.cfg == null) EmptyBox(if (state.cfgGaveUp) "The settings didn't arrive completely. Move closer to the sight and try again." else "Loading settings…") {
+                if (state.cfgGaveUp) SecondaryButton("Try again") { ctl.retryCfg() }
+            }
+            else {
+                val ses = state.session
+                val lv = state.level ?: LevelInfo("off", "normal", false, "auto", true, true)
+                UvCard(padding = 16) {
+                    SwitchRow("Shot counter", "Counts shots and records sessions.", ses?.counter == true, first = true) { ctl.shotsSwitch(it) }
+                    SegRow("Cant", (when (lv.mode) { "auto" -> "Measured during a session."; "on" -> "Measured whenever the bow is in use. Switches the aiming angle's On off."; else -> "Not measured." }) +
+                        " Each end stores how canted you were." + if (lv.cal) "" else " Needs the calibration.", lv.mode, listOf("off", "auto", "on")) { ctl.setCantMode(it) }
+                    SegRow("Aiming angle", (when (lv.angle) { "auto" -> "Measured at every shot during a session."; "on" -> "Measured at every shot, also outside a session (for setting up a sight). Switches the cant's On off."; else -> "Not measured." }) +
+                        if (lv.cal) "" else " Needs the calibration.", lv.angle, listOf("off", "auto", "on")) { ctl.setAngleMode(it) }
+                    if (lv.angle == "on") {
+                        val rg = state.range
+                        val ready = rg?.state == "ready"
+                        val d = rg?.dist ?: 0
+                        HorizontalDivider(color = uv.line)
+                        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Distance to check", color = uv.ink)
+                                Text(when {
+                                    !ready -> "Works once the sight has learned your distances."
+                                    d == 0 -> "Choose the distance of the target you aim at."
+                                    rg?.estimated == true -> "Not learned yet at this distance: no warning here."
+                                    else -> "Aim at it. Pulsing: right. Double blink: sight set too low. Triple blink: too high. Calm: almost (2–3 m off)."
+                                }, color = uv.muted, fontSize = 13.sp)
+                            }
+                            RoundButton("−", enabled = ready) { ctl.setCheckDist(d - 10) }
+                            Text("$d m", Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.Bold)
+                            RoundButton("+", enabled = ready) { ctl.setCheckDist(if (d == 0) 10 else d + 10) }
+                        }
+                    }
+                    val ledMode = state.status?.mode ?: "auto"
+                    SegRow("LED", (when (ledMode) { "auto" -> "Auto: switched by the light sensor."; "on" -> "On: always lit."; else -> "Off: stays dark." }) +
+                        " Cant blinking works in every mode. Kept after a restart.", ledMode, listOf("off", "auto", "on")) { ctl.setLedMode(it) }
+                }
+                Spacer(Modifier.height(14.dp))
+
+                val byKey = state.cfg.associateBy { it.k }
+                val autoMode = byKey["bright_mode"]?.v == 1.0
+                val used = HashSet<String>()
+                for (g in GROUPS) {
+                    val items = g.keys.mapNotNull { byKey[it] }
+                    items.forEach { used.add(it.k) }
+                    if (items.isEmpty() && !g.cal) continue
+                    UvCard(padding = 16) {
+                        Text(g.title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                        if (g.light) state.status?.let { Note("Current reading: ${it.light} (${if (it.dark) "dark" else "bright"}). Lower means darker.") }
+                        if (g.cal) {
+                            CalCard(state, ctl)
+                            val enabled = lv.cal
+                            if (lv.mode != "off") {
+                                SwitchRow("Blink when canted", "Off: the cant is still measured and stored, the LED just stays calm.", lv.cantSignal, enabled = enabled) { ctl.setCantSignal(it) }
+                                SegRow("Cant blinking mode", if (lv.style == "inverted") "Faster the closer you get to level." else "Faster the more the bow is canted.", lv.style, listOf("normal", "inverted"), enabled = enabled) { ctl.setStyle(it) }
+                            }
+                            if (lv.angle != "off") {
+                                val rg = state.range
+                                val ready = rg?.state == "ready"
+                                SwitchRow("Warn if the distance doesn't fit", when {
+                                    ready -> "While aiming: double blink = aiming too low (arrow short), triple blink = too high (arrow long). Comes before the cant blinking."
+                                    rg?.state == "anchor" -> "After a new calibration: shoot one end with the distance set, then this works again."
+                                    else -> "Still learning: shoot a few ends at two or more distances with the distance set (${rg?.ends ?: 0} ends so far)."
+                                }, lv.rangeSignal && ready, enabled = enabled && ready) { ctl.setRangeSignal(it) }
+                            }
+                        }
+                        items.forEachIndexed { i, it ->
+                            if (it.k == "bright_mode") {
+                                SegRow("Brightness mode", if (autoMode) "Auto: fades in from Bright above and reaches full brightness at Dark below." else "Fixed: one brightness, switched at Dark below / Bright above.",
+                                    if (autoMode) "auto" else "fixed", listOf("fixed", "auto"), first = i == 0 && !g.cal) { ctl.sendSet("bright_mode", if (it == "auto") 1.0 else 0.0) }
+                                return@forEachIndexed
+                            }
+                            if ((it.k == "bright_min" || it.k == "fade") && !autoMode) return@forEachIndexed
+                            SettingRow(it, first = i == 0 && !g.cal, enabled = !g.cal || lv.cal) { v -> ctl.sendSet(it.k, v) }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
+                val rest = state.cfg.filter { !used.contains(it.k) }
+                if (rest.isNotEmpty()) {
+                    UvCard { Text("Other", fontWeight = FontWeight.SemiBold, fontSize = 17.sp); rest.forEachIndexed { i, it -> SettingRow(it, first = i == 0) { v -> ctl.sendSet(it.k, v) } } }
+                    Spacer(Modifier.height(14.dp))
+                }
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { SecondaryButton("Restore defaults") { askDefaults = true } }
+                Spacer(Modifier.height(14.dp))
+            }
+
+            // Setups
+            val st = state.setups
+            if (connected && st != null) {
+                UvCard {
+                    Text("Setups", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                    Note("One per arrow set or bow setting. Each learns its own arrow speed, so switching back needs no new learning.")
+                    st.list.filter { !it.deleted }.forEachIndexed { i, it ->
+                        val active = it.id == st.active
+                        if (i > 0) HorizontalDivider(color = uv.line)
+                        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(it.name + if (active) "  ✓" else "", color = uv.ink)
+                                Text((if (it.kmh != null) "about ${it.kmh} km/h" else "learning") + ", ${it.ends} ${if (it.ends == 1) "end" else "ends"}" + if (active) ", in use" else "", color = uv.muted, fontSize = 13.sp)
+                            }
+                            SecondaryButton("…") { setupMenu = it }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    SecondaryButton("New setup") { newSetup = true }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+
+            // Sessions
+            UvCard {
+                Text("Sessions", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                SwitchRow("Sync automatically", if (state.autoCopy) "Keeps the sessions on this phone and on the sight up to date whenever they are connected." else "Off: use Get from sight and Copy to sight in History.", state.autoCopy, first = true) { ctl.setAutoCopy(it) }
+                SwitchRow("Show removed sessions", "Sessions you removed from this phone appear greyed out in History, so you can bring them back.", state.showHidden) { ctl.setShowHidden(it) }
+                if (connected) {
+                    HorizontalDivider(color = uv.line)
+                    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Delete sessions on the sight", color = uv.ink)
+                            Text("Deletes all sessions stored on the sight, for example before you give it away. The sessions on this phone are kept.", color = uv.muted, fontSize = 13.sp)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        SecondaryButton("Delete", danger = true) { askClear = true }
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+
+            // App and firmware
+            UvCard {
+                Text("App and firmware", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                SwitchRow("Show console", "A tab with the raw messages of the sight, for troubleshooting.", state.consoleEnabled, first = true) { ctl.setConsoleEnabled(it) }
+                if (connected) {
+                    HorizontalDivider(color = uv.line)
+                    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Firmware update", color = uv.ink)
+                            Text("Prepares the sight for new firmware. Connect it to your computer with the USB cable first.", color = uv.muted, fontSize = 13.sp)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        SecondaryButton("Start") { askDfu = true }
+                    }
+                }
+                val li = state.loginfo
+                Note("App $APP_VERSION" + (state.hello?.let { ", firmware ${it.fw}" } ?: "") +
+                    (li?.let { if (it.ok) ". The sight stores ${it.count} ${if (it.count == 1) "session" else "sessions"} (room for about ${it.capacity / 1000 * 1000})." else ". The sight's session memory is not working." } ?: ""))
+            }
+            Spacer(Modifier.height(if (state.cfgDirty) 90.dp else 24.dp))
+        }
+
+        if (connected && state.cfg != null && state.cfgDirty) {
+            Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp), shape = CardShape, color = uv.ink) {
+                Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Changes apply right away. Save them to keep them after the sight restarts.", color = uv.paper, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(10.dp))
+                    PrimaryButton("Save", gold = true) { ctl.saveSettings() }
+                }
+            }
+        }
+    }
+
+    if (askDefaults) AlertDialog(onDismissRequest = { askDefaults = false }, title = { Text("Restore defaults?") },
+        text = { Text("All settings go back to their defaults. Tap Save afterwards to keep them.") },
+        confirmButton = { TextButton(onClick = { askDefaults = false; ctl.restoreDefaults() }) { Text("Restore", color = uv.red) } },
+        dismissButton = { TextButton(onClick = { askDefaults = false }) { Text("Cancel") } })
+    if (askDfu) AlertDialog(onDismissRequest = { askDfu = false }, title = { Text("Prepare a firmware update?") },
+        text = { Text("Connect the sight to your computer with the USB cable first. It then shows up there as a drive; copy the new firmware onto it. Until then the sight does nothing else, and the app disconnects.") },
+        confirmButton = { TextButton(onClick = { askDfu = false; ctl.dfu() }) { Text("Start", color = uv.red) } },
+        dismissButton = { TextButton(onClick = { askDfu = false }) { Text("Cancel") } })
+    if (askClear) AlertDialog(onDismissRequest = { askClear = false }, title = { Text("Delete all sessions on the sight?") },
+        text = { Text("All ${state.loginfo?.let { "${it.count} " } ?: ""}sessions stored on the sight are deleted. The sessions on this phone are kept.") },
+        confirmButton = { TextButton(onClick = { askClear = false; ctl.clearSightLog() }) { Text("Delete", color = uv.red) } },
+        dismissButton = { TextButton(onClick = { askClear = false }) { Text("Cancel") } })
+    if (newSetup) TextPrompt("New setup", "For example the arrow type. Up to 18 characters.", "", onDone = { newSetup = false; if (it != null) ctl.setupNew(it) })
+    rename?.let { it -> TextPrompt("Rename setup", "Up to 18 characters.", it.name, onDone = { n -> rename = null; if (n != null) ctl.setupRename(it.id, n) }) }
+    setupMenu?.let { it ->
+        val active = it.id == state.setups?.active
+        AlertDialog(onDismissRequest = { setupMenu = null }, title = { Text(it.name) },
+            text = { Text(if (active) "This setup is in use." else "Use this setup from now on? Deleting keeps its ends in your sessions, under this name. It just can't be chosen any more.") },
+            confirmButton = {
+                Row {
+                    if (!active) TextButton(onClick = { setupMenu = null; ctl.setupUse(it.id) }) { Text("Use") }
+                    TextButton(onClick = { setupMenu = null; rename = it }) { Text("Rename") }
+                    if (!active) TextButton(onClick = { setupMenu = null; ctl.setupDelete(it.id) }) { Text("Delete", color = uv.red) }
+                }
+            },
+            dismissButton = { TextButton(onClick = { setupMenu = null }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+private fun TextPrompt(title: String, text: String, initial: String, onDone: (String?) -> Unit) {
+    var value by remember { mutableStateOf(initial) }
+    AlertDialog(onDismissRequest = { onDone(null) }, title = { Text(title) },
+        text = { Column { Text(text, color = LocalUv.current.muted, fontSize = 14.sp); Spacer(Modifier.height(8.dp)); OutlinedTextField(value = value, onValueChange = { if (it.length <= 18) value = it }, singleLine = true) } },
+        confirmButton = { TextButton(onClick = { onDone(value.trim().ifEmpty { null }) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Cancel") } })
+}
+
+@Composable
+private fun SettingRow(it: CfgItem, first: Boolean, enabled: Boolean = true, onSet: (Double) -> Unit) {
+    val uv = LocalUv.current
+    val step = if (it.dec > 0) 10.0.pow(-it.dec) else 1.0
+    val off = it.zero && it.v == 0.0
+    var value by remember(it.v) { mutableStateOf(it.v) }
+    var text by remember(it.v) { mutableStateOf(fmt(if (off) it.min else it.v, it.dec)) }
+    if (!first) HorizontalDivider(color = uv.line)
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(LABELS[it.k] ?: it.k, color = uv.ink)
+            Text(shownValue(it, value), fontWeight = FontWeight.Bold, color = uv.ink)
+        }
+        Text("${DESCS[it.k] ?: (it.d + ".")} Default ${shownValue(it, it.def)}, range ${shownValue(it, it.min)} to ${shownValue(it, it.max)}.", color = uv.muted, fontSize = 13.sp)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            val steps = ((it.max - it.min) / step).roundToInt() - 1
+            Slider(value = (if (off) it.min else value).toFloat(), onValueChange = { v -> val r = (v / step).roundToInt() * step; value = r; text = fmt(r, it.dec) },
+                onValueChangeFinished = { onSet(value) }, valueRange = it.min.toFloat()..it.max.toFloat(), steps = if (steps in 1..400) steps else 0,
+                enabled = enabled && !off, modifier = Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = uv.gold, activeTrackColor = uv.gold))
+            Spacer(Modifier.width(8.dp))
+            OutlinedTextField(value = text, onValueChange = { text = it }, enabled = enabled && !off, singleLine = true, modifier = Modifier.width(96.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { text.replace(',', '.').toDoubleOrNull()?.let { v -> val c = v.coerceIn(it.min, it.max); value = c; text = fmt(c, it.dec); onSet(c) } }))
+            if (it.zero) {
+                Checkbox(checked = off, onCheckedChange = { on -> onSet(if (on) 0.0 else it.def) }, enabled = enabled)
+                Text("Off", color = uv.muted, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalCard(state: AppState, ctl: SightController) {
+    val uv = LocalUv.current
+    val lv = state.level
+    if (state.calStep == 0) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Calibration", color = uv.ink)
+                Text(if (lv?.cal == true) "Calibrated." else "Not calibrated yet. Everything in this group needs it.", color = uv.muted, fontSize = 13.sp)
+            }
+            SecondaryButton("Calibrate") { ctl.calStart() }
+        }
+        return
+    }
+    val text = when {
+        state.calBusy -> "Measuring. Keep the bow still…"
+        state.calStep == 1 -> "Step 1 of 2: Put the bow in a stand, level it with the bubble and aim horizontally. Then tap Measure and keep the bow still."
+        state.calStep == 2 -> "Step 2 of 2: Keep the bow level, but aim clearly up, arrow tip up, at least 20 degrees. Then tap Measure and keep it still."
+        else -> "Calibration saved. Check the cant reading in a session: it should stay near 0° with the bubble centred."
+    }
+    Surface(Modifier.fillMaxWidth().padding(vertical = 8.dp), shape = SmallShape, color = uv.surface, border = androidx.compose.foundation.BorderStroke(2.dp, uv.gold)) {
+        Column(Modifier.padding(12.dp)) {
+            Text(text)
+            if (state.calError.isNotEmpty()) Text(state.calError, color = uv.red)
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (state.calStep < 3 && !state.calBusy) PrimaryButton("Measure") { ctl.calMeasure() }
+                if (!state.calBusy) SecondaryButton(if (state.calStep == 3) "Done" else "Cancel") { ctl.calCancel() }
+            }
+        }
+    }
+}
