@@ -138,13 +138,16 @@ def run_job(job, mock):
         if not recs:
             raise RuntimeError("no records in the export")
         train, val = prepare_dataset.split_by_session(recs, float(p["val"]))
+        if not val:
+            # a single session (or a single photo): the trainer needs a validation set, so the
+            # training photos serve as one; the numbers below are then optimistic
+            val = train
+            job.say("only one session in the export: validating on the training photos, the evaluation is optimistic")
         ds = run / "dataset"
         n_tr = prepare_dataset.write_split(train, ds, "train", False)
         n_va = prepare_dataset.write_split(val, ds, "val", False)
         (ds / "data.yaml").write_text(f"path: {ds.resolve()}\ntrain: images/train\nval: images/val\nkpt_shape: [1, 3]\nnames:\n  0: arrow\n")
         job.say(f"{len(train)} training photos ({n_tr} arrows), {len(val)} validation photos ({n_va} arrows)")
-        if len(val) == 0:
-            job.say("warning: no validation photos, the evaluation below will be empty")
         imgsz = int(p["imgsz"])
         if mock:
             predict = mock_train(job, run, imgsz)
