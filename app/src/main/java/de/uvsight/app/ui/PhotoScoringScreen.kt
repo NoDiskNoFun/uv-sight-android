@@ -84,7 +84,7 @@ import kotlin.math.min
 private data class Mark(val pos: Offset, val ring: Int, val ringAuto: Int, val tool: String, val moved: Boolean = false, val source: String = "user")
 
 /**
- * Score an end from a photo of the face: mark the face (centre + 5 or more points on the
+ * Score an end from a photo of the face: mark the face (centre + 4 or more points on the
  * blue ring's outer edge), then tap each arrow where it enters the face. Rings come from the
  * geometry; every mark can be moved, its ring changed or deleted. Works with a stylus or a
  * finger (a magnifier appears while a finger drags).
@@ -138,7 +138,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             // Take over the face marking of the last photo: the face lands in the same place when
             // the phone is held as before, so only a check or a small adjustment is needed.
             val fm = prefs.faceMarks
-            if (fm != null && fm.size >= 12 && fm.size % 2 == 0) {
+            if (fm != null && fm.size >= 10 && fm.size % 2 == 0) {
                 center = Offset((fm[0] * upright.width).toFloat(), (fm[1] * upright.height).toFloat())
                 edge = (2 until fm.size step 2).map { Offset((fm[it] * upright.width).toFloat(), (fm[it + 1] * upright.height).toFloat()) }
                 faceRestored = true
@@ -173,6 +173,11 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         marks = marks + proposed
         selected = null
         vm.toast(if (proposed.isEmpty()) "No arrows found. Mark them by hand." else "${proposed.size} ${if (proposed.size == 1) "arrow" else "arrows"} found. Check and correct them.")
+    }
+    // Marks placed before the face was (re)marked get their ring from the current geometry
+    LaunchedEffect(geometry) {
+        if (geometry == null || marks.isEmpty()) return@LaunchedEffect
+        marks = marks.map { m -> val r = ringAt(m.pos); if (m.ring < 0 || m.ring == m.ringAuto) m.copy(ringAuto = r, ring = r) else m.copy(ringAuto = r) }
     }
     fun nearestFacePoint(p: Offset, radiusPx: Float): Int? {
         val pts = listOfNotNull(center) + edge
@@ -291,8 +296,10 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 Text(when {
                     faceRestored && geometry != null -> "Marking from the last photo. Drag a point to adjust, or Clear to mark anew."
                     center == null -> "Tap the centre of the face."
-                    edge.size < 5 -> "Tap 5 or more points on the outer edge of the blue ring (${edge.size} of 5)."
-                    geometry == null -> "These points don't form an ellipse. Undo and tap again on the blue edge."
+                    edge.size < 4 -> "Tap 4 points on the outer edge of the blue ring (${edge.size} of 4), best top, bottom, left and right."
+                    geometry == null && edge.size == 4 -> "The 4 points don't fit an ellipse around the centre. Add a 5th point on the blue edge (that also handles a photo taken from the side), or Undo."
+                    geometry == null -> "These points don't form an ellipse. Undo and tap again, spread around the blue edge."
+                    edge.size == 4 -> "Face found. A 5th edge point also corrects a photo taken from the side; or continue."
                     else -> "Face found. Add more edge points for precision, or continue."
                 }, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

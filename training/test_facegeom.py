@@ -31,8 +31,16 @@ class FaceGeomTest(unittest.TestCase):
         self.assertEqual(5, at(119)); self.assertEqual(1, at(199)); self.assertEqual(facegeom.MISS, at(204))
         self.assertEqual(facegeom.MISS, facegeom.ring((105 / 120.0, 0.0), 400, min_ring=6))
 
+    def test_four_points(self):
+        c = (640.0, 900.0); r = 420.0
+        taps = [(c[0] + r + 3, c[1] - 2), (c[0] - 1, c[1] + r + 2), (c[0] - r - 2, c[1] + 1), (c[0] + 2, c[1] - r + 3)]
+        g = facegeom.fit(c, taps)
+        self.assertIsNotNone(g)
+        u = g.to_face((c[0] + r / 2, c[1]))
+        self.assertLess(abs(math.hypot(*u) - 0.5), 0.02)
+
     def test_rejects(self):
-        self.assertIsNone(facegeom.fit((0, 0), [(1, 0), (0, 1), (-1, 0), (0, -1)]))
+        self.assertIsNone(facegeom.fit((0, 0), [(1, 0), (0, 1), (-1, 0)]))
         self.assertIsNone(facegeom.fit((0, 0), [(1, 0), (2, 0), (3, 0), (4, 0), (5, 0)]))
 
 

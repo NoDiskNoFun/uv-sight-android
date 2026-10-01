@@ -61,7 +61,7 @@ def _sym_sqrt(s00, s01, s11):
     theta = 0.0 if abs(s01) < 1e-15 and abs(s00 - s11) < 1e-15 else 0.5 * math.atan2(2 * s01, s00 - s11)
     c, s = math.cos(theta), math.sin(theta)
     r1, r2 = math.sqrt(l1), math.sqrt(l2)
-    return (c * c * r1 + s * s * r2, c * s * (r1 - r2), s * s * r1 + c * c * r2)
+    return (c * c * r1 + s * s * r2, c * s * (r1 - r2), s * s * r1 + c * c * r2, r1 / r2)
 
 
 class FaceGeometry:
@@ -78,24 +78,46 @@ class FaceGeometry:
 
 
 def fit(center, edge):
-    if len(edge) < 5:
+    """5+ edge points: free conic (handles a camera off to the side); 4 points, or a failed free fit:
+    the tapped centre is taken as the ellipse centre. Mirrors FaceGeometry.fit in the app."""
+    if len(edge) < 4:
         return None
+    if len(edge) == 4 or _largest_gap(center, edge) > math.pi:
+        return _fit_conic(center, edge, 2)          # centred and axis-aligned
+    return _fit_conic(center, edge, 5) or _fit_conic(center, edge, 1)   # fallback: a circle around the centre
+
+
+def _largest_gap(center, edge):
+    ang = sorted(math.atan2(y - center[1], x - center[0]) for x, y in edge)
+    gap = ang[0] + 2 * math.pi - ang[-1]
+    for i in range(1, len(ang)):
+        gap = max(gap, ang[i] - ang[i - 1])
+    return gap
+
+
+def _fit_conic(center, edge, n):
+    centred = n != 5
     scale = sum(math.hypot(x - center[0], y - center[1]) for x, y in edge) / len(edge)
     if scale < 1e-6:
         return None
     t = [[1 / scale, 0.0, -center[0] / scale], [0.0, 1 / scale, -center[1] / scale], [0.0, 0.0, 1.0]]
     pts = [_apply(t, p) for p in edge]
-    a = [[0.0] * 5 for _ in range(5)]; b = [0.0] * 5
+    # a = 1/2 + a':  a'(x^2 - y^2) + b xy + d x + e y + f = -(x^2 + y^2)/2 ; ridge pulls towards a circle
+    a = [[0.0] * n for _ in range(n)]; b = [0.0] * n
     for x, y in pts:
-        row = [x * x - y * y, x * y, x, y, 1.0]; yy = -y * y
-        for i in range(5):
+        row = {5: [x * x - y * y, x * y, x, y, 1.0], 2: [x * x - y * y, 1.0], 1: [1.0]}[n]; yy = -(x * x + y * y) / 2
+        for i in range(n):
             b[i] += row[i] * yy
-            for j in range(5):
+            for j in range(n):
                 a[i][j] += row[i] * row[j]
+    for i in range(n):
+        a[i][i] += 0.01 if (n == 2 and i == 0) else 1e-9
     sol = _solve(a, b)
     if sol is None:
         return None
-    ca, cb, cd, ce, cf = sol[0], sol[1], sol[2], sol[3], sol[4]; cc = 1 - ca
+    ca = 0.5 if n == 1 else 0.5 + sol[0]; cc = 1 - ca
+    cb = 0.0 if centred else sol[1]
+    cd, ce, cf = (0.0, 0.0, sol[-1]) if centred else (sol[2], sol[3], sol[4])
     if cb * cb - 4 * ca * cc >= 0:
         return None
     cn = [[ca, cb / 2, cd / 2], [cb / 2, cc, ce / 2], [cd / 2, ce / 2, cf]]
@@ -113,6 +135,8 @@ def fit(center, edge):
         return None
     mm = [[m[0], m[1], 0.0], [m[1], m[2], 0.0], [0.0, 0.0, 1.0]]
     to_face = _mul(_mul(mm, h1), t)
+    if any(abs(math.hypot(*_apply(to_face, p)) - 1) > 0.12 for p in edge) or m[3] > 3.0:
+        return None
     cpix = _mul(_mul(_transpose(t), cn), t)
     conic = [cpix[0][0], 2 * cpix[0][1], cpix[1][1], 2 * cpix[0][2], 2 * cpix[1][2], cpix[2][2]]
     try:

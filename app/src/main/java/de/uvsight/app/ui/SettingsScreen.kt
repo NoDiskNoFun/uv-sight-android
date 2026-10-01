@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.produceState
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -279,15 +280,23 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 if (ph.source != "gallery") {
                     // Which camera app gets the request. Android 11+ hands the plain request to the system camera only,
                     // so a third-party camera (e.g. Open Camera) has to be named here.
+                    // Android 11+ answers the plain capture query with system cameras only, so every installed
+                    // package is asked whether it takes an explicit capture request (needs QUERY_ALL_PACKAGES).
                     val pm = context.packageManager
-                    val cameraApps = remember {
-                        pm.queryIntentActivities(android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE), 0)
-                            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }.distinctBy { it.first }.sortedBy { it.second.lowercase() }
+                    val cameraApps by produceState(initialValue = emptyList<Pair<String, String>>()) {
+                        value = withContext(Dispatchers.IO) {
+                            runCatching {
+                                pm.getInstalledApplications(0).mapNotNull { ai ->
+                                    val probe = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).setPackage(ai.packageName)
+                                    if (pm.resolveActivity(probe, 0) != null) ai.packageName to pm.getApplicationLabel(ai).toString() else null
+                                }.distinctBy { it.first }.sortedBy { it.second.lowercase() }
+                            }.getOrDefault(emptyList())
+                        }
                     }
                     HorizontalDivider(color = uv.line)
                     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                         Text("Camera app", color = uv.ink)
-                        Text(if (cameraApps.size <= 1) "Only the system camera is installed." else "System lets Android choose (usually the built-in camera). Pick another app if the built-in one fails.", color = uv.muted, fontSize = 13.sp)
+                        Text(if (cameraApps.size <= 1) "Only the built-in camera was found." else "System lets Android choose (usually the built-in camera). Pick another app if the built-in one fails.", color = uv.muted, fontSize = 13.sp)
                         Spacer(Modifier.height(8.dp))
                         Row(Modifier.horizontalScroll(rememberScrollState())) {
                             FilterChip(selected = ph.cameraApp.isEmpty(), onClick = { ctl.setPhotoPrefs(ph.copy(cameraApp = "")) }, label = { Text("System") }, modifier = Modifier.padding(end = 6.dp))

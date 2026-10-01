@@ -47,8 +47,20 @@ class FaceTest {
         assertEquals("X", Scoring.entry(Scoring.X)); assertEquals("M", Scoring.entry(0)); assertEquals(10, Scoring.points(Scoring.X))
     }
 
+    @Test fun fourPointsWithCentre() {
+        // frontal photo: 4 taps on the blue edge (top, bottom, left, right), a little off
+        val c = Pt(640.0, 900.0); val r = 420.0
+        val taps = listOf(Pt(c.x + r + 3, c.y - 2), Pt(c.x - 1, c.y + r + 2), Pt(c.x - r - 2, c.y + 1), Pt(c.x + 2, c.y - r + 3))
+        val g = assertNotNull(FaceGeometry.fit(c, taps))
+        val u = g.toFace(Pt(c.x + r / 2, c.y))
+        assertTrue(kotlin.math.abs(hypot(u.x, u.y) - 0.5) < 0.02, "half radius, got ${hypot(u.x, u.y)}")
+        // 5 badly spread points (a short arc) still give a geometry thanks to the centred fallback
+        val arc = (0 until 5).map { val a = Math.toRadians(200.0 + it * 20); Pt(c.x + r * cos(a), c.y + r * sin(a)) }
+        assertNotNull(FaceGeometry.fit(c, arc))
+    }
+
     @Test fun rejectsBadInput() {
-        assertNull(FaceGeometry.fit(Pt(0.0, 0.0), listOf(Pt(1.0, 0.0), Pt(0.0, 1.0), Pt(-1.0, 0.0), Pt(0.0, -1.0))))            // too few
+        assertNull(FaceGeometry.fit(Pt(0.0, 0.0), listOf(Pt(1.0, 0.0), Pt(0.0, 1.0), Pt(-1.0, 0.0))))                            // too few
         assertNull(FaceGeometry.fit(Pt(0.0, 0.0), listOf(Pt(1.0, 0.0), Pt(2.0, 0.0), Pt(3.0, 0.0), Pt(4.0, 0.0), Pt(5.0, 0.0))))   // a line
     }
 

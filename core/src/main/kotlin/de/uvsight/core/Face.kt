@@ -1,6 +1,7 @@
 package de.uvsight.core
 
 import kotlinx.serialization.Serializable
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -73,23 +74,59 @@ class FaceGeometry private constructor(
     fun circle(radius: Double, n: Int = 72): List<Pt> = (0 until n).map { i -> val t = 2 * Math.PI * i / n; toImage(Pt(radius * cos(t), radius * sin(t))) }
 
     companion object {
-        /** null if the points do not describe an ellipse around the centre. */
+        /**
+         * null if the points do not describe an ellipse around the centre.
+         * With 5 or more edge points the conic is free, so a photo taken from the side is handled
+         * (the tapped centre is then not the ellipse centre). With 4 points, or when the free fit
+         * fails, the tapped centre is taken as the ellipse centre. With exactly 4 points, or when the
+         * taps all lie on one side of the centre (where a free conic is unreliable), the ellipse is
+         * centred on the tapped point and axis-aligned.
+         */
         fun fit(center: Pt, edge: List<Pt>): FaceGeometry? {
-            if (edge.size < 5) return null
+            if (edge.size < 4) return null
+            if (edge.size == 4 || largestGap(center, edge) > PI) return fitConic(center, edge, AXIS)
+            return fitConic(center, edge, FREE) ?: fitConic(center, edge, CIRCLE)
+        }
+
+        /** Largest angular gap (radians) between neighbouring taps as seen from the centre. */
+        private fun largestGap(center: Pt, edge: List<Pt>): Double {
+            val ang = edge.map { atan2(it.y - center.y, it.x - center.x) }.sorted()
+            var gap = ang.first() + 2 * PI - ang.last()
+            for (i in 1 until ang.size) gap = max(gap, ang[i] - ang[i - 1])
+            return gap
+        }
+        private const val FREE = 5      // a, b, d, e, f
+        private const val AXIS = 2      // a, f: centre at the tapped point, axes along the image axes
+        private const val CIRCLE = 1    // f only: a circle around the tapped point (fallback for badly spread points)
+
+        private fun fitConic(center: Pt, edge: List<Pt>, n: Int): FaceGeometry? {
+            val centred = n != FREE
             // Condition the coordinates: centre at the origin, edge radius about 1
             val scale = edge.map { hypot(it.x - center.x, it.y - center.y) }.average()
             if (scale < 1e-6) return null
             val t = Mat3(doubleArrayOf(1 / scale, 0.0, -center.x / scale, 0.0, 1 / scale, -center.y / scale, 0.0, 0.0, 1.0))
             val pts = edge.map { t.apply(it) }
-            // Least squares conic with a + c = 1:  a (x^2 - y^2) + b xy + d x + e y + f = -y^2
-            val a = Array(5) { DoubleArray(5) }; val b = DoubleArray(5)
+            // Least squares conic with a + c = 1, written as a = 1/2 + a':
+            //   a' (x^2 - y^2) + b xy + d x + e y + f = -(x^2 + y^2) / 2
+            // (axis mode: d = e = 0, the centre is the origin, and b = 0, axes along the image axes).
+            // A whisper of ridge pulls unidentifiable terms to 0, i.e. towards a circle around the tapped centre.
+            val a = Array(n) { DoubleArray(n) }; val b = DoubleArray(n)
             for (p in pts) {
-                val row = doubleArrayOf(p.x * p.x - p.y * p.y, p.x * p.y, p.x, p.y, 1.0)
-                val y = -p.y * p.y
-                for (i in 0..4) { b[i] += row[i] * y; for (j in 0..4) a[i][j] += row[i] * row[j] }
+                val row = when (n) {
+                    FREE -> doubleArrayOf(p.x * p.x - p.y * p.y, p.x * p.y, p.x, p.y, 1.0)
+                    AXIS -> doubleArrayOf(p.x * p.x - p.y * p.y, 1.0)
+                    else -> doubleArrayOf(1.0)
+                }
+                val y = -(p.x * p.x + p.y * p.y) / 2
+                for (i in 0 until n) { b[i] += row[i] * y; for (j in 0 until n) a[i][j] += row[i] * row[j] }
             }
+            // ridge: tiny for the free fit; for the 4-point fit a little stronger on a', so 4 taps near the
+            // diagonals (where a' is not identifiable) give a circle instead of noise
+            for (i in 0 until n) a[i][i] += if (n == AXIS && i == 0) 0.01 else 1e-9
             val sol = solve(a, b) ?: return null
-            val ca = sol[0]; val cb = sol[1]; val cc = 1 - ca; val cd = sol[2]; val ce = sol[3]; val cf = sol[4]
+            val ca = if (n == CIRCLE) 0.5 else 0.5 + sol[0]; val cc = 1 - ca
+            val cb = if (centred) 0.0 else sol[1]
+            val cd = if (centred) 0.0 else sol[2]; val ce = if (centred) 0.0 else sol[3]; val cf = sol[n - 1]
             if (cb * cb - 4 * ca * cc >= 0) return null                     // not an ellipse
             val cN = Mat3(doubleArrayOf(ca, cb / 2, cd / 2, cb / 2, cc, ce / 2, cd / 2, ce / 2, cf))
             // centre is the origin in normalised coordinates: its polar is the last row of C
@@ -104,6 +141,9 @@ class FaceGeometry private constructor(
             val m = symSqrt(s00, s01, s11) ?: return null                    // u = M p  puts the ellipse on the unit circle
             val mM = Mat3(doubleArrayOf(m[0], m[1], 0.0, m[1], m[2], 0.0, 0.0, 0.0, 1.0))
             val toFace = mM * h1 * t
+            // sanity: the taps must lie on the unit circle of the result, and the ellipse must not be extreme
+            if (edge.any { val u = toFace.apply(it); abs(hypot(u.x, u.y) - 1) > 0.12 }) return null
+            if (m[3] > 3.0) return null
             // conic back in pixel coordinates: C = T^T C_N T
             val cPix = t.transpose() * cN * t
             val conic = doubleArrayOf(cPix[0, 0], 2 * cPix[0, 1], cPix[1, 1], 2 * cPix[0, 2], 2 * cPix[1, 2], cPix[2, 2])
@@ -120,8 +160,9 @@ class FaceGeometry private constructor(
             val theta = if (abs(s01) < 1e-15 && abs(s00 - s11) < 1e-15) 0.0 else 0.5 * atan2(2 * s01, s00 - s11)
             val c = cos(theta); val s = sin(theta)
             val r1 = sqrt(l1); val r2 = sqrt(l2)
+            val ratio = r1 / r2
             // R diag(r1, r2) R^T with R = [[c, -s], [s, c]]
-            return doubleArrayOf(c * c * r1 + s * s * r2, c * s * (r1 - r2), s * s * r1 + c * c * r2)
+            return doubleArrayOf(c * c * r1 + s * s * r2, c * s * (r1 - r2), s * s * r1 + c * c * r2, ratio)
         }
 
         private fun solve(a0: Array<DoubleArray>, b0: DoubleArray): DoubleArray? {
