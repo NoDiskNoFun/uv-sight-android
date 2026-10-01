@@ -264,6 +264,8 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 Text("Photo scoring", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 SegRow("Face", "Preselected on the photo screen; change it there per session.", runCatching { de.uvsight.core.FaceType.valueOf(ph.face) }.getOrDefault(de.uvsight.core.FaceType.WA40).label,
                     de.uvsight.core.FaceType.values().map { it.label }, first = true) { l -> de.uvsight.core.FaceType.values().firstOrNull { it.label == l }?.let { ctl.setPhotoPrefs(ph.copy(face = it.name)) } }
+                SegRow("Photo source", "Camera opens the camera app for Score from photo. Gallery lets you pick a picture you took before, for phones whose camera app fails on the request.",
+                    if (ph.source == "gallery") "Gallery" else "Camera", listOf("Camera", "Gallery")) { ctl.setPhotoPrefs(ph.copy(source = if (it == "Gallery") "gallery" else "camera")) }
                 HorizontalDivider(color = uv.line)
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

@@ -118,12 +118,24 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
         val f = pendingPhoto; pendingPhoto = null
         if (ok && f != null && f.exists()) onPhoto(f) else f?.delete()
     }
+    // Alternative for phones whose camera app fails on the capture intent: pick the photo from the gallery
+    val pickPhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        val f = pendingPhoto; pendingPhoto = null
+        if (uri != null && f != null) {
+            val ok = runCatching { context.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { o -> i.copyTo(o) } } != null }.getOrDefault(false)
+            if (ok && f.length() > 0) onPhoto(f) else { f.delete(); vm.toast("Could not read the picture.", true) }
+        } else f?.delete()
+    }
     SecondaryButton("Score from photo", Modifier.fillMaxWidth(), enabled = !busy) {
         val dir = java.io.File(context.cacheDir, "photos").apply { mkdirs() }
         val f = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
         pendingPhoto = f
-        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
-        runCatching { takePicture.launch(uri) }.onFailure { vm.toast("No camera app found.", true); pendingPhoto = null }
+        if (state.photo.source == "gallery") {
+            runCatching { pickPhoto.launch("image/*") }.onFailure { vm.toast("No gallery app found.", true); pendingPhoto = null }
+        } else {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
+            runCatching { takePicture.launch(uri) }.onFailure { vm.toast("No camera app found.", true); pendingPhoto = null }
+        }
     }
     Spacer(Modifier.height(10.dp))
     val keysEnabled = !busy && state.entries.size < SightController.MAX_ARROWS
