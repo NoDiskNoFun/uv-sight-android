@@ -27,13 +27,15 @@ The page shows which device PyTorch found. It should say `cuda` and your card's 
 
 On the page: upload the ZIP from *Settings → Photo scoring → Export*, choose image size (640 is the default; 320 for a smaller, faster model), epochs, model size (`n` is enough to start) and press *Start training*. The loss curve and the log update while it runs; *Stop* aborts the run (nothing is exported, start a new run with fewer epochs instead). When it finishes, the results table shows, in archery terms, how many arrows were found and missed, the false alarms, the median entry-point error in millimetres and how often the ring was right, plus a preview of the validation photos with the marks (green = yours, blue = model). *Download .tflite* gives the int8 model. Copy it to the phone and import it under *Settings → Photo scoring → Detection model*; from then on *Score from photo* marks the arrows itself, and collecting training data is switched off while the model is installed.
 
+Several exports can be uploaded, for example from club mates' phones, and ticked for one run: the records are merged, photo ids and session keys get the export's name as prefix, and the results table lists the hit rate per export when the validation photos come from more than one. `prepare_dataset.py` and `train.sh` take several ZIPs on the command line the same way.
+
 `python3 webui.py --mock` trains a stand-in model in seconds, for checking the page without a GPU. `train.sh` does the same as the page from the command line.
 
 Start with about 50 ends; expect usable results from roughly 150 to 200 ends spread over both environments. `prepare_dataset.py` splits by session so all ends of one session land on the same side.
 
 ## Small devices
 
-The export is int8-quantised with a chosen input size (`train.sh <zip> 320` for a smaller model). That is what TensorFlow Lite for Microcontrollers needs. Whether a model of this class is fast and accurate enough on an ESP32-S3 has to be measured; the phone runs it without trouble.
+The export is int8-quantised with a chosen input size (`IMGSZ=320 ./train.sh <zip>` for a smaller model). That is what TensorFlow Lite for Microcontrollers needs. Whether a model of this class is fast and accurate enough on an ESP32-S3 has to be measured; the phone runs it without trouble.
 
 ## Licence note for public datasets
 

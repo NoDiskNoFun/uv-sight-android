@@ -59,6 +59,7 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
     var askSkip by remember { mutableStateOf(false) }
     var askStop by remember { mutableStateOf(false) }
 
+    if (state.photoOnly) { PhotoOnlyScreen(state, ctl, vm, onPhoto); return }
     if (off) { EmptyBox("The shot counter is off.") { PrimaryButton("Turn shot counter on") { ctl.counterOn() } }; return }
     if (idle) { EmptyBox("No session running. The first shot starts one automatically.") { SecondaryButton("Start session now") { ctl.startSession() } }; return }
     if (!run) { EmptyBox("Connect to the sight on the Status tab first."); return }
@@ -112,31 +113,7 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
     }
 
     val busy = state.awaitingEnd || state.reconnecting
-    // Score from a photo of the face (system camera)
-    var pendingPhoto by remember { mutableStateOf<java.io.File?>(null) }
-    val takePicture = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok ->
-        val f = pendingPhoto; pendingPhoto = null
-        if (ok && f != null && f.exists()) onPhoto(f) else f?.delete()
-    }
-    // Alternative for phones whose camera app fails on the capture intent: pick the photo from the gallery
-    val pickPhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
-        val f = pendingPhoto; pendingPhoto = null
-        if (uri != null && f != null) {
-            val ok = runCatching { context.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { o -> i.copyTo(o) } } != null }.getOrDefault(false)
-            if (ok && f.length() > 0) onPhoto(f) else { f.delete(); vm.toast("Could not read the picture.", true) }
-        } else f?.delete()
-    }
-    SecondaryButton("Score from photo", Modifier.fillMaxWidth(), enabled = !busy) {
-        val dir = java.io.File(context.cacheDir, "photos").apply { mkdirs() }
-        val f = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
-        pendingPhoto = f
-        if (state.photo.source == "gallery") {
-            runCatching { pickPhoto.launch("image/*") }.onFailure { vm.toast("No gallery app found.", true); pendingPhoto = null }
-        } else {
-            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
-            runCatching { takePicture.launch(uri) }.onFailure { vm.toast("No camera app found.", true); pendingPhoto = null }
-        }
-    }
+    PhotoButton(state, vm, enabled = !busy, onPhoto = onPhoto)
     Spacer(Modifier.height(10.dp))
     val keysEnabled = !busy && state.entries.size < SightController.MAX_ARROWS
     val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "X", "M")
@@ -193,4 +170,69 @@ fun RoundButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
         .clickable(enabled = enabled, onClick = onClick), contentAlignment = Alignment.Center) {
         Text(text, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = if (enabled) uv.ink else uv.muted)
     }
+}
+
+/** Capture into a file like TakePicture, but with the camera app named in the settings (Android 11+ only hands the plain request to the system camera). */
+private class TakePictureWith(private val pkg: String) : androidx.activity.result.contract.ActivityResultContract<android.net.Uri, Boolean>() {
+    override fun createIntent(context: Context, input: android.net.Uri) =
+        android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT, input)
+            .addFlags(android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION).apply { if (pkg.isNotEmpty()) setPackage(pkg) }
+    override fun parseResult(resultCode: Int, intent: android.content.Intent?) = resultCode == android.app.Activity.RESULT_OK
+}
+
+/** "Score from photo": camera (system or a chosen app) or the gallery, as set under Settings → Photo scoring. */
+@Composable
+fun PhotoButton(state: AppState, vm: SightViewModel, enabled: Boolean, onPhoto: (java.io.File) -> Unit) {
+    val context = LocalContext.current
+    var pendingPhoto by remember { mutableStateOf<java.io.File?>(null) }
+    val cameraApp = state.photo.cameraApp
+    val takePicture = androidx.activity.compose.rememberLauncherForActivityResult(remember(cameraApp) { TakePictureWith(cameraApp) }) { ok ->
+        val f = pendingPhoto; pendingPhoto = null
+        if (ok && f != null && f.exists() && f.length() > 0) onPhoto(f) else f?.delete()
+    }
+    // Alternative for phones whose camera app fails on the capture request: pick the photo from the gallery
+    val pickPhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        val f = pendingPhoto; pendingPhoto = null
+        if (uri != null && f != null) {
+            val ok = runCatching { context.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { o -> i.copyTo(o) } } != null }.getOrDefault(false)
+            if (ok && f.length() > 0) onPhoto(f) else { f.delete(); vm.toast("Could not read the picture.", true) }
+        } else f?.delete()
+    }
+    SecondaryButton("Score from photo", Modifier.fillMaxWidth(), enabled = enabled) {
+        val dir = java.io.File(context.cacheDir, "photos").apply { mkdirs() }
+        val f = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
+        pendingPhoto = f
+        if (state.photo.source == "gallery") {
+            runCatching { pickPhoto.launch("image/*") }.onFailure { vm.toast("No gallery app found.", true); pendingPhoto = null }
+        } else {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
+            runCatching { takePicture.launch(uri) }.onFailure { vm.toast(if (cameraApp.isEmpty()) "No camera app found." else "The chosen camera app could not be started.", true); pendingPhoto = null }
+        }
+    }
+}
+
+/** Photo scoring only (no sight): the photo button, the scores it produced and a Done button. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PhotoOnlyScreen(state: AppState, ctl: SightController, vm: SightViewModel, onPhoto: (java.io.File) -> Unit) {
+    val uv = LocalUv.current
+    UvCard {
+        Text("Scoring from photos", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = uv.ink)
+        Spacer(Modifier.height(6.dp))
+        Text("Photograph the face with the arrows in it, mark the face and the arrows, and the rings are scored. " +
+            if (state.photo.collect) "Every scored photo is kept as training data (Settings → Photo scoring → Export)."
+            else "Turn on Collect training data under Settings → Photo scoring if these photos should help train the arrow detector.", color = uv.muted, fontSize = 14.sp)
+    }
+    FlowRow(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 10.dp).heightIn(min = 58.dp)
+        .border(2.dp, uv.line, SmallShape).padding(8.dp), verticalArrangement = Arrangement.Center) {
+        if (state.entries.isEmpty()) Text("The scores of the last photo appear here", color = uv.muted, modifier = Modifier.padding(6.dp))
+        else {
+            for (v in state.entries) Chip(v)
+            Text(state.entries.sumOf { points(it) }.toString(), fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 12.dp))
+        }
+    }
+    PhotoButton(state, vm, enabled = true, onPhoto = onPhoto)
+    Spacer(Modifier.height(10.dp))
+    PrimaryButton("Done", modifier = Modifier.fillMaxWidth().height(54.dp), enabled = state.entries.isNotEmpty()) { ctl.clearEntries() }
+    Spacer(Modifier.height(24.dp))
 }

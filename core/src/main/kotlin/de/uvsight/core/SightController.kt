@@ -60,6 +60,7 @@ data class AppState(
     // console
     val console: List<ConsoleLine> = emptyList(),
     val consoleEnabled: Boolean = false,
+    val photoOnly: Boolean = false,      // "Photo scoring only" mode: no sight, no Bluetooth, just photos and training data
     val view: View = View.STATUS,
     // notifications / vibration
     val notif: NotifPrefs = NotifPrefs(),
@@ -112,6 +113,7 @@ class SightController(
         const val ONSIGHT_INIT_KEY = "uvsight.onsight.init"
         const val ENDS_BACKFILL_KEY = "uvsight.endsBackfill.v1"
         const val CONSOLE_KEY = "uvsight.console"
+        const val MODE_KEY = "uvsight.mode"
         const val NOTIF_KEY = "uvsight.notif"
         const val PHOTO_KEY = "uvsight.photo"
         const val LOW_BAT_PCT = 15
@@ -178,7 +180,9 @@ class SightController(
         val notif = store.get(NOTIF_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(NotifPrefs.serializer(), it) }.getOrNull() } ?: NotifPrefs()
         val photo = store.get(PHOTO_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(PhotoPrefs.serializer(), it) }.getOrNull() } ?: PhotoPrefs()
         set { copy(distM = store.get(DIST_KEY)?.toIntOrNull() ?: 0, showHidden = store.get(SHOW_HIDDEN_KEY) == "1",
-            autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif, photo = photo) }
+            autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif, photo = photo,
+            photoOnly = store.get(MODE_KEY) == "photo") }
+        if (s.photoOnly) set { copy(view = View.TRAINING) }
         refreshHistory()
     }
 
@@ -939,6 +943,17 @@ class SightController(
         store.put(NOTIF_KEY, kotlinx.serialization.json.Json.encodeToString(NotifPrefs.serializer(), p))
         set { copy(notif = p) }
     }
+    /** Photo scoring only: the app never touches Bluetooth; Status, History and Console are hidden. */
+    fun setPhotoOnly(on: Boolean) {
+        store.put(MODE_KEY, if (on) "photo" else "sight")
+        if (on) {
+            stopAutoReconnect()
+            if (s.conn != ConnState.OFF) transport.disconnect()
+            set { copy(photoOnly = true, view = if (view == View.TRAINING || view == View.SETTINGS) view else View.TRAINING) }
+        } else set { copy(photoOnly = false) }
+    }
+    /** Photo-only mode: the scores were looked at, clear the entry row. */
+    fun clearEntries() { set { copy(entries = emptyList(), pendingHits = null) }; saveTraining() }
     fun setConsoleEnabled(on: Boolean) { store.put(CONSOLE_KEY, if (on) "1" else "0"); set { copy(consoleEnabled = on, view = if (!on && view == View.CONSOLE) View.STATUS else view) } }
     fun sendRaw(cmd: String) { if (s.conn != ConnState.CONNECTED) { toast("Not connected.", true); return }; send(cmd) }
 }

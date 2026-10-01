@@ -43,7 +43,7 @@ class SightRuntime private constructor(private val app: Application) {
         // The foreground service runs while a link is wanted (connecting, connected or
         // reconnecting) and the session notification is enabled
         scope.launch {
-            controller.state.map { (it.conn != ConnState.OFF || it.autoReconnect) && it.notif.session }.distinctUntilChanged().collect { wanted ->
+            controller.state.map { (it.conn != ConnState.OFF || it.autoReconnect) && it.notif.session && !it.photoOnly }.distinctUntilChanged().collect { wanted ->
                 val intent = Intent(app, SightService::class.java)
                 if (wanted) runCatching { ContextCompat.startForegroundService(app, intent) }
                 else runCatching { app.stopService(intent) }

@@ -114,8 +114,13 @@ def evaluate(val_recs, predict):
                 ring_n += 1
                 if facegeom.ring(up, dia, min_ring, rec.get("arrowMm", 6.0)) == a["ring"]:
                     ring_ok += 1
-        per_image.append({"id": rec["id"], "marks": len(marks), "found": len(used), "false": len(preds) - len(used)})
+        per_image.append({"id": rec["id"], "export": rec.get("_export"), "marks": len(marks), "found": len(used), "false": len(preds) - len(used)})
+    per_export = {}
+    for pi in per_image:
+        e = per_export.setdefault(pi["export"] or "", {"photos": 0, "arrows": 0, "found": 0, "false_alarms": 0})
+        e["photos"] += 1; e["arrows"] += pi["marks"]; e["found"] += pi["found"]; e["false_alarms"] += pi["false"]
     return {
+        "per_export": per_export,
         "images": len(val_recs), "arrows": total, "found": found, "false_alarms": false,
         "recall": round(found / total, 3) if total else None,
         "precision": round(found / (found + false), 3) if (found + false) else None,
@@ -134,9 +139,12 @@ def run_job(job, mock):
     try:
         run.mkdir(parents=True, exist_ok=True)
         job.say("unpacking export and preparing the dataset")
-        recs = prepare_dataset.load_records(DATA / p["export"], run / "export")
+        exports = p.get("exports") or [p["export"]]
+        recs = prepare_dataset.load_many([DATA / n for n in exports], run / "export")
         if not recs:
             raise RuntimeError("no records in the export")
+        if len(exports) > 1:
+            job.say(f"{len(exports)} exports merged: " + ", ".join(exports))
         train, val = prepare_dataset.split_by_session(recs, float(p["val"]))
         if not val:
             # a single session (or a single photo): the trainer needs a validation set, so the
@@ -248,7 +256,8 @@ def runs_list():
             s = json.loads(d.read_text()); s.pop("eval", None) if False else None
             out.append({"name": s["name"], "finished": s["finished"], "duration_s": s["duration_s"], "train_photos": s["train_photos"],
                         "val_photos": s["val_photos"], "eval": {k: v for k, v in s["eval"].items() if k != "per_image"},
-                        "params": s["params"], "mock": s.get("mock", False), "model": (d.parent / "model.tflite").exists()})
+                        "params": s["params"], "exports": s["params"].get("exports") or [s["params"].get("export")],
+                        "mock": s.get("mock", False), "model": (d.parent / "model.tflite").exists()})
         except Exception:
             pass
     return out
@@ -260,7 +269,7 @@ def exports_list():
 
 def preview(run, index):
     exp = RUNS / run / "export"
-    recs = prepare_dataset.load_records(exp, exp)
+    recs = prepare_dataset.load_many(sorted(d for d in exp.iterdir() if d.is_dir()), exp) if exp.exists() else []
     if not recs:
         return {"error": "no records"}
     train, val = prepare_dataset.split_by_session(recs, float(json.loads((RUNS / run / "summary.json").read_text())["params"]["val"]))
@@ -272,7 +281,7 @@ def preview(run, index):
     return {"index": index, "count": len(pool), "id": rec["id"], "width": rec["width"], "height": rec["height"], "rotation": rec.get("rotation", 0),
             "image": f"/files/{run}/dataset/images/{'val' if val else 'train'}/{rec['id']}.jpg",
             "marks": [{"x": a["px"], "y": a["py"], "ring": a["ring"], "source": a.get("source", "user")} for a in rec["arrows"]],
-            "stats": per.get(rec["id"]), "face": rec["face"], "env": rec.get("environment")}
+            "stats": per.get(rec["id"]), "face": rec["face"], "env": rec.get("environment"), "export": rec.get("_export")}
 
 
 # ----------------------------------------------------------------------------- http
@@ -296,11 +305,11 @@ progress{width:100%;height:14px}
 </style></head><body><main>
 <h1>UV-Sight trainer</h1><div class="muted" id="gpu">…</div>
 <div class="card"><h2>1. Export from the app</h2>
-<div class="row"><input type="file" id="file" accept=".zip"><button class="sec" id="upload">Upload</button><span id="upmsg" class="muted"></span></div>
-<div id="exports" class="muted" style="margin-top:8px"></div></div>
+<div class="row"><input type="file" id="file" accept=".zip" multiple><button class="sec" id="upload">Upload</button><span id="upmsg" class="muted"></span></div>
+<div class="muted" style="margin-top:8px">Exports from several phones can be uploaded and trained together; tick the ones to use.</div>
+<div id="exports" style="margin-top:6px"></div></div>
 <div class="card"><h2>2. Train</h2>
 <div class="row">
-<label>Export<select id="export"></select></label>
 <label>Image size<select id="imgsz"><option>320</option><option selected>640</option><option>800</option></select></label>
 <label>Epochs<input id="epochs" type="number" value="120" min="1" style="width:80px"></label>
 <label>Model size<select id="size"><option value="n" selected>nano</option><option value="s">small</option></select></label>
@@ -318,15 +327,16 @@ progress{width:100%;height:14px}
 <canvas id="pv" width="900" height="600"></canvas>
 <div class="muted">Your marks: green with the ring. Nothing else is drawn here yet; the model's proposals appear in the app after import. The counts under the picture come from the evaluation.</div></div>
 </main><script>
-const $=id=>document.getElementById(id);let st=null,prevRun=null,prevIdx=0;
+const $=id=>document.getElementById(id);let st=null,prevRun=null,prevIdx=0;const chosen=new Map();
 async function api(p,o){const r=await fetch(p,o);return r.json()}
 function fmt(v){return v==null?'–':v}
 async function refresh(){st=await api('/api/state');
 $('gpu').textContent=`GPU: ${st.gpu.name}`+(st.gpu.torch?` · PyTorch ${st.gpu.torch}`:'')+(st.ultralytics?' · Ultralytics ready':' · Ultralytics not installed: pip install -r requirements.txt')+(st.mock?' · MOCK MODE':'');
-const sel=$('export');const cur=sel.value;sel.innerHTML=st.exports.map(e=>`<option>${e.name}</option>`).join('');if(cur)sel.value=cur;
-$('exports').textContent=st.exports.length?st.exports.map(e=>`${e.name} (${(e.size/1048576).toFixed(1)} MB)`).join(' · '):'No export uploaded yet.';
+for(const e of st.exports)if(!chosen.has(e.name))chosen.set(e.name,true);
+$('exports').innerHTML=st.exports.length?st.exports.map(e=>`<label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-n="${e.name}" ${chosen.get(e.name)?'checked':''}> ${e.name} <span class="muted">(${(e.size/1048576).toFixed(1)} MB)</span></label>`).join('<br>'):'<span class="muted">No export uploaded yet.</span>';
+for(const cb of $('exports').querySelectorAll('input'))cb.onchange=()=>{chosen.set(cb.dataset.n,cb.checked);refresh()};
 const j=st.job;const running=j&&j.state==='running';
-$('start').disabled=running||!st.exports.length||!(st.ultralytics||st.mock);$('stop').disabled=!running;
+$('start').disabled=running||!st.exports.some(e=>chosen.get(e.name))||!(st.ultralytics||st.mock);$('stop').disabled=!running;
 if(j){$('jobmsg').textContent=`${j.name}: ${j.state}`+(j.error?` – ${j.error}`:'')+(running?` · epoch ${j.epoch}/${j.epochs}`:'');
 $('jobmsg').className=j.state==='failed'?'err':j.state==='done'?'ok':'muted';
 $('prog').hidden=false;$('prog').value=j.epoch/j.epochs;$('log').hidden=false;$('log').textContent=j.log.join('\n');$('log').scrollTop=1e9;drawCurve(j.metrics)}
@@ -338,16 +348,17 @@ m.forEach((x,i)=>{if(x[k]==null)return;const X=30+i*(c.width-40)/Math.max(1,m.le
 g.fillStyle=cols[k]||'#fff';g.font='12px system-ui';g.fillText(`${k}: ${vs[vs.length-1]}`,30+ki*160,c.height-6)});}
 function renderRuns(runs){if(!runs.length){$('runs').textContent='No runs yet.';return}
 $('runs').innerHTML='<table><tr><th>Run</th><th>Photos</th><th>Arrows found</th><th>False alarms</th><th>Entry error</th><th>Rings right</th><th>Time</th><th></th></tr>'+runs.slice().reverse().map(r=>{const e=r.eval;
-return `<tr><td>${r.name}${r.mock?' <span class="muted">(mock)</span>':''}</td><td>${r.train_photos}+${r.val_photos}</td><td>${e.found}/${e.arrows}${e.recall!=null?` (${Math.round(e.recall*100)} %)`:''}</td><td>${e.false_alarms}</td><td>${e.mm_error_median!=null?e.mm_error_median+' mm median':fmt(e.px_error_mean)+' px'}</td><td>${e.ring_accuracy!=null?Math.round(e.ring_accuracy*100)+' %':'–'}</td><td>${Math.round(r.duration_s/60)} min</td>
+const pe=e.per_export||{};const peTxt=Object.keys(pe).length>1?'<br><span class="muted" style="font-size:.8rem">'+Object.entries(pe).map(([k,v])=>`${k}: ${v.found}/${v.arrows}, ${v.false_alarms} false`).join('<br>')+'</span>':'';
+return `<tr><td>${r.name}${r.mock?' <span class="muted">(mock)</span>':''}${peTxt}</td><td>${r.train_photos}+${r.val_photos}</td><td>${e.found}/${e.arrows}${e.recall!=null?` (${Math.round(e.recall*100)} %)`:''}</td><td>${e.false_alarms}</td><td>${e.mm_error_median!=null?e.mm_error_median+' mm median':fmt(e.px_error_mean)+' px'}</td><td>${e.ring_accuracy!=null?Math.round(e.ring_accuracy*100)+' %':'–'}</td><td>${Math.round(r.duration_s/60)} min</td>
 <td>${r.model?`<a href="/files/${r.name}/model.tflite" download="${r.name}.tflite"><button>Download .tflite</button></a>`:''} <button class="sec" onclick="openPreview('${r.name}')">Preview</button></td></tr>`}).join('')+'</table>';}
 async function openPreview(run,idx=0){prevRun=run;const p=await api(`/api/preview?run=${encodeURIComponent(run)}&i=${idx}`);if(p.error){alert(p.error);return}prevIdx=p.index;
-$('prevcard').hidden=false;$('pinfo').textContent=`${run}: photo ${p.index+1} of ${p.count} · ${p.id} · ${p.face} · ${p.env||''}`+(p.stats?` · marks ${p.stats.marks}, found ${p.stats.found}, false ${p.stats.false}`:'');
+$('prevcard').hidden=false;$('pinfo').textContent=`${run}: photo ${p.index+1} of ${p.count} · ${p.id} · ${p.face} · ${p.env||''}`+(p.export?` · from ${p.export}`:'')+(p.stats?` · marks ${p.stats.marks}, found ${p.stats.found}, false ${p.stats.false}`:'');
 const img=new Image();img.onload=()=>{const c=$('pv');const k=Math.min(900/img.width,600/img.height);c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);const g=c.getContext('2d');g.drawImage(img,0,0,c.width,c.height);
 for(const m of p.marks){g.strokeStyle='#58B27E';g.lineWidth=2;g.beginPath();g.arc(m.x*k,m.y*k,9,0,7);g.stroke();g.fillStyle='#58B27E';g.font='bold 12px system-ui';g.fillText(m.ring===11?'X':m.ring===0?'M':m.ring,m.x*k+12,m.y*k+4)}};
 img.src=p.image+'?t='+Date.now();$('prevcard').scrollIntoView({behavior:'smooth'});}
 $('prev').onclick=()=>openPreview(prevRun,prevIdx-1);$('next').onclick=()=>openPreview(prevRun,prevIdx+1);
-$('upload').onclick=async()=>{const f=$('file').files[0];if(!f)return;$('upmsg').textContent='uploading…';const r=await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'PUT',body:f});const j=await r.json();$('upmsg').textContent=j.ok?`stored ${j.name}`:j.error;refresh()};
-$('start').onclick=async()=>{const body={export:$('export').value,imgsz:$('imgsz').value,epochs:$('epochs').value,size:$('size').value,batch:$('batch').value,val:$('val').value,name:$('name').value};
+$('upload').onclick=async()=>{const fs=[...$('file').files];if(!fs.length)return;const done=[];for(const f of fs){$('upmsg').textContent=`uploading ${f.name}…`;const r=await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'PUT',body:f});const j=await r.json();if(!j.ok){$('upmsg').textContent=j.error;return}done.push(j.name)}$('upmsg').textContent=`stored ${done.join(', ')}`;refresh()};
+$('start').onclick=async()=>{const body={exports:st.exports.map(e=>e.name).filter(n=>chosen.get(n)),imgsz:$('imgsz').value,epochs:$('epochs').value,size:$('size').value,batch:$('batch').value,val:$('val').value,name:$('name').value};
 const j=await api('/api/train',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(!j.ok)alert(j.error);refresh()};
 $('stop').onclick=()=>api('/api/stop',{method:'POST'});
 refresh();setInterval(refresh,2000);
@@ -421,12 +432,14 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 if JOB and JOB.state == "running":
                     self.send_json({"ok": False, "error": "a training is running"}); return
-                if not (DATA / Path(body.get("export", "")).name).exists():
-                    self.send_json({"ok": False, "error": "upload an export first"}); return
+                exports = [Path(n).name for n in (body.get("exports") or ([body["export"]] if body.get("export") else []))]
+                exports = [n for n in exports if (DATA / n).exists()]
+                if not exports:
+                    self.send_json({"ok": False, "error": "upload an export first and tick at least one"}); return
                 if not (ultralytics_available() or Handler.mock):
                     self.send_json({"ok": False, "error": "Ultralytics is not installed"}); return
                 name = (body.get("name") or "").strip() or time.strftime("run-%Y%m%d-%H%M%S")
-                params = {"export": Path(body["export"]).name, "imgsz": int(body.get("imgsz", 640)), "epochs": int(body.get("epochs", 120)),
+                params = {"exports": exports, "imgsz": int(body.get("imgsz", 640)), "epochs": int(body.get("epochs", 120)),
                           "size": body.get("size", "n"), "batch": int(body.get("batch", 16)), "val": float(body.get("val", 0.2)), "name": name}
                 JOB = Job(params)
                 threading.Thread(target=run_job, args=(JOB, Handler.mock), daemon=True).start()

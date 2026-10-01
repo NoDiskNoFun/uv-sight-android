@@ -9,7 +9,7 @@ The JSON records hold coordinates in the *upright* image (EXIF orientation appli
 so the images are rotated here the same way before they are written out.
 
 Usage:
-  python prepare_dataset.py export.zip --out dataset [--val 0.2] [--faces]
+  python prepare_dataset.py export.zip [more.zip ...] --out dataset [--val 0.2] [--faces]
 """
 import argparse
 import json
@@ -41,6 +41,26 @@ def load_records(src: Path, work: Path):
         if img.exists():
             recs.append((r, img))
     return recs
+
+
+def load_many(sources, work: Path):
+    """Records of several exports (ZIPs or already unpacked folders) in one list.
+
+    With more than one export, photo ids and session keys get the export's name as prefix so two
+    phones can never collide, and every record notes its export in "_export"."""
+    sources = [Path(s) for s in sources]
+    out = []
+    for src in sources:
+        stem = src.stem if src.suffix == ".zip" else src.name
+        recs = load_records(src, work / stem) if src.suffix == ".zip" else load_records(src, src)
+        for r, img in recs:
+            r["_export"] = stem
+            if len(sources) > 1:
+                r["id"] = f"{stem}__{r['id']}"
+                if r.get("sessionKey"):
+                    r["sessionKey"] = f"{stem}:{r['sessionKey']}"
+        out.extend(recs)
+    return out
 
 
 def split_by_session(recs, val_frac, seed=1):
@@ -82,13 +102,13 @@ def write_split(recs, out: Path, name: str, faces: bool):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("source", type=Path, help="export ZIP or unpacked folder")
+    ap.add_argument("source", type=Path, nargs="+", help="export ZIPs or unpacked folders (several are merged)")
     ap.add_argument("--out", type=Path, default=Path("dataset"))
     ap.add_argument("--val", type=float, default=0.2, help="share of sessions used for validation")
     ap.add_argument("--faces", action="store_true", help="build the face dataset instead of the arrow dataset")
     args = ap.parse_args()
     work = args.out / "_unpacked"
-    recs = load_records(args.source, work)
+    recs = load_many(args.source, work)
     if not recs:
         sys.exit("no records found")
     train, val = split_by_session(recs, args.val)

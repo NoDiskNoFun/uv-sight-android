@@ -1,10 +1,11 @@
 #!/bin/sh
-# Train the arrow entry-point detector from an app export and turn it into an int8 TFLite model.
+# Train the arrow entry-point detector from one or more app exports and turn it into an int8 TFLite model.
 # Needs: python3, pip install ultralytics pillow
+#   ./train.sh export.zip [more.zip ...]        (image size via IMGSZ=320 ./train.sh ..., default 640)
 set -e
-EXPORT=${1:?usage: train.sh <uv-sight-training-*.zip> [imgsz]}
-IMGSZ=${2:-640}
-python3 "$(dirname "$0")/prepare_dataset.py" "$EXPORT" --out dataset
+[ $# -ge 1 ] || { echo "usage: train.sh <uv-sight-training-*.zip> [more.zip ...]" >&2; exit 1; }
+IMGSZ=${IMGSZ:-640}
+python3 "$(dirname "$0")/prepare_dataset.py" "$@" --out dataset
 # Pose model with one keypoint per arrow; nano size so it can later run on small devices
 yolo pose train data=dataset/data.yaml model=yolo11n-pose.pt imgsz="$IMGSZ" epochs=120 batch=16 project=runs name=arrows exist_ok=True
 # int8 TFLite export (quantisation is calibrated on the validation images)

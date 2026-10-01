@@ -35,9 +35,13 @@ The core can be driven against the firmware running natively (the mock build of 
 
 Android 12 and newer: *Nearby devices* (Bluetooth scan and connect). Android 11 and older: *Location*, which Android requires for Bluetooth scanning; the app does not use the position. Location services must be switched on for scanning on those versions. Android 13 and newer also ask for *Notifications*; without it the app still works, but shows no notifications.
 
+## Photo scoring only (no sight)
+
+Under *Settings → Mode*, *Photos only* turns the app into a photo scorer: no Bluetooth, no connection attempts, Status, History and Console disappear. The Scoring tab offers *Score from photo*, shows the scores of the last photo and a *Done* button. This is meant for club mates who help collecting training data on their own phones: install the APK, switch to *Photos only*, turn on *Collect training data* under *Photo scoring*, set the arrow diameter, and send the export ZIP back now and then. The ZIP holds the photos of the faces, the marks, device model and camera data, nothing personal. The training page merges exports from several phones.
+
 ## Photo scoring
 
-On the Training tab, *Score from photo* opens the camera (or, with *Settings → Photo scoring → Photo source* set to *Gallery*, the picture chooser, for phones whose camera app crashes on the capture request). Then:
+On the Training tab, *Score from photo* opens the camera (or, with *Settings → Photo scoring → Photo source* set to *Gallery*, the picture chooser, for phones whose camera app crashes on the capture request). From Android 11 on, the plain capture request always goes to the built-in camera; *Camera app* in the same settings group lists the installed camera apps so another one, say Open Camera, can be named. Then:
 
 1. **Mark the face:** choose the face (40, 60, 80, 122 cm or a 40 cm spot) and the environment (outdoor/indoor), tap the centre, then five or more points on the outer edge of the blue ring. The app fits the ellipse and removes the perspective; the rings appear on the photo. *Skip face* works without this, then you pick each arrow's ring by hand. The marking is kept: on the next photo the centre and edge points are already there, so with the phone held as before you only check them. Drag a point to adjust, *Undo* removes the last one, *Clear* removes them all to mark anew.
 2. **Mark the arrows:** tap each arrow where it enters the face. The ring appears next to the mark (line-cutter rule with the arrow diameter from the settings). Drag a mark to move it; tap it to change the ring or delete it. Pinch or use the + / − buttons to zoom. With a finger, a magnifier shows the spot under the fingertip while dragging; with a stylus the tip is used as is.

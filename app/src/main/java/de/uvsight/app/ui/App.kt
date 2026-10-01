@@ -86,11 +86,11 @@ fun UvSightApp(vm: SightViewModel) {
         bottomBar = {
             NavigationBar(containerColor = uv.surface) {
                 val tabs = buildList {
-                    add(Triple(View.STATUS, "Status", Icons.Outlined.Speed))
-                    add(Triple(View.TRAINING, "Training", Icons.Outlined.GpsFixed))
-                    add(Triple(View.HISTORY, "History", Icons.Filled.History))
+                    if (!state.photoOnly) add(Triple(View.STATUS, "Status", Icons.Outlined.Speed))
+                    add(Triple(View.TRAINING, if (state.photoOnly) "Scoring" else "Training", Icons.Outlined.GpsFixed))
+                    if (!state.photoOnly) add(Triple(View.HISTORY, "History", Icons.Filled.History))
                     add(Triple(View.SETTINGS, "Settings", Icons.Filled.Settings))
-                    if (state.consoleEnabled) add(Triple(View.CONSOLE, "Console", Icons.Filled.Terminal))
+                    if (state.consoleEnabled && !state.photoOnly) add(Triple(View.CONSOLE, "Console", Icons.Filled.Terminal))
                 }
                 for ((v, label, icon) in tabs) {
                     NavigationBarItem(selected = state.view == v, onClick = { ctl.setView(v) },
@@ -107,7 +107,8 @@ fun UvSightApp(vm: SightViewModel) {
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
-            when (state.view) {
+            val view = if (state.photoOnly && state.view != View.SETTINGS) View.TRAINING else state.view
+            when (view) {
                 View.STATUS -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) { StatusScreen(state, ctl, connect) }
                 View.TRAINING -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) { TrainingScreen(state, ctl, vm, onPhoto = { photoFile = it }) }
                 View.HISTORY -> HistoryScreen(state, ctl, vm)
@@ -177,6 +178,7 @@ fun UvSightApp(vm: SightViewModel) {
 private fun Header(state: AppState) {
     val uv = LocalUv.current
     val text = when {
+        state.photoOnly -> "Photo scoring"
         state.conn == ConnState.OFF && state.sightAsleep -> "Sight asleep"
         state.conn == ConnState.OFF && state.autoReconnect -> "Reconnecting…"
         state.conn == ConnState.OFF -> "Not connected"

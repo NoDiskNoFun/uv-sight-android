@@ -154,6 +154,7 @@ data class PhotoPrefs(
     val modelConf: Double = 0.4,         // confidence threshold of the detection model
     val faceMarks: List<Double>? = null, // last face marking as image fractions: [cx, cy, e1x, e1y, ...], reused on the next photo
     val source: String = "camera",       // where Score from photo gets the picture: "camera" or "gallery"
+    val cameraApp: String = "",          // package of the camera app to use; "" = whatever the system picks
 )
 
 /** The sight's aiming-range signal right now (mirrors the LED): warn = "low" / "high" / "", ok = aim fits. */

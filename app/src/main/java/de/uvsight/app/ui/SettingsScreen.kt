@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -120,7 +122,15 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
             val cfg = state.cfg
-            if (!connected) EmptyBox("Connect to the sight on the Status tab to change settings.")
+            // Mode (phone-side)
+            UvCard {
+                Text("Mode", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                SegRow("Use the app", if (state.photoOnly) "Photo scoring only: no Bluetooth, no sight. Score from photos and collect training data, for example on a club mate's phone."
+                    else "With the UV sight: connection, sessions, settings and history.", if (state.photoOnly) "Photos only" else "With sight", listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
+            }
+            Spacer(Modifier.height(14.dp))
+            if (state.photoOnly) { /* nothing of the sight applies */ }
+            else if (!connected) EmptyBox("Connect to the sight on the Status tab to change settings.")
             else if (cfg == null) EmptyBox(if (state.cfgGaveUp) "The settings didn't arrive completely. Move closer to the sight and try again." else "Loading settings…") {
                 if (state.cfgGaveUp) SecondaryButton("Try again") { ctl.retryCfg() }
             }
@@ -231,7 +241,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
 
             // Sessions
-            UvCard {
+            if (!state.photoOnly) UvCard {
                 Text("Sessions", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 SwitchRow("Sync automatically", if (state.autoCopy) "Keeps the sessions on this phone and on the sight up to date whenever they are connected." else "Off: use Get from sight and Copy to sight in History.", state.autoCopy, first = true) { ctl.setAutoCopy(it) }
                 SwitchRow("Show removed sessions", "Sessions you removed from this phone appear greyed out in History, so you can bring them back.", state.showHidden) { ctl.setShowHidden(it) }
@@ -266,6 +276,25 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     de.uvsight.core.FaceType.values().map { it.label }, first = true) { l -> de.uvsight.core.FaceType.values().firstOrNull { it.label == l }?.let { ctl.setPhotoPrefs(ph.copy(face = it.name)) } }
                 SegRow("Photo source", "Camera opens the camera app for Score from photo. Gallery lets you pick a picture you took before, for phones whose camera app fails on the request.",
                     if (ph.source == "gallery") "Gallery" else "Camera", listOf("Camera", "Gallery")) { ctl.setPhotoPrefs(ph.copy(source = if (it == "Gallery") "gallery" else "camera")) }
+                if (ph.source != "gallery") {
+                    // Which camera app gets the request. Android 11+ hands the plain request to the system camera only,
+                    // so a third-party camera (e.g. Open Camera) has to be named here.
+                    val pm = context.packageManager
+                    val cameraApps = remember {
+                        pm.queryIntentActivities(android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE), 0)
+                            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }.distinctBy { it.first }.sortedBy { it.second.lowercase() }
+                    }
+                    HorizontalDivider(color = uv.line)
+                    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                        Text("Camera app", color = uv.ink)
+                        Text(if (cameraApps.size <= 1) "Only the system camera is installed." else "System lets Android choose (usually the built-in camera). Pick another app if the built-in one fails.", color = uv.muted, fontSize = 13.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.horizontalScroll(rememberScrollState())) {
+                            FilterChip(selected = ph.cameraApp.isEmpty(), onClick = { ctl.setPhotoPrefs(ph.copy(cameraApp = "")) }, label = { Text("System") }, modifier = Modifier.padding(end = 6.dp))
+                            for ((pkg, label) in cameraApps) FilterChip(selected = ph.cameraApp == pkg, onClick = { ctl.setPhotoPrefs(ph.copy(cameraApp = pkg)) }, label = { Text(label) }, modifier = Modifier.padding(end = 6.dp))
+                        }
+                    }
+                }
                 HorizontalDivider(color = uv.line)
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -323,7 +352,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             Spacer(Modifier.height(14.dp))
 
             // Notifications and vibration (phone-side settings)
-            UvCard {
+            if (!state.photoOnly) UvCard {
                 val n = state.notif
                 Text("Notifications and vibration", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 SwitchRow("Session notification", "Shows the running session (end, arrow, average) and keeps the connection alive while the phone is in your pocket. Off: the connection only lasts while the app is open.", n.session, first = true) { ctl.setNotifPrefs(n.copy(session = it)) }
@@ -339,7 +368,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             // App and firmware
             UvCard {
                 Text("App and firmware", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                SwitchRow("Show console", "A tab with the raw messages of the sight, for troubleshooting.", state.consoleEnabled, first = true) { ctl.setConsoleEnabled(it) }
+                if (!state.photoOnly) SwitchRow("Show console", "A tab with the raw messages of the sight, for troubleshooting.", state.consoleEnabled, first = true) { ctl.setConsoleEnabled(it) }
                 if (connected) {
                     HorizontalDivider(color = uv.line)
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
