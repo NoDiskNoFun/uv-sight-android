@@ -140,7 +140,9 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
     fun removeSession(key: String) { saveSessions(sessions().filter { it.key != key }); saveEnds(ends() - key) }
 
     /** An end scored in this app, for the running session. */
-    fun recordEnd(key: String, m: EndMsg, sentScores: List<String>?, hits: List<Hit>? = null) {
+    fun recordEnd(key: String, m: EndMsg, sentScores: List<String>?, hits: List<Hit>? = null, match: ShotMatch.Result? = null, matchSrc: List<String>? = null) {
+        val withHits = m.valid && hits != null && hits.size == m.arrows
+        val withMatch = withHits && match != null && matchSrc != null && match.shotOf.size == hits!!.size
         val all = ends().toMutableMap()
         val list = (all[key] ?: emptyList()).filter { it.n != m.n }.toMutableList()
         val rec = EndDetail(
@@ -150,7 +152,9 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
             reason = if (m.valid) null else m.reason,
             dist = m.dist, distAuto = m.distSrc == "auto", setup = m.setup,
             ang = m.ang, angSd = m.angSd, angN = m.angN, cant = m.cant, cantMax = m.cantMax, canted = m.canted, cantN = m.cantN,
-            hits = if (m.valid && hits != null && hits.size == m.arrows) hits else null,
+            hits = if (withHits) hits else null,
+            shots = m.shots?.shots?.takeIf { it.isNotEmpty() },
+            shotOf = if (withMatch) match!!.shotOf else null, shotConf = if (withMatch) match!!.conf else null, shotSrc = if (withMatch) matchSrc else null,
         )
         list.add(rec)
         list.sortBy { it.n }

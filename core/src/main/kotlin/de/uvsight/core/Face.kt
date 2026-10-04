@@ -225,6 +225,9 @@ data class ArrowMark(
     val tool: String,                        // "stylus" / "finger" / "mouse"
     val moved: Boolean,                      // dragged after placing
     val source: String = "user",             // "user" (tapped) or "model" (proposed by the detector)
+    val shot: Int? = null,                   // index of the sight's shot this arrow was matched to
+    val shotConf: Double? = null,            // confidence of that match
+    val shotSrc: String? = null,             // "sure" / "guess" / "coin" / "user"
 )
 
 /** Everything about one scored photo, saved as a training example. */
@@ -252,4 +255,5 @@ data class PhotoRecord(
     val timestamp: Long,
     val model: String? = null,               // detection model that proposed marks, if any
     val modelConf: Double? = null,           // confidence threshold used
+    val shots: List<ShotInfo>? = null,       // the sight's shots of this end, as received
 )

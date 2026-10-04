@@ -210,8 +210,10 @@ private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightCo
                     }
                     if (ends.any { !it.hits.isNullOrEmpty() }) {
                         GroupTitle("Hits (from photos)")
-                        FacePlot(ends.flatMap { e -> (e.hits ?: emptyList()).map { it to e.n } })
-                        Note("One dot per arrow at its position on the face; the number is the end.")
+                        FacePlot(ends.flatMap { e -> (e.hits ?: emptyList()).mapIndexed { i, h ->
+                            val shot = e.shotOf?.getOrNull(i)?.let { s -> "·" + (s + 1) + (if (e.shotSrc?.getOrNull(i) == "coin") "?" else "") } ?: ""
+                            h to "${e.n}$shot" } })
+                        Note("One dot per arrow at its position on the face: end·shot. A \"?\" marks a shot the matching could not tell apart.")
                     }
                     val count = HashMap<String, Int>(); var total = 0
                     for (e in ends) for (v in e.scores ?: emptyList()) { count[v] = (count[v] ?: 0) + 1; total++ }
@@ -243,7 +245,7 @@ private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightCo
 
 /** All hits of a session on a 10-ring face, x right / y up in mm, scaled to the widest hit. */
 @Composable
-private fun FacePlot(hits: List<Pair<de.uvsight.core.Hit, Int>>) {
+private fun FacePlot(hits: List<Pair<de.uvsight.core.Hit, String>>) {
     val uv = LocalUv.current
     val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
     val maxMm = max(60.0, hits.maxOf { hypot(it.first.mmX, it.first.mmY) } * 1.15)
@@ -258,7 +260,7 @@ private fun FacePlot(hits: List<Pair<de.uvsight.core.Hit, Int>>) {
         for ((h, n) in hits) {
             val p = Offset(c.x + (h.mmX / maxMm * r).toFloat(), c.y - (h.mmY / maxMm * r).toFloat())
             drawCircle(uv.ink, 5.dp.toPx(), p); drawCircle(Color.White, 3.dp.toPx(), p)
-            val tl = textMeasurer.measure(n.toString(), small); drawText(tl, topLeft = p + Offset(6.dp.toPx(), -tl.size.height / 2f))
+            val tl = textMeasurer.measure(n, small); drawText(tl, topLeft = p + Offset(6.dp.toPx(), -tl.size.height / 2f))
         }
         drawCircle(uv.ink, 2f, c)
         val note = textMeasurer.measure("outer ring = ${fmt(ringMm * 10 / 10, 0)} mm", androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = uv.muted))

@@ -71,6 +71,10 @@ data class AppState(
     // photo scoring
     val photo: PhotoPrefs = PhotoPrefs(),
     val pendingHits: List<Hit>? = null,   // positions behind the current entries, if they came from a photo
+    val pendingMatch: ShotMatch.Result? = null,   // which shot each of those arrows was, as matched on the photo
+    val pendingMatchSrc: List<String>? = null,    // per arrow: sure / guess / coin / user
+    val endShots: EndShots? = null,       // the sight's shots of the open end (answer to "shot list")
+    val shotModel: ShotModelInfo? = null, // the sight's shot matching model (active setup)
 ) {
     val hasData get() = status != null
     fun cfgValue(k: String): Double? = cfg?.firstOrNull { it.k == k }?.v
@@ -145,6 +149,8 @@ class SightController(
     private var expectDefaults = false
     private var lastSentScores: List<String>? = null
     private var lastSentHits: List<Hit>? = null
+    private var lastSentMatch: ShotMatch.Result? = null
+    private var lastSentMatchSrc: List<String>? = null
     private var distPresetAt = 0L
     private var levelResyncJob: Job? = null
     private var autoReconnectJob: Job? = null
@@ -349,15 +355,17 @@ class SightController(
                 set {
                     val st = status?.let { if (m.dbl("g") != null) it.copy(lastShotG = m.dbl("g"), lastShotClip = m.bool("clip") ?: false) else it }
                     val se = session?.copy(active = true, end = m.int("end") ?: session.end, endShots = m.int("endShots") ?: session.endShots, shots = m.int("total") ?: session.shots)
-                    copy(lastAng = txt, status = st, session = se)
+                    copy(lastAng = txt, status = st, session = se, endShots = null)
                 }
                 saveTraining()
             }
             "end" -> {
                 val e = m.toEnd()
-                set { copy(lastEnd = e) }
+                set { copy(lastEnd = e, endShots = null) }
+                val teach = if (e.valid && lastSentHits != null && lastSentMatch != null && lastSentMatchSrc != null) ShotMatch.teachLine(e.n, lastSentHits!!, lastSentMatch!!.shotOf, lastSentMatchSrc!!) else null
                 recordEnd(e)
-                if (s.awaitingEnd) { set { copy(entries = emptyList(), pendingHits = null) }; setAwaiting(false) }
+                if (teach != null) send(teach)
+                if (s.awaitingEnd) { set { copy(entries = emptyList(), pendingHits = null, pendingMatch = null, pendingMatchSrc = null) }; setAwaiting(false) }
                 if (e.valid) toast("End ${e.n} saved: ${e.sum} points") else toast("End ${e.n} marked invalid")
                 saveTraining()
             }
@@ -394,6 +402,8 @@ class SightController(
             "logEnd" -> onLogEnd(m)
             "loginfo" -> set { copy(loginfo = m.toLogInfo()) }
             "range" -> set { copy(range = m.toRange()) }
+            "shots" -> set { copy(endShots = m.toShots()) }
+            "shotModel" -> set { copy(shotModel = m.toShotModel()) }
             "setupsStart" -> setupBuf = SetupsInfo(m.int("active") ?: 0, emptyList())
             "setupItem" -> setupBuf?.let { setupBuf = it.copy(list = it.list + m.toSetupItem()) }
             "setupsEnd" -> setupBuf?.let { b ->
@@ -481,15 +491,16 @@ class SightController(
 
     fun pushEntry(v: String) {
         if (s.entries.size >= MAX_ARROWS || s.awaitingEnd || s.reconnecting) return
-        set { copy(entries = entries + v, pendingHits = null) }     // edited by hand: positions no longer match
+        set { copy(entries = entries + v, pendingHits = null, pendingMatch = null, pendingMatchSrc = null) }     // edited by hand: positions no longer match
         saveTraining()
     }
-    fun undoEntry() { set { copy(entries = entries.dropLast(1), pendingHits = null) }; saveTraining() }
+    fun undoEntry() { set { copy(entries = entries.dropLast(1), pendingHits = null, pendingMatch = null, pendingMatchSrc = null) }; saveTraining() }
 
     /** Scores from a photo: rings as entries plus the positions behind them. */
-    fun applyPhotoScores(rings: List<Int>, hits: List<Hit>?) {
+    fun applyPhotoScores(rings: List<Int>, hits: List<Hit>?, match: ShotMatch.Result? = null, matchSrc: List<String>? = null) {
         if (s.awaitingEnd || s.reconnecting) return
-        set { copy(entries = rings.take(MAX_ARROWS).map { Scoring.entry(it) }, pendingHits = hits?.take(MAX_ARROWS)) }
+        val ok = hits != null && hits.size <= MAX_ARROWS && match != null && matchSrc != null && match.shotOf.size == hits.size
+        set { copy(entries = rings.take(MAX_ARROWS).map { Scoring.entry(it) }, pendingHits = hits?.take(MAX_ARROWS), pendingMatch = if (ok) match else null, pendingMatchSrc = if (ok) matchSrc else null) }
         saveTraining()
     }
     fun setPhotoPrefs(p: PhotoPrefs) {
@@ -564,6 +575,7 @@ class SightController(
                 val tokens = s.entries.map { when (it) { "X" -> "x"; "M" -> "0"; else -> it } }
                 lastSentScores = s.entries.toList()
                 lastSentHits = s.pendingHits
+                lastSentMatch = s.pendingMatch; lastSentMatchSrc = s.pendingMatchSrc
                 setAwaiting(true)
                 send("score " + tokens.joinToString(" ") + distSuffix())
             }
@@ -586,11 +598,19 @@ class SightController(
     fun startSession() = send("shots start")
 
     private fun recordEnd(m: EndMsg) {
-        val key = s.currentSessionKey ?: run { lastSentScores = null; lastSentHits = null; return }
-        archive.recordEnd(key, m, lastSentScores, lastSentHits)
-        lastSentScores = null; lastSentHits = null
+        val key = s.currentSessionKey ?: run { lastSentScores = null; lastSentHits = null; lastSentMatch = null; lastSentMatchSrc = null; return }
+        archive.recordEnd(key, m, lastSentScores, lastSentHits, lastSentMatch, lastSentMatchSrc)
+        lastSentScores = null; lastSentHits = null; lastSentMatch = null; lastSentMatchSrc = null
         refreshHistory()
     }
+
+    // ---- shot matching ----
+    /** Ask the sight for the shots of the open end (with its predictions for the given distance). */
+    fun requestShots() { if (s.conn == ConnState.CONNECTED && s.session?.active == true) send("shot list" + (if (s.distM > 0) " ${s.distM}" else "")) }
+    fun shotMatching(on: Boolean) { if (s.conn != ConnState.CONNECTED) { toast("Connect to the sight first.", true); return }; send(if (on) "shot on" else "shot off") }
+    fun shotReset(setupId: Int) { if (s.conn != ConnState.CONNECTED) { toast("Connect to the sight first.", true); return }; send("shot reset $setupId") }
+    /** Mean confidence of the matches over the last ends of a setup, or null without data. */
+    fun matchAccuracy(setupId: Int?): Double? = ShotMatch.accuracy(archive.ends().values.flatten(), setupId)
 
     // ---- distance ----
     fun setDist(d0: Int, fromSight: Boolean = false) {
@@ -1029,7 +1049,7 @@ class SightController(
         } else set { copy(photoOnly = false) }
     }
     /** Photo-only mode: the scores were looked at, clear the entry row. */
-    fun clearEntries() { set { copy(entries = emptyList(), pendingHits = null) }; saveTraining() }
+    fun clearEntries() { set { copy(entries = emptyList(), pendingHits = null, pendingMatch = null, pendingMatchSrc = null) }; saveTraining() }
     fun setConsoleEnabled(on: Boolean) { store.put(CONSOLE_KEY, if (on) "1" else "0"); set { copy(consoleEnabled = on, view = if (!on && view == View.CONSOLE) View.STATUS else view) } }
     fun sendRaw(cmd: String) { if (s.conn != ConnState.CONNECTED) { toast("Not connected.", true); return }; send(cmd) }
 }

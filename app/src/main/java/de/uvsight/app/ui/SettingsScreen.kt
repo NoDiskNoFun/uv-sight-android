@@ -272,12 +272,18 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             Column(Modifier.weight(1f)) {
                                 Text(it.name + if (active) "  ✓" else "", color = uv.ink)
                                 Text((if (it.kmh != null) "about ${it.kmh} km/h" else "learning") + ", ${it.ends} ${if (it.ends == 1) "end" else "ends"}" + if (active) ", in use" else "", color = uv.muted, fontSize = 13.sp)
+                                val acc = remember(it.id, state.ends.size) { ctl.matchAccuracy(it.id) }
+                                if (state.shotModel?.on != false) Text("Shot matching accuracy " + (acc?.let { a -> "${(a * 100).roundToInt()} %" } ?: "–") +
+                                    (if (active && state.shotModel != null) ", ${state.shotModel!!.n} ${if (state.shotModel!!.n == 1) "example" else "examples"} learned" else ""), color = uv.muted, fontSize = 13.sp)
                             }
                             SecondaryButton("…") { setupMenu = it }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
                     SecondaryButton("New setup") { newSetup = true }
+                    state.shotModel?.let { sm ->
+                        SwitchRow("Shot matching", "The sight learns which arrow was which shot and tells the photo scoring. Off also stops the gyro.", sm.on) { ctl.shotMatching(it) }
+                    }
                 }
                 Spacer(Modifier.height(14.dp))
             }
@@ -470,6 +476,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 Row {
                     if (!active) TextButton(onClick = { setupMenu = null; ctl.setupUse(it.id) }) { Text("Use") }
                     TextButton(onClick = { setupMenu = null; rename = it }) { Text("Rename") }
+                    TextButton(onClick = { setupMenu = null; ctl.shotReset(it.id) }) { Text("Reset learning") }
                     if (!active) TextButton(onClick = { setupMenu = null; ctl.setupDelete(it.id) }) { Text("Delete", color = uv.red) }
                 }
             },

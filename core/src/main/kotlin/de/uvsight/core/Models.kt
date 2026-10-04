@@ -52,6 +52,10 @@ data class EndDetail(
     val canted: Int? = null,
     val cantN: Int? = null,
     val hits: List<Hit>? = null,           // arrow positions from photo scoring, face mm (x right, y up)
+    val shots: List<ShotInfo>? = null,     // the sight's shots of this end
+    val shotOf: List<Int>? = null,         // per hit: index of the shot it was matched to
+    val shotConf: List<Double>? = null,    // per hit: confidence of that match (0..1)
+    val shotSrc: List<String>? = null,     // per hit: "sure", "guess", "coin" (unresolved, random), "user" (set by hand)
 )
 
 @Serializable
@@ -130,7 +134,18 @@ data class LogInfo(val ok: Boolean, val jedec: String, val count: Int, val capac
 data class EndMsg(val n: Int, val valid: Boolean, val arrows: Int, val sum: Int?, val x: Int?, val avg: Double?,
                   val reason: String?, val dist: Int?, val distSrc: String?, val setup: Int?, val ang: Double?,
                   val angSd: Double?, val angN: Int?, val cant: Double?, val cantMax: Double?, val canted: Int?,
-                  val cantN: Int?, val stored: Boolean)
+                  val cantN: Int?, val stored: Boolean, val shots: EndShots? = null)
+
+/** One shot as the sight measured it: aiming angle, cant, bow rotation before the impact (deg), and the model's predicted position (cm from the end's mean). */
+@Serializable
+data class ShotInfo(val i: Int, val ang: Double? = null, val cant: Double? = null, val yaw: Double? = null, val roll: Double? = null,
+                    val rate: Double? = null, val px: Double? = null, val py: Double? = null)
+
+/** The shots of an end with the model's spreads (cm): "shots" answer and part of the "end" message. */
+data class EndShots(val end: Int, val n: Int, val dist: Int?, val sdx: Double, val sdy: Double, val modelN: Int, val matching: Boolean, val shots: List<ShotInfo>)
+
+/** State of the sight's shot matching model for the active setup. */
+data class ShotModelInfo(val setup: Int, val on: Boolean, val n: Int, val ky: Double, val sdy: Double, val kx: List<Double>, val sdx: Double)
 
 data class ConfirmMsg(val end: Int, val counted: Int, val entered: Int, val split: Boolean)
 
