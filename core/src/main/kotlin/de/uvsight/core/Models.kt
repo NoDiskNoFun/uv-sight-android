@@ -72,7 +72,8 @@ data class CfgItem(
 )
 
 data class HelloInfo(val proto: Int, val fw: String, val name: String, val imu: Boolean, val log: Boolean,
-                     val id: String? = null, val sightName: String? = null)
+                     val id: String? = null, val sightName: String? = null,
+                     val led: Boolean = true)        // false: built without the UV LED stage (hunting bow), light options hidden
 
 /**
  * A sight this phone has met: its chip id, the name the owner gave it, the Bluetooth address,

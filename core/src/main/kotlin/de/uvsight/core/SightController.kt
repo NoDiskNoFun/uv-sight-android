@@ -81,6 +81,8 @@ data class AppState(
     val hasData get() = status != null
     fun cfgValue(k: String): Double? = cfg?.firstOrNull { it.k == k }?.v
     val currentSessionKey: String? get() = session?.key
+    /** The connected sight has a UV LED (false for a sight built without it: light options are hidden). */
+    val hasLed: Boolean get() = hello?.led != false
     val distNote: String get() = when {
         distAuto -> "detected"
         range?.estimated == true && distM > 0 -> "not learned yet"

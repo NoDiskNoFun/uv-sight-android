@@ -45,6 +45,8 @@ Which arrow on the face was which shot? The sight knows the order of the shots a
 
 ## Two or more sights
 
+A sight built without the UV LED stage (for a bow without a pin, such as a hunting bow) announces that, and the app hides everything about the light: LED mode, brightness, light sensor, cant blinking and the distance warning. Shot counting, angles, cant, shot matching and photo scoring work as usual.
+
 Each sight introduces itself with a fixed chip id, and you can name it (*Settings → Sights*, or the `name` command); the name also appears behind "UV-Sight" in the Bluetooth name. The app keeps a list of the sights it has met. Every session is attributed to its sight, shown as a small coloured badge in the top right corner of the session card and in the session details; sessions from before this feature are attributed the first time their sight is connected again. Sync only moves sessions between the phone and the sight they belong to, so the sessions of one bow never land on the other sight. Distance, face and arrow diameter are remembered per sight and restored when it connects. The CSV export lists all sights with a `sight_id` and `sight_name` column, the backup carries the list of sights. With more than one sight known, the Status tab (and the Sights card in Settings) lets you connect only to a chosen one; otherwise the app takes whichever sight is awake, which is normally the bow in your hand.
 
 ## Photo scoring only (no sight)

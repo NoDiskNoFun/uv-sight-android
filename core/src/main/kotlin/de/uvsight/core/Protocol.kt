@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 
-const val PROTO_EXPECTED = 19
+const val PROTO_EXPECTED = 20
 const val NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 const val NUS_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"   // app -> device (write)
 const val NUS_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"   // device -> app (notify)
@@ -43,7 +43,7 @@ class Msg(val t: String, val obj: JsonObject) {
 }
 
 fun Msg.toHello() = HelloInfo(int("proto") ?: 0, str("fw") ?: "?", str("name") ?: "", bool("imu") ?: false, bool("log") ?: false,
-    id = str("id")?.takeIf { it.isNotEmpty() }, sightName = str("sname")?.takeIf { it.isNotEmpty() })
+    id = str("id")?.takeIf { it.isNotEmpty() }, sightName = str("sname")?.takeIf { it.isNotEmpty() }, led = bool("led") ?: true)
 
 fun Msg.toStatus() = StatusInfo(
     light = int("light") ?: 0, dark = bool("dark") ?: false, vbat = dbl("vbat") ?: 0.0, pct = int("pct") ?: 0,

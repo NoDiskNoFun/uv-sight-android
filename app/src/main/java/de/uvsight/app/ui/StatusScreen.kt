@@ -52,7 +52,7 @@ fun StatusScreen(state: AppState, ctl: SightController, connect: () -> Unit) {
         return
     }
     val s = state.status!!
-    if (s.lowbat) Banner("Battery empty. The LED is off until you charge.")
+    if (s.lowbat) Banner(if (state.hasLed) "Battery empty. The LED is off until you charge." else "Battery empty. Charge the sight.")
     val stale = state.conn != ConnState.CONNECTED
     val alpha = if (stale) 0.45f else 1f
 
@@ -91,8 +91,10 @@ fun StatusScreen(state: AppState, ctl: SightController, connect: () -> Unit) {
             (if (s.led == "on") ", ${s.bright} %" else "")
         val bm = state.cfgValue("bright_mode")
         val modeText = when (s.mode) { "on" -> "switched on"; "off" -> "switched off"; else -> if (bm == null) "" else if (bm == 1.0) "auto" else "fixed" }
-        ReadingRow("UV light", ledText, modeText)
-        ReadingRow("Ambient light", if (s.dark) "Dark" else "Bright", s.light.toString())
+        if (state.hasLed) {
+            ReadingRow("UV light", ledText, modeText)
+            ReadingRow("Ambient light", if (s.dark) "Dark" else "Bright", s.light.toString())
+        }
         val lv = state.level
         val tilt = s.tilt
         val tiltText = when {
@@ -116,10 +118,10 @@ fun StatusScreen(state: AppState, ctl: SightController, connect: () -> Unit) {
         val bright = state.cfgValue("bright")
         val auto = state.cfgValue("bright_mode") == 1.0
         val src = if (b?.src == "measured") "measured" else "estimated"
-        if (s.chg == "charging") { ReadingRow("Runtime with light", "Charging"); ReadingRow("Runtime resting", "Charging") }
+        if (s.chg == "charging") { if (state.hasLed) ReadingRow("Runtime with light", "Charging"); ReadingRow(if (state.hasLed) "Runtime resting" else "Runtime", "Charging") }
         else {
-            ReadingRow("Runtime with light", if (b != null) fmtDuration(b.light) else "–", if (b != null) "LED ${bright?.let { "${it.toInt()} %" } ?: ""}${if (auto) " (fully dark)" else ""}, $src" else "")
-            ReadingRow("Runtime resting", if (b != null) fmtDuration(b.rest) else "–", if (b != null) "at rest, $src" else "")
+            if (state.hasLed) ReadingRow("Runtime with light", if (b != null) fmtDuration(b.light) else "–", if (b != null) "LED ${bright?.let { "${it.toInt()} %" } ?: ""}${if (auto) " (fully dark)" else ""}, $src" else "")
+            ReadingRow(if (state.hasLed) "Runtime resting" else "Runtime", if (b != null) fmtDuration(b.rest) else "–", if (b != null) (if (state.hasLed) "at rest, $src" else src) else "")
         }
     }
     Spacer(Modifier.height(18.dp))

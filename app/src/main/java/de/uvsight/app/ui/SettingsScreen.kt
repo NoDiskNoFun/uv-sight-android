@@ -60,10 +60,12 @@ import de.uvsight.core.fmt
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-private data class Group(val title: String, val keys: List<String>, val light: Boolean = false, val cal: Boolean = false)
+private data class Group(val title: String, val keys: List<String>, val light: Boolean = false, val cal: Boolean = false, val led: Boolean = false)
+/** Settings that only matter with the UV LED stage fitted. */
+private val LED_KEYS = setOf("tilt_offset", "tilt_full", "blink_min", "blink_max")
 private val GROUPS = listOf(
-    Group("Light sensor", listOf("dark_on", "dark_off", "confirm"), light = true),
-    Group("UV light", listOf("bright_mode", "bright", "bright_min", "fade", "vf")),
+    Group("Light sensor", listOf("dark_on", "dark_off", "confirm"), light = true, led = true),
+    Group("UV light", listOf("bright_mode", "bright", "bright_min", "fade", "vf"), led = true),
     Group("Cant and aiming range", listOf("level_tol", "tilt_offset", "tilt_full", "blink_min", "blink_max", "tilt_smooth"), cal = true),
     Group("Shot detection and sessions", listOf("tap_ths", "lockout", "session_end")),
     Group("Battery", listOf("cutoff", "bat_mah")),
@@ -185,7 +187,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         " Each end stores how canted you were." + if (lv.cal) "" else " Needs the calibration.", lv.mode, listOf("off", "auto", "on")) { ctl.setCantMode(it) }
                     SegRow("Aiming angle", (when (lv.angle) { "auto" -> "Measured at every shot during a session."; "on" -> "Measured at every shot, also outside a session (for setting up a sight). Switches the cant's On off."; else -> "Not measured." }) +
                         if (lv.cal) "" else " Needs the calibration.", lv.angle, listOf("off", "auto", "on")) { ctl.setAngleMode(it) }
-                    if (lv.angle == "on") {
+                    if (lv.angle == "on" && state.hasLed) {
                         val rg = state.range
                         val ready = rg?.state == "ready"
                         val d = rg?.dist ?: 0
@@ -206,7 +208,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         }
                     }
                     val ledMode = state.status?.mode ?: "auto"
-                    SegRow("LED", (when (ledMode) { "auto" -> "Auto: switched by the light sensor."; "on" -> "On: always lit."; else -> "Off: stays dark." }) +
+                    if (state.hasLed) SegRow("LED", (when (ledMode) { "auto" -> "Auto: switched by the light sensor."; "on" -> "On: always lit."; else -> "Off: stays dark." }) +
                         " Cant blinking works in every mode. Kept after a restart.", ledMode, listOf("off", "auto", "on")) { ctl.setLedMode(it) }
                 }
                 Spacer(Modifier.height(14.dp))
@@ -215,8 +217,9 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 val autoMode = byKey["bright_mode"]?.v == 1.0
                 val used = HashSet<String>()
                 for (g in GROUPS) {
-                    val items = g.keys.mapNotNull { byKey[it] }
-                    items.forEach { used.add(it.k) }
+                    if (g.led && !state.hasLed) continue
+                    val items = g.keys.filter { state.hasLed || it !in LED_KEYS }.mapNotNull { byKey[it] }
+                    g.keys.forEach { used.add(it) }          // hidden light settings must not resurface under Other
                     if (items.isEmpty() && !g.cal) continue
                     UvCard(padding = 16) {
                         Text(g.title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
@@ -225,13 +228,13 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             CalCard(state, ctl)
                             val enabled = lv.cal
                             if (lv.mode != "off") {
-                                SwitchRow("Blink when canted", "Off: the cant is still measured and stored, the LED just stays calm.", lv.cantSignal, enabled = enabled) { ctl.setCantSignal(it) }
-                                SegRow("Cant blinking mode", if (lv.style == "inverted") "Faster the closer you get to level." else "Faster the more the bow is canted.", lv.style, listOf("normal", "inverted"), enabled = enabled) { ctl.setStyle(it) }
+                                if (state.hasLed) SwitchRow("Blink when canted", "Off: the cant is still measured and stored, the LED just stays calm.", lv.cantSignal, enabled = enabled) { ctl.setCantSignal(it) }
+                                if (state.hasLed) SegRow("Cant blinking mode", if (lv.style == "inverted") "Faster the closer you get to level." else "Faster the more the bow is canted.", lv.style, listOf("normal", "inverted"), enabled = enabled) { ctl.setStyle(it) }
                             }
                             if (lv.angle != "off") {
                                 val rg = state.range
                                 val ready = rg?.state == "ready"
-                                SwitchRow("Warn if the distance doesn't fit", when {
+                                if (state.hasLed) SwitchRow("Warn if the distance doesn't fit", when {
                                     ready -> "While aiming: double blink = aiming too low (arrow short), triple blink = too high (arrow long). Comes before the cant blinking."
                                     rg?.state == "anchor" -> "After a new calibration: shoot one end with the distance set, then this works again."
                                     else -> "Still learning: shoot a few ends at two or more distances with the distance set (${rg?.ends ?: 0} ends so far)."
