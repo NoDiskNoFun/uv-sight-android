@@ -249,6 +249,7 @@ data class PhotoRecord(
     val sessionKey: String?,
     val endN: Int?,
     val environment: String,                 // "outdoor" / "indoor"
+    val light: Int? = null,                  // the sight's light reading (%) when the photo was scored, if connected
     val exif: Map<String, String>,
     val device: String,
     val app: String,

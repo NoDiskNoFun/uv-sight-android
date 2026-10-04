@@ -35,7 +35,7 @@ class EventsTest {
             runBlocking {
                 withContext(dispatcher) { ctl.onLinkUp() }
                 delay(100)                                   // "app on" goes out, the controller now waits for hello
-                withContext(dispatcher) { ctl.onLine("""{"t":"hello","proto":18,"fw":"6.0","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Hoyt"}""") }
+                withContext(dispatcher) { ctl.onLine("""{"t":"hello","proto":19,"fw":"6.1","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Hoyt"}""") }
                 delay(200)
                 assertEquals(ConnState.CONNECTED, ctl.state.value.conn)
                 withContext(dispatcher) {

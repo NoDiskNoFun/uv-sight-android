@@ -407,6 +407,25 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
             Spacer(Modifier.height(14.dp))
 
+            // Hints after an end (phone-side settings)
+            if (!state.photoOnly) UvCard {
+                val hp = state.hints
+                Text("Hints", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                SwitchRow("Hints after each end", "Under the last end and in the session details: where the group sits, how steady the hold was, cant, release, rhythm. Always compared with your own earlier ends.", hp.enabled, first = true) { ctl.setHintPrefs(hp.copy(enabled = it)) }
+                HorizontalDivider(color = uv.line)
+                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Sight clicks", color = uv.ink)
+                        Text("How far one click of your sight moves the group at 18 m. With it, a shifted group is given in clicks; 0 = unknown.", color = uv.muted, fontSize = 13.sp)
+                    }
+                    var t by remember(hp.clickMmAt18) { mutableStateOf(if (hp.clickMmAt18 > 0) fmt(hp.clickMmAt18, 1) else "") }
+                    OutlinedTextField(value = t, onValueChange = { t = it }, singleLine = true, modifier = Modifier.width(110.dp), suffix = { Text("mm") }, placeholder = { Text("0") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { ctl.setHintPrefs(hp.copy(clickMmAt18 = (t.replace(',', '.').toDoubleOrNull() ?: 0.0).coerceIn(0.0, 100.0))) }))
+                }
+            }
+            if (!state.photoOnly) Spacer(Modifier.height(14.dp))
+
             // Notifications and vibration (phone-side settings)
             if (!state.photoOnly) UvCard {
                 val n = state.notif

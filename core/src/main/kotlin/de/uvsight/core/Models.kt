@@ -139,7 +139,14 @@ data class EndMsg(val n: Int, val valid: Boolean, val arrows: Int, val sum: Int?
 /** One shot as the sight measured it: aiming angle, cant, bow rotation before the impact (deg), and the model's predicted position (cm from the end's mean). */
 @Serializable
 data class ShotInfo(val i: Int, val ang: Double? = null, val cant: Double? = null, val yaw: Double? = null, val roll: Double? = null,
-                    val rate: Double? = null, val px: Double? = null, val py: Double? = null)
+                    val rate: Double? = null, val px: Double? = null, val py: Double? = null,
+                    val t: Double? = null,        // seconds since the end's first shot
+                    val hold: Double? = null,     // spread of the aiming angle while holding, deg
+                    val holdMs: Int? = null,      // how long the aim stayed steady before the release
+                    val drop: Double? = null)     // aiming angle in the last 150..400 ms minus the hold mean, deg (sinking < 0)
+
+/** The aim trace of one shot: angle and cant over the ~1.9 s before the release (ms before the release, oldest first). */
+data class AimTrace(val end: Int, val i: Int, val ms: List<Int>, val pitch: List<Double>, val cant: List<Double>)
 
 /** The shots of an end with the model's spreads (cm): "shots" answer and part of the "end" message. */
 data class EndShots(val end: Int, val n: Int, val dist: Int?, val sdx: Double, val sdy: Double, val modelN: Int, val matching: Boolean, val shots: List<ShotInfo>)
@@ -179,6 +186,13 @@ data class NotifPrefs(
     val autoEnd: Boolean = true,       // notification when the sight ended a session on its own
     val lowBat: Boolean = true,        // notification when the sight's battery is low
     val chargeFull: Boolean = true,    // notification when the sight is fully charged
+)
+
+/** Phone-side settings of the hints after an end. */
+@Serializable
+data class HintPrefs(
+    val enabled: Boolean = true,       // show hints under the last end and in the session details
+    val clickMmAt18: Double = 0.0,     // how far one click of the sight moves the group at 18 m, mm (0 = unknown: hints give centimetres only)
 )
 
 /** Phone-side settings of the photo scoring. */

@@ -105,7 +105,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var rotation by remember { mutableIntStateOf(0) }
     var step by remember { mutableIntStateOf(1) }
     var faceType by remember { mutableStateOf(runCatching { FaceType.valueOf(prefs.face) }.getOrDefault(FaceType.WA40)) }
-    var environment by remember { mutableStateOf(prefs.environment) }
+    // the sight's light sensor tells indoor (artificial light, "dark" for the sensor) from outdoor; else the last choice
+    var environment by remember { mutableStateOf(state.status?.takeIf { state.conn == de.uvsight.core.ConnState.CONNECTED }?.let { if (it.dark) "indoor" else "outdoor" } ?: prefs.environment) }
     var center by remember { mutableStateOf<Offset?>(null) }
     var edge by remember { mutableStateOf(listOf<Offset>()) }
     var skipFace by remember { mutableStateOf(false) }
@@ -406,7 +407,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                         shot = sa?.shotOf?.getOrNull(i), shotConf = sa?.conf?.getOrNull(i), shotSrc = sa?.src?.getOrNull(i))
                                 },
                                 sightShots = sightShots, distM = state.distM, sessionKey = state.currentSessionKey, endN = state.session?.takeIf { it.active }?.end,
-                                environment = environment, exif = exifMap, device = "${Build.MANUFACTURER} ${Build.MODEL}", app = APP_VERSION, timestamp = System.currentTimeMillis(),
+                                environment = environment, light = state.status?.takeIf { state.conn == de.uvsight.core.ConnState.CONNECTED }?.light, exif = exifMap, device = "${Build.MANUFACTURER} ${Build.MODEL}", app = APP_VERSION, timestamp = System.currentTimeMillis(),
                                 model = if (marks.any { it.source == "model" }) modelInfo?.name else null, modelConf = if (marks.any { it.source == "model" }) prefs.modelConf else null,
                                 shots = endShots?.shots,
                             )

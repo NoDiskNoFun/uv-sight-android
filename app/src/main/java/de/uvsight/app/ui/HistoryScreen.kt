@@ -94,6 +94,7 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             if (state.syncLine.isNotEmpty()) Text(state.syncLine, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
             if (state.copyProgress.isNotEmpty()) Text(state.copyProgress, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
             if (list.isNotEmpty()) AverageChart(list.filter { !it.hidden }, state.ends)
+            if (list.isNotEmpty()) TrendsCard(list.filter { !it.hidden }, state.ends)
         }
         if (list.isEmpty()) item { EmptyBox("No sessions yet. Finished sessions appear here once the app has been connected to the sight.") }
         else item {
@@ -188,6 +189,8 @@ private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightCo
                 if (r.mismatch) lines.add("Counts corrected by hand.")
                 lines.add(if (r.manual) "Ended by hand." else "Ended automatically.")
                 Text(lines.joinToString(" "), color = uv.muted, fontSize = 14.sp)
+                val sessionHints = remember(r.key, ends.size) { ctl.sessionHints(r.key) }
+                for (h in sessionHints) Text("• $h", color = uv.ink, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
                 if (ends.isEmpty()) Note("No end details: this session was not scored in this app.")
                 else {
                     GroupTitle("Points per end")
@@ -205,6 +208,8 @@ private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightCo
                                 Text(e.ang?.let { fmt(it, 2) + "° ±" + fmt(e.angSd ?: 0.0, 2) } ?: "–", Modifier.weight(1f), fontSize = 13.sp)
                                 Text(e.cant?.let { fmt(abs(it), 1) + "°" + (if ((e.canted ?: 0) > 0) " ${e.canted} over" else "") } ?: "–", Modifier.weight(1f), fontSize = 13.sp)
                             }
+                            val eh = remember(e) { ctl.endHints(e) }
+                            if (eh.isNotEmpty()) Text(eh.joinToString(" "), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
                         }
                         Note("Cant: average at release; \"over\" counts arrows outside your cant tolerance.")
                     }
@@ -292,4 +297,45 @@ private fun EndsBars(ends: List<EndDetail>) {
             if (n <= 16 || i % 2 == 0) { val tl = textMeasurer.measure(e.n.toString(), small); drawText(tl, topLeft = Offset(cx - tl.size.width / 2, size.height - tl.size.height)) }
         }
     }
+}
+
+/** Trends over the last sessions: group size, hold steadiness, cant consistency (one line each, newest right). */
+@Composable
+private fun TrendsCard(list: List<ArchiveSession>, endsStore: Map<String, List<EndDetail>>) {
+    val uv = LocalUv.current
+    val rows = list.sortedBy { it.sortTime }.mapNotNull { s -> endsStore[s.key]?.takeIf { it.isNotEmpty() }?.let { de.uvsight.core.Insights.sessionStats(it) } }.takeLast(12)
+    val series = listOf(
+        Triple("Group size", rows.map { it.groupRadius }, "cm"),
+        Triple("Hold steadiness", rows.map { it.hold }, "°"),
+        Triple("Cant consistency", rows.map { it.cantSd }, "°"),
+        Triple("Hold time", rows.map { it.holdMs?.div(1000.0) }, "s"),
+    ).filter { (_, v, _) -> v.count { it != null } >= 2 }
+    if (series.isEmpty()) return
+    UvCard(padding = 14) {
+        Text("Trends over the last ${rows.size} sessions", fontWeight = FontWeight.SemiBold)
+        for ((label, values, unit) in series) {
+            val vals = values.map { it ?: Double.NaN }
+            val present = vals.filter { !it.isNaN() }
+            val last = present.last()
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.width(120.dp)) {
+                    Text(label, fontSize = 13.sp, color = uv.ink)
+                    Text("now ${fmt(last, if (unit == "°") 2 else 1)} $unit", fontSize = 12.sp, color = uv.muted)
+                }
+                Canvas(Modifier.weight(1f).height(36.dp)) {
+                    val lo = present.min(); val hi = present.max(); val range = (hi - lo).takeIf { it > 1e-9 } ?: 1.0
+                    var prev: Offset? = null
+                    for ((i, v) in vals.withIndex()) {
+                        if (v.isNaN()) { prev = null; continue }
+                        val p = Offset(if (vals.size > 1) size.width * i / (vals.size - 1) else size.width / 2, size.height - ((v - lo) / range * (size.height - 6)).toFloat() - 3)
+                        prev?.let { drawLine(uv.gold, it, p, 2.dp.toPx()) }
+                        drawCircle(uv.ink, 2.5.dp.toPx(), p)
+                        prev = p
+                    }
+                }
+            }
+        }
+        Note("Lower is better for all four except hold time. Group size is the mean distance of the arrows from their centre (from photos).")
+    }
+    Spacer(Modifier.height(14.dp))
 }

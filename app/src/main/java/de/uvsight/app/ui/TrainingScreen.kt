@@ -85,6 +85,10 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
             Spacer(Modifier.height(10.dp))
             Text(if (le.valid) "Last end: ${le.sum} points from ${le.arrows} arrows, average ${fmt(le.avg ?: 0.0, 2)}, ${le.x} X"
                  else "Last end: invalid, ${le.arrows} arrows (${le.reason})", color = uv.muted, fontSize = 14.sp)
+            // what the numbers of that end say
+            val rec = state.currentSessionKey?.let { k -> state.ends[k]?.firstOrNull { it.n == le.n } }
+            val hints = remember(rec, state.hints) { rec?.let { ctl.endHints(it) } ?: emptyList() }
+            for (h in hints) Text("• $h", color = uv.ink, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
         }
         if (!connected) { Spacer(Modifier.height(10.dp)); Text("Not connected. Keep scoring: the app reconnects when you tap Save.", color = uv.muted, fontSize = 14.sp) }
     }
@@ -100,7 +104,13 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
         RoundButton("+") { ctl.distPlus() }
         Spacer(Modifier.weight(1f))
         Text(state.lastAng, color = uv.muted, fontSize = 13.sp)
+        val lastShot = (ses?.endShots ?: 0) - 1
+        if (connected && known && lastShot >= 0 && state.lastAng.isNotEmpty()) {
+            Spacer(Modifier.width(6.dp))
+            SecondaryButton("Trace") { ctl.requestTrace(lastShot) }
+        }
     }
+    state.trace?.let { tr -> TraceDialog(tr, state.endShots?.shots?.getOrNull(tr.i)) { ctl.clearTrace() } }
 
     // Entry row
     FlowRow(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 10.dp).heightIn(min = 58.dp)
@@ -235,4 +245,45 @@ private fun PhotoOnlyScreen(state: AppState, ctl: SightController, vm: SightView
     Spacer(Modifier.height(10.dp))
     PrimaryButton("Done", modifier = Modifier.fillMaxWidth().height(54.dp), enabled = state.entries.isNotEmpty()) { ctl.clearEntries() }
     Spacer(Modifier.height(24.dp))
+}
+
+/** The aim trace of one shot: the pin's path over the last 1.9 s before the release (cant sideways, angle up/down), plus hold and release figures. */
+@Composable
+fun TraceDialog(tr: de.uvsight.core.AimTrace, shot: de.uvsight.core.ShotInfo?, onClose: () -> Unit) {
+    val uv = LocalUv.current
+    AlertDialog(onDismissRequest = onClose, title = { Text("Shot ${tr.i + 1} of end ${tr.end}") },
+        text = {
+            Column {
+                if (tr.pitch.size < 3) Text("No aim trace for this shot (the aiming angle needs the cant calibration and a running session).", color = uv.muted)
+                else {
+                    val n = tr.pitch.size
+                    val hold = tr.ms.indices.filter { tr.ms[it] in 150..1200 }
+                    val cp = if (hold.isNotEmpty()) hold.map { tr.pitch[it] }.average() else tr.pitch.average()
+                    val cc = if (hold.isNotEmpty()) hold.map { tr.cant[it] }.average() else tr.cant.average()
+                    val span = maxOf(0.5, tr.pitch.maxOf { kotlin.math.abs(it - cp) }, tr.cant.maxOf { kotlin.math.abs(it - cc) }) * 1.15
+                    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(240.dp)) {
+                        val r = minOf(size.width, size.height) / 2 * 0.95f
+                        val c = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
+                        for (k in 1..3) drawCircle(uv.line, r * k / 3, c, style = androidx.compose.ui.graphics.drawscope.Stroke(1f))
+                        drawLine(uv.line, androidx.compose.ui.geometry.Offset(c.x - r, c.y), androidx.compose.ui.geometry.Offset(c.x + r, c.y), 1f)
+                        drawLine(uv.line, androidx.compose.ui.geometry.Offset(c.x, c.y - r), androidx.compose.ui.geometry.Offset(c.x, c.y + r), 1f)
+                        fun pt(i: Int) = androidx.compose.ui.geometry.Offset(c.x + ((tr.cant[i] - cc) / span * r).toFloat(), c.y - ((tr.pitch[i] - cp) / span * r).toFloat())
+                        for (i in 1 until n) {
+                            val a = i.toFloat() / n                           // old = faint, new = strong
+                            drawLine(uv.ink.copy(alpha = 0.15f + 0.85f * a), pt(i - 1), pt(i), 2.dp.toPx())
+                        }
+                        drawCircle(uv.red, 5.dp.toPx(), pt(n - 1))             // the release
+                        drawCircle(uv.gold, 3.dp.toPx(), pt(0))
+                    }
+                    Text("Rings: ${fmt(span / 3, 1)}° apart. Sideways = cant, up/down = aiming angle, relative to the hold. Gold dot: ${fmt(tr.ms.first() / 1000.0, 1)} s before the release, red dot: the release.", color = uv.muted, fontSize = 12.sp)
+                    val facts = ArrayList<String>()
+                    shot?.holdMs?.let { facts.add("held steady ${fmt(it / 1000.0, 1)} s") }
+                    shot?.hold?.let { facts.add("hold ±${fmt(it, 2)}°") }
+                    shot?.drop?.let { if (it < -0.2) facts.add("sank ${fmt(-it, 2)}° before the release") }
+                    shot?.rate?.let { facts.add("turned ${fmt(it, 0)}°/s at release") }
+                    if (facts.isNotEmpty()) Text(facts.joinToString(", ").replaceFirstChar { it.uppercase() } + ".", color = uv.ink, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } })
 }

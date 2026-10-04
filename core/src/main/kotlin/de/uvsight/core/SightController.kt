@@ -75,6 +75,8 @@ data class AppState(
     val pendingMatchSrc: List<String>? = null,    // per arrow: sure / guess / coin / user
     val endShots: EndShots? = null,       // the sight's shots of the open end (answer to "shot list")
     val shotModel: ShotModelInfo? = null, // the sight's shot matching model (active setup)
+    val trace: AimTrace? = null,          // the aim trace asked for with "shot trace"
+    val hints: HintPrefs = HintPrefs(),
 ) {
     val hasData get() = status != null
     fun cfgValue(k: String): Double? = cfg?.firstOrNull { it.k == k }?.v
@@ -124,6 +126,7 @@ class SightController(
         const val PREFER_SIGHT_KEY = "uvsight.sight.prefer"
         const val PREFER_ADDRESS_KEY = "uvsight.ble.prefer"   // read by the Bluetooth layer: only this address is accepted
         const val NOTIF_KEY = "uvsight.notif"
+        const val HINTS_KEY = "uvsight.hints"
         const val PHOTO_KEY = "uvsight.photo"
         const val LOW_BAT_PCT = 15
     }
@@ -190,9 +193,10 @@ class SightController(
         loadTraining()
         val notif = store.get(NOTIF_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(NotifPrefs.serializer(), it) }.getOrNull() } ?: NotifPrefs()
         val photo = store.get(PHOTO_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(PhotoPrefs.serializer(), it) }.getOrNull() } ?: PhotoPrefs()
+        val hints = store.get(HINTS_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(HintPrefs.serializer(), it) }.getOrNull() } ?: HintPrefs()
         set { copy(distM = store.get(DIST_KEY)?.toIntOrNull() ?: 0, showHidden = store.get(SHOW_HIDDEN_KEY) == "1",
             autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif, photo = photo,
-            photoOnly = store.get(MODE_KEY) == "photo", sights = archive.sights(), preferredSightId = store.get(PREFER_SIGHT_KEY)?.takeIf { it.isNotEmpty() }) }
+            photoOnly = store.get(MODE_KEY) == "photo", sights = archive.sights(), preferredSightId = store.get(PREFER_SIGHT_KEY)?.takeIf { it.isNotEmpty() }, hints = hints) }
         if (s.photoOnly) set { copy(view = View.TRAINING) }
         refreshHistory()
     }
@@ -404,6 +408,7 @@ class SightController(
             "range" -> set { copy(range = m.toRange()) }
             "shots" -> set { copy(endShots = m.toShots()) }
             "shotModel" -> set { copy(shotModel = m.toShotModel()) }
+            "trace" -> set { copy(trace = m.toTrace()) }
             "setupsStart" -> setupBuf = SetupsInfo(m.int("active") ?: 0, emptyList())
             "setupItem" -> setupBuf?.let { setupBuf = it.copy(list = it.list + m.toSetupItem()) }
             "setupsEnd" -> setupBuf?.let { b ->
@@ -609,6 +614,18 @@ class SightController(
     fun requestShots() { if (s.conn == ConnState.CONNECTED && s.session?.active == true) send("shot list" + (if (s.distM > 0) " ${s.distM}" else "")) }
     fun shotMatching(on: Boolean) { if (s.conn != ConnState.CONNECTED) { toast("Connect to the sight first.", true); return }; send(if (on) "shot on" else "shot off") }
     fun shotReset(setupId: Int) { if (s.conn != ConnState.CONNECTED) { toast("Connect to the sight first.", true); return }; send("shot reset $setupId") }
+    /** The aim trace of one shot of the open end (last = of the last closed end). */
+    fun requestTrace(i: Int, last: Boolean = false) { if (s.conn == ConnState.CONNECTED) send("shot trace " + (if (last) "last " else "") + i) }
+    fun clearTrace() { set { copy(trace = null) } }
+    fun setHintPrefs(p: HintPrefs) { store.put(HINTS_KEY, kotlinx.serialization.json.Json.encodeToString(HintPrefs.serializer(), p)); set { copy(hints = p) } }
+    /** Hints for one end against this archer's history (same setup); the cant tolerance comes from the sight's settings. */
+    fun endHints(e: EndDetail): List<String> {
+        if (!s.hints.enabled) return emptyList()
+        val all = archive.ends().values.flatten()
+        val tol = s.cfg?.firstOrNull { it.k == "level_tol" }?.v ?: 2.0
+        return Insights.endHints(e, Insights.baseline(all, e.setup, exclude = all.firstOrNull { it === e } ?: e), tol, s.hints.clickMmAt18.takeIf { it > 0 })
+    }
+    fun sessionHints(key: String): List<String> = if (!s.hints.enabled) emptyList() else Insights.sessionHints(archive.ends()[key] ?: emptyList())
     /** Mean confidence of the matches over the last ends of a setup, or null without data. */
     fun matchAccuracy(setupId: Int?): Double? = ShotMatch.accuracy(archive.ends().values.flatten(), setupId)
 
