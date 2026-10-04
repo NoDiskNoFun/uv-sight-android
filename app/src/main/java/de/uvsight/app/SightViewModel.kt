@@ -12,4 +12,6 @@ class SightViewModel(app: Application) : AndroidViewModel(app) {
     val controller = rt.controller
     val state get() = controller.state
     fun toast(text: String, error: Boolean = false) = rt.toast(text, error)
+    /** Switch the language pack ("" = phone language); the state change re-renders everything. */
+    fun setLanguage(code: String) { Language.apply(getApplication(), code); controller.setLanguage(code) }
 }

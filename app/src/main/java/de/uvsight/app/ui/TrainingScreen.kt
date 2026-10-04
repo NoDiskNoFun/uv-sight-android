@@ -249,10 +249,11 @@ private fun PhotoOnlyScreen(state: AppState, ctl: SightController, vm: SightView
 
 /** The aim trace of one shot: the pin's path over the last 1.9 s before the release (cant sideways, angle up/down), plus hold and release figures. */
 @Composable
-fun TraceDialog(tr: de.uvsight.core.AimTrace, shot: de.uvsight.core.ShotInfo?, onClose: () -> Unit) {
+fun TraceDialog(trace: de.uvsight.core.AimTrace, shot: de.uvsight.core.ShotInfo?, onClose: () -> Unit) {
     val uv = LocalUv.current
-    AlertDialog(onDismissRequest = onClose, title = { Text("Shot ${tr.i + 1} of end ${tr.end}") },
-        text = {
+    val tr = trace
+    WideDialog(onDismiss = onClose, title = { Text("Shot ${tr.i + 1} of end ${tr.end}") },
+        buttons = { TextButton(onClick = onClose) { Text("Close") } }) {
             Column {
                 if (tr.pitch.size < 3) Text("No aim trace for this shot (the aiming angle needs the cant calibration and a running session).", color = uv.muted)
                 else {
@@ -284,6 +285,5 @@ fun TraceDialog(tr: de.uvsight.core.AimTrace, shot: de.uvsight.core.ShotInfo?, o
                     if (facts.isNotEmpty()) Text(facts.joinToString(", ").replaceFirstChar { it.uppercase() } + ".", color = uv.ink, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onClose) { Text("Close") } })
+        }
 }

@@ -77,6 +77,8 @@ data class AppState(
     val shotModel: ShotModelInfo? = null, // the sight's shot matching model (active setup)
     val trace: AimTrace? = null,          // the aim trace asked for with "shot trace"
     val hints: HintPrefs = HintPrefs(),
+    val language: String = "",            // "" = the phone's language, else a pack code such as "de"
+    val languages: List<Pair<String, String>> = emptyList(),   // available packs: code to name
 ) {
     val hasData get() = status != null
     fun cfgValue(k: String): Double? = cfg?.firstOrNull { it.k == k }?.v
@@ -129,6 +131,7 @@ class SightController(
         const val PREFER_ADDRESS_KEY = "uvsight.ble.prefer"   // read by the Bluetooth layer: only this address is accepted
         const val NOTIF_KEY = "uvsight.notif"
         const val HINTS_KEY = "uvsight.hints"
+        const val LANG_KEY = "uvsight.lang"
         const val PHOTO_KEY = "uvsight.photo"
         const val LOW_BAT_PCT = 15
     }
@@ -619,6 +622,10 @@ class SightController(
     /** The aim trace of one shot of the open end (last = of the last closed end). */
     fun requestTrace(i: Int, last: Boolean = false) { if (s.conn == ConnState.CONNECTED) send("shot trace " + (if (last) "last " else "") + i) }
     fun clearTrace() { set { copy(trace = null) } }
+    /** The language setting; the app layer loads the pack and sets Lang before calling this. */
+    fun setLanguage(code: String) { store.put(LANG_KEY, code); set { copy(language = code) } }
+    fun storedLanguage(): String = store.get(LANG_KEY) ?: ""
+    fun setLanguages(list: List<Pair<String, String>>) { set { copy(languages = list) } }
     fun setHintPrefs(p: HintPrefs) { store.put(HINTS_KEY, kotlinx.serialization.json.Json.encodeToString(HintPrefs.serializer(), p)); set { copy(hints = p) } }
     /** Hints for one end against this archer's history (same setup); the cant tolerance comes from the sight's settings. */
     fun endHints(e: EndDetail): List<String> {

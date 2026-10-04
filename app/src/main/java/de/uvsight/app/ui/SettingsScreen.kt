@@ -446,6 +446,16 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             // App and firmware
             UvCard {
                 Text("App and firmware", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                    Text("Language", color = uv.ink)
+                    Text("Phone language when a pack for it exists, else English. Language packs are plain text files in the app's source, new ones arrive with app updates.", color = uv.muted, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        FilterChip(selected = state.language.isEmpty(), onClick = { vm.setLanguage("") }, label = { Text("Phone language") }, modifier = Modifier.padding(end = 6.dp))
+                        for ((code, name) in state.languages) FilterChip(selected = state.language == code, onClick = { vm.setLanguage(code) }, label = { Text(name) }, modifier = Modifier.padding(end = 6.dp))
+                    }
+                }
+                HorizontalDivider(color = uv.line)
                 if (!state.photoOnly) SwitchRow("Show console", "A tab with the raw messages of the sight, for troubleshooting.", state.consoleEnabled, first = true) { ctl.setConsoleEnabled(it) }
                 if (connected) {
                     HorizontalDivider(color = uv.line)

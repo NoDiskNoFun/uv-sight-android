@@ -38,6 +38,8 @@ class SightRuntime private constructor(private val app: Application) {
     val alerts = Alerts(app, controller, scope)
 
     init {
+        Language.apply(app, controller.storedLanguage())
+        controller.setLanguages(Language.available(app))
         ble.controller = controller
         ble.onProblem = { toasts.tryEmit(Toast(it, true)) }
         // The foreground service runs while a link is wanted (connecting, connected or

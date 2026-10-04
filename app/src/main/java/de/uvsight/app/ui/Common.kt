@@ -26,6 +26,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import de.uvsight.core.tr
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +75,7 @@ fun PrimaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean 
     val fg = if (danger) Color.White else if (gold) Color(0xFF1B1B1B) else uv.paper
     Button(onClick = onClick, modifier = modifier, enabled = enabled, shape = SmallShape,
         colors = ButtonDefaults.buttonColors(containerColor = bg, contentColor = fg, disabledContainerColor = bg.copy(alpha = 0.5f), disabledContentColor = fg.copy(alpha = 0.7f))) {
-        Text(text, fontWeight = FontWeight.SemiBold)
+        FitText(text, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -73,7 +86,7 @@ fun SecondaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolea
     OutlinedButton(onClick = onClick, modifier = modifier, enabled = enabled, shape = SmallShape,
         border = androidx.compose.foundation.BorderStroke(2.dp, if (enabled) (if (danger) uv.red else uv.line) else uv.line.copy(alpha = 0.5f)),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = c, disabledContentColor = c.copy(alpha = 0.5f))) {
-        Text(text, fontWeight = FontWeight.SemiBold)
+        FitText(text, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -125,7 +138,7 @@ fun Seg(current: String, modes: List<String>, enabled: Boolean = true, onPick: (
             SegmentedButton(selected = m == current, onClick = { onPick(m) }, enabled = enabled,
                 shape = SegmentedButtonDefaults.itemShape(index = i, count = modes.size),
                 colors = SegmentedButtonDefaults.colors(activeContainerColor = uv.ink, activeContentColor = uv.paper, inactiveContentColor = uv.muted, activeBorderColor = uv.line, inactiveBorderColor = uv.line)) {
-                Text(m.replaceFirstChar { it.uppercase() })
+                FitText(tr(m).replaceFirstChar { it.uppercase() })
             }
         }
     }
@@ -150,8 +163,8 @@ fun EmptyBox(text: String, content: @Composable ColumnScope.() -> Unit = {}) {
 fun RowScope.Stat(value: String, label: String) {
     val uv = LocalUv.current
     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = uv.ink)
-        Text(label, fontSize = 12.sp, color = uv.muted)
+        FitText(value, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = uv.ink)
+        FitText(label, fontSize = 12.sp, color = uv.muted)
     }
 }
 
@@ -179,5 +192,40 @@ fun SightBadge(sight: de.uvsight.core.SightInfo?, unknown: Boolean = false) {
         Box(Modifier.width(7.dp).height(7.dp).background(col, androidx.compose.foundation.shape.CircleShape))
         Spacer(Modifier.width(5.dp))
         Text(sight?.label ?: "?", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = LocalUv.current.ink)
+    }
+}
+
+/**
+ * Text that shrinks to fit the width it gets (down to about 70 % of its size) instead of being
+ * cut off or wrapped: for buttons, segments, chips and table heads, so translations of any
+ * length work without touching the layout.
+ */
+@Composable
+fun FitText(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspecified, fontSize: TextUnit = 14.sp, fontWeight: FontWeight? = null, maxLines: Int = 1) {
+    val col = if (color == Color.Unspecified) LocalContentColor.current else color
+    BasicText(text, modifier = modifier, style = TextStyle(color = col, fontSize = fontSize, fontWeight = fontWeight),
+        maxLines = maxLines, overflow = TextOverflow.Ellipsis,
+        autoSize = TextAutoSize.StepBased(minFontSize = fontSize * 0.7f, maxFontSize = fontSize, stepSize = 0.5.sp))
+}
+
+/**
+ * A dialog with the same margin on all four sides (the platform dialog leaves wide margins left
+ * and right on phones). The body scrolls when it is taller than the screen allows.
+ */
+@Composable
+fun WideDialog(onDismiss: () -> Unit, title: @Composable () -> Unit, buttons: @Composable RowScope.() -> Unit, body: @Composable ColumnScope.() -> Unit) {
+    val uv = LocalUv.current
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+            Surface(shape = CardShape, color = uv.surface, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 10.dp)) {
+                    ProvideTextStyle(TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = uv.ink)) { title() }
+                    Spacer(Modifier.height(10.dp))
+                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), content = body)
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, content = buttons)
+                }
+            }
+        }
     }
 }

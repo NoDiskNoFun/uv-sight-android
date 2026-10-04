@@ -179,10 +179,15 @@ private fun AverageChart(list: List<ArchiveSession>, endsStore: Map<String, List
 @Composable
 private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightController, sightOf: de.uvsight.core.SightInfo?, onClose: () -> Unit, onRemove: () -> Unit) {
     val uv = LocalUv.current
-    AlertDialog(onDismissRequest = onClose,
+    WideDialog(onDismiss = onClose,
         title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(fmtDate(r), Modifier.weight(1f)); SightBadge(sightOf) } },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+        buttons = {
+            if (r.hidden) TextButton(onClick = { onClose(); ctl.unhideSession(r) }) { Text("Show again") }
+            TextButton(onClick = onRemove) { Text("Remove…") }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onClose) { Text("Close") }
+        }) {
+            Column {
                 val lines = ArrayList<String>()
                 lines.add("${r.ends} ends, ${r.scored} arrows scored, average ${fmt(r.avg, 2)}, ${r.x} X, ${r.min} min.")
                 if (r.invalidEnds > 0) lines.add("${r.invalidEnds} invalid ends with ${r.invalidArrows} arrows.")
@@ -238,14 +243,7 @@ private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightCo
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
-        dismissButton = {
-            Row {
-                if (r.hidden) TextButton(onClick = { onClose(); ctl.unhideSession(r) }) { Text("Show again") }
-                TextButton(onClick = onRemove) { Text("Remove…") }
-            }
-        })
+        }
 }
 
 /** All hits of a session on a 10-ring face, x right / y up in mm, scaled to the widest hit. */

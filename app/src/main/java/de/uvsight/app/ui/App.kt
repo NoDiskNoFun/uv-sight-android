@@ -145,9 +145,12 @@ fun UvSightApp(vm: SightViewModel) {
     }
     state.copyChoice?.let { list ->
         val checked = remember(list) { mutableStateOf(list.map { it.key }.toSet()) }
-        AlertDialog(onDismissRequest = { ctl.chooseCopies(emptySet()) },
+        WideDialog(onDismiss = { ctl.chooseCopies(emptySet()) },
             title = { Text("Copy to the sight") },
-            text = {
+            buttons = {
+                TextButton(onClick = { ctl.chooseCopies(emptySet()) }) { Text("Cancel") }
+                TextButton(onClick = { ctl.chooseCopies(checked.value) }, enabled = checked.value.isNotEmpty()) { Text(if (checked.value.isEmpty()) "Copy" else "Copy ${checked.value.size}") }
+            }) {
                 Column {
                     Text("${list.size} ${if (list.size == 1) "session is" else "sessions are"} on this phone but not on the sight. Untick the ones you don't want to copy.", color = uv.muted, fontSize = 14.sp)
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
@@ -155,7 +158,7 @@ fun UvSightApp(vm: SightViewModel) {
                         TextButton(onClick = { checked.value = list.map { it.key }.toSet() }) { Text("All") }
                         TextButton(onClick = { checked.value = emptySet() }) { Text("None") }
                     }
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Column {
                         for (r in list) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(checked = checked.value.contains(r.key), onCheckedChange = { on -> checked.value = if (on) checked.value + r.key else checked.value - r.key })
@@ -168,9 +171,7 @@ fun UvSightApp(vm: SightViewModel) {
                         }
                     }
                 }
-            },
-            confirmButton = { TextButton(onClick = { ctl.chooseCopies(checked.value) }, enabled = checked.value.isNotEmpty()) { Text(if (checked.value.isEmpty()) "Copy" else "Copy ${checked.value.size}") } },
-            dismissButton = { TextButton(onClick = { ctl.chooseCopies(emptySet()) }) { Text("Cancel") } })
+            }
     }
 }
 
