@@ -17,7 +17,7 @@ object Csv {
         "average", "x_count") + (1..CSV_ARROWS).map { "a$it" } + listOf("scores",
         "angle_deg", "angle_sd_deg", "angle_n", "cant_deg", "cant_max_deg", "canted", "cant_n",
         "session_ends", "session_arrows", "session_average", "session_x", "session_minutes", "session_shots",
-        "session_invalid_ends", "session_invalid_arrows", "corrected", "ended_by_hand", "distance_source", "setup")
+        "session_invalid_ends", "session_invalid_arrows", "corrected", "ended_by_hand", "distance_source", "setup", "sight_id", "sight_name")
 
     fun field(v: Any?): String {
         if (v == null) return ""
@@ -29,7 +29,7 @@ object Csv {
     private val dateFmt get() = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
     private val timeFmt get() = SimpleDateFormat("HH:mm", Locale.ROOT)
 
-    fun export(sessions: List<ArchiveSession>, endsStore: Map<String, List<EndDetail>>, setupNameOf: (Int?) -> String): String {
+    fun export(sessions: List<ArchiveSession>, endsStore: Map<String, List<EndDetail>>, sightNameOf: (String?) -> String = { "" }, setupNameOf: (Int?) -> String): String {
         val list = sessions.filter { !it.hidden }.sortedWith(compareBy<ArchiveSession> { it.sortTime }.thenBy { it.id ?: 0 })
         val lines = ArrayList<String>()
         lines.add(COLUMNS.joinToString(","))
@@ -41,6 +41,7 @@ object Csv {
                 "session_average" to fix(r.avg, 2), "session_x" to r.x, "session_minutes" to r.min, "session_shots" to r.shots,
                 "session_invalid_ends" to r.invalidEnds, "session_invalid_arrows" to r.invalidArrows,
                 "corrected" to if (r.mismatch) 1 else 0, "ended_by_hand" to if (r.manual) 1 else 0,
+                "sight_id" to (r.sightId ?: ""), "sight_name" to (r.sightId?.let { sightNameOf(it) } ?: ""),
             )
             val ends = endsStore[r.key] ?: emptyList()
             val rows: List<EndDetail?> = if (ends.isEmpty()) listOf(null) else ends
@@ -117,6 +118,7 @@ object Csv {
                 avg = dbl(o["session_average"]) ?: 0.0, x = num(o["session_x"]) ?: 0, min = minutes,
                 invalidEnds = num(o["session_invalid_ends"]) ?: 0, invalidArrows = num(o["session_invalid_arrows"]) ?: 0,
                 mismatch = o["corrected"] == "1", manual = o["ended_by_hand"] == "1",
+                sightId = o["sight_id"]?.takeIf { it.isNotEmpty() },
             ))
             val el = list.filter { !it["end"].isNullOrEmpty() }.map { r ->
                 val v = r["valid"] == "1"
@@ -138,6 +140,10 @@ object Csv {
         }
         return sessions to ends
     }
+
+    /** Sight id -> name pairs named in an ends CSV (for registering sights the phone has not met). */
+    fun sightsIn(rows: List<Map<String, String>>): Map<String, String> =
+        rows.mapNotNull { r -> r["sight_id"]?.takeIf { it.isNotEmpty() }?.let { it to (r["sight_name"] ?: "") } }.toMap()
 
     /** Older per-session exports. */
     fun importSessionsCsv(rows: List<Map<String, String>>, now: Long): List<ArchiveSession> =
@@ -172,6 +178,7 @@ data class Backup(
     val sessions: List<ArchiveSession> = emptyList(),
     val ends: Map<String, List<EndDetail>> = emptyMap(),
     val deleted: List<String> = emptyList(),
+    val sights: List<SightInfo> = emptyList(),
 )
 
 object BackupFormat {

@@ -35,6 +35,10 @@ The core can be driven against the firmware running natively (the mock build of 
 
 Android 12 and newer: *Nearby devices* (Bluetooth scan and connect). Android 11 and older: *Location*, which Android requires for Bluetooth scanning; the app does not use the position. Location services must be switched on for scanning on those versions. Android 13 and newer also ask for *Notifications*; without it the app still works, but shows no notifications.
 
+## Two or more sights
+
+Each sight introduces itself with a fixed chip id, and you can name it (*Settings → Sights*, or the `name` command); the name also appears behind "UV-Sight" in the Bluetooth name. The app keeps a list of the sights it has met. Every session is attributed to its sight, shown as a small coloured badge in the top right corner of the session card and in the session details; sessions from before this feature are attributed the first time their sight is connected again. Sync only moves sessions between the phone and the sight they belong to, so the sessions of one bow never land on the other sight. Distance, face and arrow diameter are remembered per sight and restored when it connects. The CSV export lists all sights with a `sight_id` and `sight_name` column, the backup carries the list of sights. With more than one sight known, the Status tab (and the Sights card in Settings) lets you connect only to a chosen one; otherwise the app takes whichever sight is awake, which is normally the bow in your hand.
+
 ## Photo scoring only (no sight)
 
 Under *Settings → Mode*, *Photos only* turns the app into a photo scorer: no Bluetooth, no connection attempts, Status, History and Console disappear. The Scoring tab offers *Score from photo*, shows the scores of the last photo and a *Done* button. This is meant for club mates who help collecting training data on their own phones: install the APK, switch to *Photos only*, turn on *Collect training data* under *Photo scoring*, set the arrow diameter, and send the export ZIP back now and then. The ZIP holds the photos of the faces, the marks, device model and camera data, nothing personal. The training page merges exports from several phones.

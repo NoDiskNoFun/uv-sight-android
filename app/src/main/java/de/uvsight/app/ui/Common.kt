@@ -165,3 +165,19 @@ fun Chip(v: String) {
         Text(v, fontWeight = FontWeight.Bold, color = Ring.textFor(v, uv.ink), fontSize = 14.sp)
     }
 }
+
+/** Badge colours for the sights, by their colour index. */
+val sightColors = listOf(Color(0xFF2F6DB5), Color(0xFFD6402F), Color(0xFF58B27E), Color(0xFFF2C230), Color(0xFF8E5BD6), Color(0xFF3FA9B8), Color(0xFFE07B39))
+fun sightColor(s: de.uvsight.core.SightInfo?): Color = s?.let { sightColors[Math.floorMod(it.color, sightColors.size)] } ?: Color(0xFF9AA39D)
+
+/** Small marker naming the sight a session came from (grey "?" when more than one sight is known and this one is unknown). */
+@Composable
+fun SightBadge(sight: de.uvsight.core.SightInfo?, unknown: Boolean = false) {
+    if (sight == null && !unknown) return
+    val col = sightColor(sight)
+    Row(Modifier.background(col.copy(alpha = 0.16f), androidx.compose.foundation.shape.RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(7.dp).height(7.dp).background(col, androidx.compose.foundation.shape.CircleShape))
+        Spacer(Modifier.width(5.dp))
+        Text(sight?.label ?: "?", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = LocalUv.current.ink)
+    }
+}

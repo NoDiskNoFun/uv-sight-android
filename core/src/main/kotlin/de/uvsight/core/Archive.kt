@@ -17,6 +17,7 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
         const val DELETED_KEY = "uvsight.deleted.v1"
         const val LOGSEQ_KEY = "uvsight.logseq.v1"
         const val SETUP_NAMES_KEY = "uvsight.setupNames"
+        const val SIGHTS_KEY = "uvsight.sights.v1"
         const val DELETED_MAX = 1000
         const val STARTS_KEEP_MS = 90L * 24 * 3600 * 1000
         val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
@@ -39,6 +40,16 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
     private fun saveStarts(m: Map<String, Long>) = store.put(STARTS_KEY, json.encodeToString(startsSer, m))
     fun deleted(): Set<String> = load(DELETED_KEY, stringsSer) { emptyList() }.toSet()
     private fun saveDeleted(s: Collection<String>) = store.put(DELETED_KEY, json.encodeToString(stringsSer, s.toList()))
+    private val sightsSer = ListSerializer(SightInfo.serializer())
+    fun sights(): List<SightInfo> = load(SIGHTS_KEY, sightsSer) { emptyList() }
+    fun saveSights(list: List<SightInfo>) = store.put(SIGHTS_KEY, json.encodeToString(sightsSer, list))
+    /** Sessions with this log key that have no sight yet belong to the given sight from now on. */
+    fun tagSight(epoch: Long, sightId: String) {
+        val list = sessions()
+        var changed = false
+        val out = list.map { r -> if (r.epoch == epoch && r.sightId == null) { changed = true; r.copy(sightId = sightId) } else r }
+        if (changed) saveSessions(out)
+    }
     fun setupNames(): Map<String, String> = load(SETUP_NAMES_KEY, namesSer) { emptyMap() }
     fun saveSetupNames(m: Map<String, String>) = store.put(SETUP_NAMES_KEY, json.encodeToString(namesSer, m))
     fun setupNameOf(id: Int?): String = setupNames()[(id ?: 0).toString()] ?: if (id != null && id != 0) "Setup ${id + 1}" else "Standard"
@@ -79,13 +90,13 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
      * Store a session from the sight. Returns true if it was new.
      * hiddenFetch: a full log answer is running to recover sessions removed before their data was kept.
      */
-    fun archiveSlot(epoch: Long?, sl: SlotMsg, hiddenFetch: Boolean): Boolean {
+    fun archiveSlot(epoch: Long?, sl: SlotMsg, hiddenFetch: Boolean, sightId: String? = null): Boolean {
         val list = sessions().toMutableList()
         val key = "$epoch-${sl.id}"
         val now = clock.now()
         if (deleted().contains(key)) {
             if (hiddenFetch && list.none { it.key == key }) {
-                list.add(fromSlot(key, epoch, sl, sl.start?.let { it * 1000 + sl.min * 60_000L }, now).copy(hidden = true))
+                list.add(fromSlot(key, epoch, sl, sl.start?.let { it * 1000 + sl.min * 60_000L }, now).copy(hidden = true, sightId = sightId))
                 saveSessions(list)
             }
             return false
@@ -97,10 +108,11 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
         val idx = list.indexOfFirst { it.key == key }
         if (idx >= 0) {
             val found = list[idx]
-            if (found.endedAt == null && endedAt != null) { list[idx] = found.copy(endedAt = endedAt); saveSessions(list) }
+            val upd = found.copy(endedAt = found.endedAt ?: endedAt, sightId = found.sightId ?: sightId)
+            if (upd != found) { list[idx] = upd; saveSessions(list) }
             return false
         }
-        list.add(fromSlot(key, epoch, sl, endedAt, now))
+        list.add(fromSlot(key, epoch, sl, endedAt, now).copy(sightId = sightId))
         saveSessions(list)
         return true
     }
@@ -184,9 +196,10 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
             if (del.contains(s.key)) { skipped++; continue }
             val have = byKey[s.key]
             if (have != null) {
-                if (have.endedAt == null && s.endedAt != null) {
+                if ((have.endedAt == null && s.endedAt != null) || (have.sightId == null && s.sightId != null)) {
                     val idx = list.indexOfFirst { it.key == s.key }
-                    list[idx] = have.copy(endedAt = s.endedAt); byKey[s.key] = list[idx]; filled++
+                    list[idx] = have.copy(endedAt = have.endedAt ?: s.endedAt, sightId = have.sightId ?: s.sightId); byKey[s.key] = list[idx]
+                    if (have.endedAt == null && s.endedAt != null) filled++
                 }
             } else {
                 val rec = s.copy(importedAt = if (s.importedAt > 0) s.importedAt else clock.now())

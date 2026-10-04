@@ -61,6 +61,9 @@ data class AppState(
     val console: List<ConsoleLine> = emptyList(),
     val consoleEnabled: Boolean = false,
     val photoOnly: Boolean = false,      // "Photo scoring only" mode: no sight, no Bluetooth, just photos and training data
+    val sight: SightInfo? = null,        // the sight of the current/last link, once it said hello
+    val sights: List<SightInfo> = emptyList(),
+    val preferredSightId: String? = null, // connect only to this sight (null = whichever is awake)
     val view: View = View.STATUS,
     // notifications / vibration
     val notif: NotifPrefs = NotifPrefs(),
@@ -114,6 +117,8 @@ class SightController(
         const val ENDS_BACKFILL_KEY = "uvsight.endsBackfill.v1"
         const val CONSOLE_KEY = "uvsight.console"
         const val MODE_KEY = "uvsight.mode"
+        const val PREFER_SIGHT_KEY = "uvsight.sight.prefer"
+        const val PREFER_ADDRESS_KEY = "uvsight.ble.prefer"   // read by the Bluetooth layer: only this address is accepted
         const val NOTIF_KEY = "uvsight.notif"
         const val PHOTO_KEY = "uvsight.photo"
         const val LOW_BAT_PCT = 15
@@ -181,7 +186,7 @@ class SightController(
         val photo = store.get(PHOTO_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(PhotoPrefs.serializer(), it) }.getOrNull() } ?: PhotoPrefs()
         set { copy(distM = store.get(DIST_KEY)?.toIntOrNull() ?: 0, showHidden = store.get(SHOW_HIDDEN_KEY) == "1",
             autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif, photo = photo,
-            photoOnly = store.get(MODE_KEY) == "photo") }
+            photoOnly = store.get(MODE_KEY) == "photo", sights = archive.sights(), preferredSightId = store.get(PREFER_SIGHT_KEY)?.takeIf { it.isNotEmpty() }) }
         if (s.photoOnly) set { copy(view = View.TRAINING) }
         refreshHistory()
     }
@@ -310,6 +315,7 @@ class SightController(
                     else -> "This app is older than the sight's firmware. Please update the app."
                 }) }
                 helloWait?.complete(true); helloWait = null
+                h.id?.let { onSightIdentified(it, h.sightName) }
                 scope.launch { delay(1500); autoSync() }
             }
             "status" -> {
@@ -367,6 +373,7 @@ class SightController(
             }
             "logStart" -> {
                 syncEpoch = m.long("epoch"); inLogAnswer = true
+                syncEpoch?.let { e -> s.sight?.let { si -> if (e !in si.epochs) updateSight { it.copy(epochs = it.epochs + e) }; archive.tagSight(e, si.id) } }
                 syncCount = 0; syncGot = 0
                 syncSince = m.long("since") ?: archive.logSeq
                 syncSeen = HashSet(); endsSeen = HashSet()
@@ -377,10 +384,10 @@ class SightController(
                 val ls = liveSlot
                 if (!inLogAnswer && ls != null && sl.epoch == ls.epoch && sl.id == ls.id) { handleLiveSlot(sl); return finish() }
                 copyState?.let { if (it.phase == "keys") it.keys.add("${sl.epoch}-${sl.id}") }
-                if (!inLogAnswer) { archive.archiveSlot(sl.epoch, sl, false); refreshHistory(); return finish() }
+                if (!inLogAnswer) { archive.archiveSlot(sl.epoch, sl, false, s.sight?.id); refreshHistory(); return finish() }
                 syncGot++
                 syncSeen?.add("${sl.epoch ?: syncEpoch}-${sl.id}")
-                if (archive.archiveSlot(sl.epoch ?: syncEpoch, sl, hiddenFetch)) syncCount++
+                if (archive.archiveSlot(sl.epoch ?: syncEpoch, sl, hiddenFetch, s.sight?.id)) syncCount++
                 refreshHistory()
             }
             "endrec" -> { val e = m.toEndRec(); if (inLogAnswer) syncGot++; endsSeen?.add("${e.epoch}-${e.id}"); archive.mergeEndRec(e); refreshHistory() }
@@ -427,6 +434,7 @@ class SightController(
             "del" -> delOnAck(m)
             "clear" -> { send("log info"); if (m.bool("ok") != true) toast("Could not delete the sessions on the sight.", true) else afterClear(m.int("count") ?: 0) }
             "dfu" -> toast("The sight now shows up as a drive on your computer. Copy the new firmware onto it.")
+            "name" -> { val n = m.str("name") ?: ""; if (s.sight != null) { updateSight { it.copy(name = n) }; toast(if (n.isEmpty()) "Name removed from the sight" else "Sight named $n") } }
         }
     }
 
@@ -487,6 +495,59 @@ class SightController(
     fun setPhotoPrefs(p: PhotoPrefs) {
         store.put(PHOTO_KEY, kotlinx.serialization.json.Json.encodeToString(PhotoPrefs.serializer(), p))
         set { copy(photo = p) }
+        if (s.conn == ConnState.CONNECTED) updateSight { it.copy(face = p.face, arrowMm = p.arrowMm) }
+    }
+
+    // ------------------------------------------------------------------ sights
+    /** Bluetooth address of the current link, set by the transport before the sight says hello. */
+    var linkAddress: String? = null
+
+    /** The sight introduced itself: register it, and switch to its own preferences. */
+    private fun onSightIdentified(id: String, name: String?) {
+        val list = archive.sights().toMutableList()
+        val i = list.indexOfFirst { it.id == id }
+        val now = clock.now()
+        val si = if (i >= 0) list[i].copy(name = name ?: list[i].name, address = linkAddress ?: list[i].address, lastSeen = now)
+                 else SightInfo(id, name ?: "", color = list.size, address = linkAddress, lastSeen = now)
+        if (i >= 0) list[i] = si else list.add(si)
+        archive.saveSights(list)
+        set { copy(sight = si, sights = list) }
+        si.distM?.let { d -> if (d != s.distM) { set { copy(distM = d, distAuto = false) }; store.put(DIST_KEY, d.toString()) } }
+        val ph = s.photo
+        if ((si.face != null && si.face != ph.face) || (si.arrowMm != null && si.arrowMm != ph.arrowMm))
+            setPhotoPrefs(ph.copy(face = si.face ?: ph.face, arrowMm = si.arrowMm ?: ph.arrowMm))
+    }
+    private fun updateSight(f: (SightInfo) -> SightInfo) {
+        val cur = s.sight ?: return
+        val list = archive.sights().map { if (it.id == cur.id) f(it) else it }
+        archive.saveSights(list)
+        set { copy(sight = list.firstOrNull { it.id == cur.id }, sights = list) }
+    }
+    /** Does this session belong to the connected sight, or at least to no other known sight? Only these are synced. */
+    private fun ownedByCurrent(r: ArchiveSession): Boolean {
+        val cur = s.sight ?: return true
+        if (r.sightId != null) return r.sightId == cur.id
+        val e = r.epoch ?: return true
+        return s.sights.none { it.id != cur.id && e in it.epochs }
+    }
+    fun sightNameOf(id: String?): String = id?.let { x -> s.sights.firstOrNull { it.id == x }?.label } ?: ""
+    /** Give the connected sight a name (empty removes it); the sight stores and announces it. */
+    fun renameSight(name: String) {
+        if (s.conn != ConnState.CONNECTED || s.sight == null) { toast("Connect to the sight first.", true); return }
+        send("name " + name.trim().ifEmpty { "-" })
+    }
+    fun forgetSight(id: String) {
+        val list = archive.sights().filter { it.id != id }
+        archive.saveSights(list)
+        set { copy(sights = list, sight = if (sight?.id == id) null else sight) }
+        if (s.preferredSightId == id) preferSight(null)
+    }
+    /** Connect only to this sight from now on (null: whichever sight is awake). */
+    fun preferSight(id: String?) {
+        val si = id?.let { x -> s.sights.firstOrNull { it.id == x } }
+        store.put(PREFER_SIGHT_KEY, si?.id ?: "")
+        store.put(PREFER_ADDRESS_KEY, si?.address ?: "")
+        set { copy(preferredSightId = si?.id) }
     }
 
     private fun setAwaiting(on: Boolean) {
@@ -540,6 +601,7 @@ class SightController(
         }
         store.put(DIST_KEY, d.toString())
         if (d > 0) store.put(DIST_LAST_KEY, d.toString())
+        if (!fromSight) updateSight { it.copy(distM = d) }
     }
     fun distMinus() = setDist(s.distM - 10)
     fun distPlus() = setDist(if (s.distM == 0) (store.get(DIST_LAST_KEY)?.toIntOrNull() ?: 10) else s.distM + 10)
@@ -582,7 +644,7 @@ class SightController(
     private fun handleLiveSlot(sl: SlotMsg) {
         val ls = liveSlot
         val stored = ls == null || ls.stored
-        archive.archiveSlot(sl.epoch, sl, false)
+        archive.archiveSlot(sl.epoch, sl, false, s.sight?.id)
         archive.markOnSight(setOf("${sl.epoch}-${sl.id}"), stored)
         if (stored) toast("Session saved: ${sl.scored} arrows, average ${fmt(sl.avg, 2)}, ${sl.x} X")
         else toast("The sight could not store this session" + (ls?.error?.let { " ($it)" } ?: "") + ". It is kept on this phone.", true)
@@ -614,7 +676,7 @@ class SightController(
         }
         endsSeen = null
         if (fullScan && complete) {
-            val all = archive.sessions().map { it.key }.toMutableSet()
+            val all = archive.sessions().filter { ownedByCurrent(it) }.map { it.key }.toMutableSet()
             syncSeen?.let { all.removeAll(it) }
             archive.markOnSight(all, false)
             store.put(ONSIGHT_INIT_KEY, "1")
@@ -648,7 +710,7 @@ class SightController(
     // ---- copy missing sessions back to the sight, automatically ----
     private fun startAutoCopy() {
         if (!s.autoCopy || autoCopyState != null || copyState != null) return
-        val queue = archive.sessions().filter { it.hasSightKey && it.onSight != true }
+        val queue = archive.sessions().filter { it.hasSightKey && it.onSight != true && ownedByCurrent(it) }
         if (queue.isEmpty()) return
         autoCopyState = AutoCopy(queue)
         autoCopyNext()
@@ -727,7 +789,7 @@ class SightController(
     private fun copyOnLogEnd() {
         val c = copyState ?: return
         if (c.phase != "keys") return
-        c.queue = archive.sessions().filter { it.hasSightKey && !c.keys.contains("${it.epoch}-${it.id}") }
+        c.queue = archive.sessions().filter { it.hasSightKey && !c.keys.contains("${it.epoch}-${it.id}") && ownedByCurrent(it) }
         c.phase = "choose"
         if (c.queue.isEmpty()) { finishCopy("The sight already has every session from this phone.", false); return }
         set { copy(copyProgress = "", copyChoice = c.queue.sortedByDescending { it.sortTime }) }
@@ -828,7 +890,7 @@ class SightController(
     // ---- clear the log on the sight ----
     fun clearSightLog() { scope.launch { if (withConnection {}) send("log clear confirm") } }
     private fun afterClear(count: Int) {
-        archive.markOnSight(archive.sessions().map { it.key }.toSet(), false)
+        archive.markOnSight(archive.sessions().filter { ownedByCurrent(it) }.map { it.key }.toSet(), false)
         set { copy(afterClearCount = count) }
     }
     /** Answer to "copy the sessions back?" after clearing. */
@@ -840,18 +902,32 @@ class SightController(
     }
 
     // ---- export / import ----
-    fun exportCsv(): String = Csv.export(archive.sessions(), archive.ends()) { archive.setupNameOf(it) }
+    fun exportCsv(): String = Csv.export(archive.sessions(), archive.ends(), { sightNameOf(it) }) { archive.setupNameOf(it) }
     fun exportBackup(): String = BackupFormat.encode(Backup(app = APP_VERSION, exported = java.time.Instant.ofEpochMilli(clock.now()).toString(),
-        sessions = archive.sessions(), ends = archive.ends(), deleted = archive.deleted().toList()))
+        sessions = archive.sessions(), ends = archive.ends(), deleted = archive.deleted().toList(), sights = archive.sights()))
+    /** Sights named in an import that this phone has not met yet get an entry, so their badge shows a name. */
+    private fun registerSights(found: Map<String, String>) {
+        if (found.isEmpty()) return
+        val list = archive.sights().toMutableList()
+        var changed = false
+        for ((id, name) in found) {
+            val i = list.indexOfFirst { it.id == id }
+            if (i < 0) { list.add(SightInfo(id, name, color = list.size)); changed = true }
+            else if (list[i].name.isEmpty() && name.isNotEmpty()) { list[i] = list[i].copy(name = name); changed = true }
+        }
+        if (changed) { archive.saveSights(list); set { copy(sights = list) } }
+    }
     fun importText(name: String, text: String): ImportResult? {
         val result = try {
             if (name.lowercase().endsWith(".json") || text.trim().startsWith("{")) {
                 val b = BackupFormat.decode(text) ?: throw IllegalArgumentException("not a UV-Sight backup")
+                registerSights(b.sights.associate { it.id to it.name })
                 archive.importSessions(b.sessions, b.ends, "backup")
             } else {
                 val rows = Csv.parse(text)
                 if (rows.isNotEmpty() && rows[0].containsKey("session") && rows[0].containsKey("end")) {
                     val (ss, ee) = Csv.importEndsCsv(rows, archive.setupNames(), clock.now())
+                    registerSights(Csv.sightsIn(rows))
                     archive.importSessions(ss, ee, "CSV")
                 } else archive.importSessions(Csv.importSessionsCsv(rows, clock.now()), null, "CSV")
             }

@@ -59,7 +59,7 @@ class SightService : Service() {
     }
 
     /** Only these parts of the state change the notification. */
-    private fun key(s: AppState): List<Any?> = listOf(s.conn, s.autoReconnect, s.sightAsleep, s.status?.pct, s.session?.active,
+    private fun key(s: AppState): List<Any?> = listOf(s.conn, s.autoReconnect, s.sightAsleep, s.status?.pct, s.session?.active, s.sight?.label,
         s.session?.end, s.session?.endShots, s.session?.ends, s.session?.avg, s.session?.x, s.distM, s.distAuto)
 
     private fun build(s: AppState): Notification {
@@ -75,7 +75,7 @@ class SightService : Service() {
                     (if (s.conn != ConnState.CONNECTED) "  ·  sight out of reach, session continues" else "")
                 view = "training"
             }
-            s.conn == ConnState.CONNECTED -> { title = "Connected to the sight"; text = s.status?.let { "Battery ${it.pct} %" } ?: "Waiting for data"; view = "status" }
+            s.conn == ConnState.CONNECTED -> { title = "Connected to " + (s.sight?.label ?: "the sight"); text = s.status?.let { "Battery ${it.pct} %" } ?: "Waiting for data"; view = "status" }
             s.autoReconnect -> { title = "Reconnecting to the sight"; text = "Move the bow to wake it"; view = "status" }
             else -> { title = "Connecting to the sight"; text = ""; view = "status" }
         }

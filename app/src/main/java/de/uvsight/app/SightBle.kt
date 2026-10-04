@@ -83,6 +83,7 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
         if (!ad.isEnabled) { onProblem?.invoke("Turn Bluetooth on first."); return false }
         controller?.onLinkConnecting()
         val device = withTimeoutOrNull(timeoutMs) { scanForSight() } ?: run { cleanup(); return false }
+        controller?.linkAddress = device.address
         val wait = CompletableDeferred<Boolean>()
         readyWait = wait
         val ok = withTimeoutOrNull(timeoutMs) {
@@ -100,6 +101,7 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
     private suspend fun scanForSight(): BluetoothDevice {
         val scanner = adapter?.bluetoothLeScanner ?: throw IllegalStateException("no scanner")
         val remembered = prefs.get(ADDRESS_KEY)
+        val preferred = prefs.get(SightController.PREFER_ADDRESS_KEY)?.takeIf { it.isNotEmpty() }
         val found = CompletableDeferred<BluetoothDevice>()
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -108,7 +110,9 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
                 val isSight = (name?.startsWith(DEVICE_NAME_PREFIX) == true) ||
                     (result.scanRecord?.serviceUuids?.any { it.uuid == SERVICE } == true)
                 if (!isSight) return
-                // The remembered sight or, if another one answers first, that one (the address is updated on success)
+                // With a preferred sight only that one; otherwise the remembered sight or, if another one
+                // answers first, that one (the address is updated on success)
+                if (preferred != null && d.address != preferred) return
                 found.complete(d)
             }
             override fun onScanFailed(errorCode: Int) { found.completeExceptionally(IllegalStateException("scan failed $errorCode")) }

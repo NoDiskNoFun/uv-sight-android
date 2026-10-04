@@ -49,6 +49,27 @@ class ArchiveTest {
         assertEquals("skipped", a.ends()["42-1"]!![1].reason)
     }
 
+    @Test fun sightsAreAttributed() {
+        val a = Archive(MemoryStore(), FixedClock(1_700_000_000_000))
+        a.archiveSlot(42, slot(1, ago = 5), false, "S1")              // seen while connected to sight S1
+        a.archiveSlot(42, slot(2, ago = 3), false)                    // from before the feature: no sight yet
+        a.archiveSlot(77, slot(1, ago = 1), false)                    // another log key, another sight later
+        assertEquals("S1", a.sessions().first { it.key == "42-1" }.sightId)
+        assertEquals(null, a.sessions().first { it.key == "42-2" }.sightId)
+        a.tagSight(42, "S1")
+        assertEquals("S1", a.sessions().first { it.key == "42-2" }.sightId)
+        assertEquals(null, a.sessions().first { it.key == "77-1" }.sightId)
+        // the badge name travels through the CSV
+        a.saveSights(listOf(SightInfo("S1", "Hoyt")))
+        val csv = Csv.export(a.sessions(), a.ends(), { id -> a.sights().firstOrNull { it.id == id }?.label ?: "" }) { a.setupNameOf(it) }
+        assertTrue(csv.lines()[0].endsWith(",sight_id,sight_name"))
+        val rows = Csv.parse(csv)
+        assertEquals(mapOf("S1" to "Hoyt"), Csv.sightsIn(rows))
+        val (ss, _) = Csv.importEndsCsv(rows, emptyMap(), 5)
+        assertEquals("S1", ss.first { it.key == "42-1" }.sightId)
+        assertEquals(null, ss.first { it.key == "77-1" }.sightId)
+    }
+
     @Test fun csvRoundTrip() {
         val a = Archive(MemoryStore(), FixedClock(1_700_000_000_000))
         a.archiveSlot(42, slot(1, start = 1_700_000_000), false)

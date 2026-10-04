@@ -28,6 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -130,6 +133,44 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     else "With the UV sight: connection, sessions, settings and history.", if (state.photoOnly) "Photos only" else "With sight", listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
             }
             Spacer(Modifier.height(14.dp))
+            // The sights this phone knows: name the connected one, pick which to connect to, forget old ones
+            if (!state.photoOnly && (connected && state.sight != null || state.sights.isNotEmpty())) {
+                UvCard {
+                    Text("Sights", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                    val cur = state.sight
+                    if (connected && cur != null) {
+                        var nameText by remember(cur.id, cur.name) { mutableStateOf(cur.name) }
+                        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Name of this sight", color = uv.ink)
+                                Text("Shown in the app and behind \"UV-Sight\" in the Bluetooth name. Id ${cur.id}.", color = uv.muted, fontSize = 13.sp)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedTextField(value = nameText, onValueChange = { nameText = it.take(16) }, singleLine = true, modifier = Modifier.width(130.dp), placeholder = { Text("e.g. Hoyt") },
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { ctl.renameSight(nameText) }))
+                        }
+                        if (nameText.trim() != cur.name) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { SecondaryButton("Save name") { ctl.renameSight(nameText) } }
+                    }
+                    if (state.sights.size > 1 || (state.sights.size == 1 && (cur == null || !connected))) {
+                        HorizontalDivider(color = uv.line)
+                        Text("Known sights", color = uv.ink, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                        Text("Sessions, sync and the distance, face and arrow diameter are kept per sight. Pick one to connect only to it.", color = uv.muted, fontSize = 13.sp)
+                        for (si in state.sights) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(12.dp).background(sightColor(si), CircleShape))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(si.label + (if (connected && si.id == cur?.id) " (connected)" else ""), color = uv.ink)
+                                    Text((if (si.lastSeen > 0) "last seen " + fmtStamp(si.lastSeen) else "from an import") + (si.distM?.let { ", $it m" } ?: ""), color = uv.muted, fontSize = 12.sp)
+                                }
+                                FilterChip(selected = state.preferredSightId == si.id, onClick = { ctl.preferSight(if (state.preferredSightId == si.id) null else si.id) }, label = { Text(if (state.preferredSightId == si.id) "Preferred" else "Prefer") })
+                                if (!(connected && si.id == cur?.id)) { Spacer(Modifier.width(6.dp)); SecondaryButton("Forget", danger = true) { ctl.forgetSight(si.id) } }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
             if (state.photoOnly) { /* nothing of the sight applies */ }
             else if (!connected) EmptyBox("Connect to the sight on the Status tab to change settings.")
             else if (cfg == null) EmptyBox(if (state.cfgGaveUp) "The settings didn't arrive completely. Move closer to the sight and try again." else "Loading settings…") {

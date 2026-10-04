@@ -183,7 +183,7 @@ private fun Header(state: AppState) {
         state.conn == ConnState.OFF && state.autoReconnect -> "Reconnecting…"
         state.conn == ConnState.OFF -> "Not connected"
         state.conn == ConnState.CONNECTING -> "Connecting"
-        else -> "Connected"
+        else -> "Connected" + (state.sight?.let { " · ${it.label}" } ?: "")
     }
     val dot = when {
         state.conn == ConnState.CONNECTED -> uv.ok

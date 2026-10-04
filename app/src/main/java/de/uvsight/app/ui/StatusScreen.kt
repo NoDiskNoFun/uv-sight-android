@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +38,14 @@ fun StatusScreen(state: AppState, ctl: SightController, connect: () -> Unit) {
     state.protoWarning?.let { Banner(it) }
     if (!state.hasData) {
         EmptyBox(if (state.conn == ConnState.CONNECTED) "Connected. Waiting for data from the sight…" else "Move the bow so the sight wakes up, then connect.") {
+            if (state.conn != ConnState.CONNECTED && state.sights.size > 1) {
+                Text("Connect to", color = uv.muted, fontSize = 13.sp)
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
+                    FilterChip(selected = state.preferredSightId == null, onClick = { ctl.preferSight(null) }, label = { Text("Whichever is awake") }, modifier = Modifier.padding(end = 6.dp))
+                    for (si in state.sights) FilterChip(selected = state.preferredSightId == si.id, onClick = { ctl.preferSight(si.id) },
+                        label = { Text(si.label) }, leadingIcon = { Box(Modifier.size(10.dp).background(sightColor(si), CircleShape)) }, modifier = Modifier.padding(end = 6.dp))
+                }
+            }
             if (state.conn != ConnState.CONNECTED) PrimaryButton("Connect", enabled = state.conn != ConnState.CONNECTING, onClick = connect)
         }
         return

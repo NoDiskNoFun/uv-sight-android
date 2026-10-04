@@ -100,7 +100,10 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             UvCard(padding = 0) {
                 list.forEachIndexed { i, r ->
                     if (i > 0) HorizontalDivider(color = uv.line)
-                    Row(Modifier.fillMaxWidth().clickable { shown = r }.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.fillMaxWidth().clickable { shown = r }) {
+                    val sightOf = state.sights.firstOrNull { it.id == r.sightId }
+                    if (sightOf != null || state.sights.size > 1) Box(Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 8.dp)) { SightBadge(sightOf, unknown = sightOf == null) }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(fmtDate(r), fontWeight = FontWeight.SemiBold, color = if (r.hidden) uv.muted else uv.ink)
                             Text("${r.ends} ${if (r.ends == 1) "end" else "ends"}, ${r.scored} arrows, ${r.x} X, ${r.min} min", color = uv.muted, fontSize = 14.sp)
@@ -110,7 +113,8 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             if (flags.isNotEmpty()) Text(flags.joinToString(", "), color = uv.red, fontSize = 13.sp)
                             if (r.hidden) Text("removed from this phone", color = uv.muted, fontSize = 13.sp)
                         }
-                        Text(fmt(r.avg, 2), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = if (r.hidden) uv.muted else uv.ink)
+                        Text(fmt(r.avg, 2), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = if (r.hidden) uv.muted else uv.ink, modifier = Modifier.padding(top = if (sightOf != null || state.sights.size > 1) 10.dp else 0.dp))
+                    }
                     }
                 }
             }
@@ -119,7 +123,7 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     }
 
     shown?.let { r ->
-        SessionDialog(r, state.ends[r.key] ?: emptyList(), ctl, onClose = { shown = null }, onRemove = { shown = null; removing = r })
+        SessionDialog(r, state.ends[r.key] ?: emptyList(), ctl, state.sights.firstOrNull { it.id == r.sightId }, onClose = { shown = null }, onRemove = { shown = null; removing = r })
     }
     removing?.let { r ->
         AlertDialog(onDismissRequest = { removing = null }, title = { Text("Remove this session?") },
@@ -172,10 +176,10 @@ private fun AverageChart(list: List<ArchiveSession>, endsStore: Map<String, List
 }
 
 @Composable
-private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightController, onClose: () -> Unit, onRemove: () -> Unit) {
+private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightController, sightOf: de.uvsight.core.SightInfo?, onClose: () -> Unit, onRemove: () -> Unit) {
     val uv = LocalUv.current
     AlertDialog(onDismissRequest = onClose,
-        title = { Text(fmtDate(r)) },
+        title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(fmtDate(r), Modifier.weight(1f)); SightBadge(sightOf) } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 val lines = ArrayList<String>()

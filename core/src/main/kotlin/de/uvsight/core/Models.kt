@@ -22,6 +22,7 @@ data class ArchiveSession(
     val mismatch: Boolean = false,
     val manual: Boolean = false,
     val hidden: Boolean = false,
+    val sightId: String? = null,              // the sight this session came from (chip id), null = not known yet
     /** null = not known yet whether the sight has it. */
     val onSight: Boolean? = null,
 ) {
@@ -66,7 +67,28 @@ data class CfgItem(
     val d: String,
 )
 
-data class HelloInfo(val proto: Int, val fw: String, val name: String, val imu: Boolean, val log: Boolean)
+data class HelloInfo(val proto: Int, val fw: String, val name: String, val imu: Boolean, val log: Boolean,
+                     val id: String? = null, val sightName: String? = null)
+
+/**
+ * A sight this phone has met: its chip id, the name the owner gave it, the Bluetooth address,
+ * the log keys seen on it (sessions with these epochs belong to it) and the phone-side
+ * preferences kept per sight.
+ */
+@Serializable
+data class SightInfo(
+    val id: String,
+    val name: String = "",
+    val color: Int = 0,                      // index into the app's badge palette
+    val address: String? = null,
+    val lastSeen: Long = 0,
+    val epochs: List<Long> = emptyList(),
+    val distM: Int? = null,
+    val face: String? = null,
+    val arrowMm: Double? = null,
+) {
+    val label: String get() = name.ifEmpty { "Sight " + id.takeLast(4) }
+}
 
 data class StatusInfo(
     val light: Int, val dark: Boolean, val vbat: Double, val pct: Int, val chg: String,
