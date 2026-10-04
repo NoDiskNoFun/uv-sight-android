@@ -43,6 +43,18 @@ After each end the Training tab lists what the numbers say, and the session deta
 
 Which arrow on the face was which shot? The sight knows the order of the shots and, for each one, the aiming angle and how the bow turned at release; the photo knows where the arrows are. When you reach the arrow step of the photo scoring, the app asks the sight for the shots of the open end and shows the shot number under each mark: a bold number for a sure match, a grey one for a guess, "3/5" when two shots cannot be told apart. Tap an arrow and pick its shot to set it by hand. Unresolved pairs are decided at random when you save, so the end is complete, but only sure and hand-set pairs are reported back to the sight, which learns from them per setup. "Shot matching accuracy" under the photo and in *Settings → Setups* is the mean confidence over the last ends of the setup. Height is matched from the first end on; the sideways position needs a few dozen confirmed pairs before it contributes. Each setup has *Reset learning* in its menu; the *Shot matching* switch turns the feature and the sight's gyro off.
 
+## Languages
+
+The app follows the phone's language when a pack for it exists and falls back to English; *Settings → App → Language* overrides that. Packs are plain text files in `app/src/main/assets/lang/`, one line per text:
+
+```
+# name = Deutsch
+Connecting = Verbinden
+End {end}, arrow {arrow} = Passe {end}, Pfeil {arrow}
+```
+
+Left is the English text as it appears in the app, right the translation. `{placeholders}` stay as they are, `\n` is a line break, lines starting with `#` are comments, an empty right side falls back to English. To add a language, copy `lang_en.txt` to `lang_<code>.txt` (the two-letter ISO code, for example `lang_pl.txt`), put the language's name in the `# name` line and fill in the right sides; no other tools are needed. The pack ships inside the APK with the next release. `python3 tools/lang_check.py` rebuilds the English template from the code and adds any new lines to the other packs with an empty right side, so a translator sees what is new; the CI build prints how complete each pack is and flags placeholders that went missing in a translation.
+
 ## Two or more sights
 
 A sight built without the UV LED stage (for a bow without a pin, such as a hunting bow) announces that, and the app hides everything about the light: LED mode, brightness, light sensor, cant blinking and the distance warning. Shot counting, angles, cant, shot matching and photo scoring work as usual.

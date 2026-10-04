@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import de.uvsight.core.tr
 import de.uvsight.core.AppState
 import de.uvsight.core.ConnState
 import de.uvsight.core.fmt
@@ -35,8 +36,8 @@ class SightService : Service() {
     override fun onCreate() {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Running session", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Shows the connection to the sight and the running session"
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Running session"), NotificationManager.IMPORTANCE_LOW).apply {
+            description = tr("Shows the connection to the sight and the running session")
             setShowBadge(false)
         })
     }
@@ -69,15 +70,15 @@ class SightService : Service() {
         val view: String
         when {
             ses != null -> {
-                title = "End ${ses.end}, arrow ${ses.endShots}"
-                text = "${ses.ends} ${if (ses.ends == 1) "end" else "ends"}, average ${fmt(ses.avg, 2)}, ${ses.x} X" +
+                title = tr("End {end}, arrow {arrow}", "end" to ses.end, "arrow" to ses.endShots)
+                text = tr("{ends} {endsWord}, average {avg}, {x} X", "ends" to ses.ends, "endsWord" to (if (ses.ends == 1) tr("end") else tr("ends")), "avg" to fmt(ses.avg, 2), "x" to ses.x) +
                     (if (s.distM > 0) ", ${s.distM} m" else "") +
-                    (if (s.conn != ConnState.CONNECTED) "  ·  sight out of reach, session continues" else "")
+                    (if (s.conn != ConnState.CONNECTED) "  ·  " + tr("sight out of reach, session continues") else "")
                 view = "training"
             }
-            s.conn == ConnState.CONNECTED -> { title = "Connected to " + (s.sight?.label ?: "the sight"); text = s.status?.let { "Battery ${it.pct} %" } ?: "Waiting for data"; view = "status" }
-            s.autoReconnect -> { title = "Reconnecting to the sight"; text = "Move the bow to wake it"; view = "status" }
-            else -> { title = "Connecting to the sight"; text = ""; view = "status" }
+            s.conn == ConnState.CONNECTED -> { title = tr("Connected to {sight}", "sight" to (s.sight?.label ?: tr("the sight"))); text = s.status?.let { tr("Battery {pct} %", "pct" to it.pct) } ?: tr("Waiting for data"); view = "status" }
+            s.autoReconnect -> { title = tr("Reconnecting to the sight"); text = tr("Move the bow to wake it"); view = "status" }
+            else -> { title = tr("Connecting to the sight"); text = ""; view = "status" }
         }
         val open = Intent(this, MainActivity::class.java).apply { putExtra("view", view); flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
         val pi = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -91,7 +92,7 @@ class SightService : Service() {
             .setContentIntent(pi)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-        if (ses != null) b.addAction(0, "Enter scores", pi)
+        if (ses != null) b.addAction(0, tr("Enter scores"), pi)
         return b.build()
     }
 }

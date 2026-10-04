@@ -271,7 +271,7 @@ class SightController(
             val ok = try { transport.ensureConnected(RECONNECT_TIMEOUT_MS) } catch (e: Exception) { false }
             if (!ok && s.conn != ConnState.CONNECTED) {
                 setConn(ConnState.OFF)
-                toast("Sight not reachable. Move the bow to wake it, then try again.", true)
+                toast(tr("Sight not reachable. Move the bow to wake it, then try again."), true)
             }
         }
         connectJob = job
@@ -285,7 +285,7 @@ class SightController(
             set { copy(reconnecting = true) }
             val ok = ensureConnected()
             set { copy(reconnecting = false) }
-            if (!ok) { toast("Sight not reachable. Your scores are kept, tap again when you are in range.", true); return false }
+            if (!ok) { toast(tr("Sight not reachable. Your scores are kept, tap again when you are in range."), true); return false }
         }
         action()
         return true
@@ -307,7 +307,7 @@ class SightController(
     private suspend fun autoReconnectTry() {
         if (!s.autoReconnect || s.conn == ConnState.CONNECTED) return
         val elapsed = clock.now() - autoStart
-        if (elapsed > AUTO_GIVE_UP) { stopAutoReconnect(); toast("Could not reach the sight for 30 min. Tap Reconnect when it is near."); return }
+        if (elapsed > AUTO_GIVE_UP) { stopAutoReconnect(); toast(tr("Could not reach the sight for 30 min. Tap Reconnect when it is near.")); return }
         if (appVisible && !s.reconnecting) {
             val ok = try { transport.ensureConnected(RECONNECT_TIMEOUT_MS) } catch (e: Exception) { false }
             if (ok || s.conn == ConnState.CONNECTED) return
@@ -375,15 +375,15 @@ class SightController(
                 recordEnd(e)
                 if (teach != null) send(teach)
                 if (s.awaitingEnd) { set { copy(entries = emptyList(), pendingHits = null, pendingMatch = null, pendingMatchSrc = null) }; setAwaiting(false) }
-                if (e.valid) toast("End ${e.n} saved: ${e.sum} points") else toast("End ${e.n} marked invalid")
+                if (e.valid) toast(tr("End {n} saved: {sum} points", "n" to e.n, "sum" to e.sum)) else toast(tr("End {n} marked invalid", "n" to e.n))
                 saveTraining()
             }
             "confirm" -> { setAwaiting(false); val c = m.toConfirm(); set { copy(confirm = ConfirmPrompt(c.end, c.counted, c.entered, c.split || c.entered < c.counted)) } }
-            "discarded" -> { setAwaiting(false); toast("Not saved. Correct the scores and save again.") }
+            "discarded" -> { setAwaiting(false); toast(tr("Not saved. Correct the scores and save again.")) }
             "sessionEnd" -> {
                 set { copy(entries = emptyList(), lastEnd = null, pendingHits = null) }
                 setAwaiting(false)
-                if (!m.has("epoch")) { liveSlot = null; toast("Empty session, nothing saved.") }
+                if (!m.has("epoch")) { liveSlot = null; toast(tr("Empty session, nothing saved.")) }
                 else liveSlot = LiveSlot(m.long("epoch"), m.long("id"), m.bool("stored") ?: false, m.str("error"), m.bool("manual") ?: true)
                 send("shots")
                 saveTraining()
@@ -426,15 +426,15 @@ class SightController(
             "ack" -> onAck(m)
             "cal" -> onCal(m.toCal())
             "event" -> when (m.str("e")) {
-                "idle" -> { set { copy(sightAsleep = true) }; toast("Bow at rest. The sight went to sleep.") }
-                "lowbat" -> { toast("Battery empty. LED is off until you charge.", true); lowBatWarned = true; _events.tryEmit(CoreEvent.LowBattery(s.status?.pct ?: 0)) }
+                "idle" -> { set { copy(sightAsleep = true) }; toast(tr("Bow at rest. The sight went to sleep.")) }
+                "lowbat" -> { toast(tr("Battery empty. LED is off until you charge."), true); lowBatWarned = true; _events.tryEmit(CoreEvent.LowBattery(s.status?.pct ?: 0)) }
                 "charge" -> { val st = m.str("state") ?: ""; toast(chargeLabel(st)); if (st == "full") _events.tryEmit(CoreEvent.ChargeFull) }
                 "range" -> set { copy(rangeLive = RangeLive(m.str("warn") ?: "", m.bool("ok") ?: false)) }
             }
             "err" -> {
                 if (copyState?.phase == "put") copyOnAck("error", null, null)
                 if (s.awaitingEnd) setAwaiting(false)
-                toast(m.str("text") ?: "Error", true)
+                toast(m.str("text") ?: tr("Error"), true)
             }
         }
     }
@@ -446,15 +446,15 @@ class SightController(
     private fun onAck(m: Msg) {
         when (m.str("cmd")) {
             "set" -> { val k = m.str("k"); val v = m.dbl("v"); set { copy(cfg = cfg?.map { if (it.k == k && v != null) it.copy(v = v) else it }, cfgDirty = true) } }
-            "save" -> { set { copy(cfgDirty = false) }; toast("Settings saved on the sight") }
+            "save" -> { set { copy(cfgDirty = false) }; toast(tr("Settings saved on the sight")) }
             "mode" -> set { copy(status = status?.copy(mode = m.str("mode") ?: "auto")) }
             "setup" -> if (m.bool("ok") == true && m.has("id") && pendingUseNew) { pendingUseNew = false; send("setup use ${m.int("id")}") }
             "put" -> if (!autoCopyOnAck(m)) copyOnAck(m.str("result"), m.long("epoch"), m.long("id"))
             "putend" -> endPutOnAck()
             "del" -> delOnAck(m)
-            "clear" -> { send("log info"); if (m.bool("ok") != true) toast("Could not delete the sessions on the sight.", true) else afterClear(m.int("count") ?: 0) }
-            "dfu" -> toast("The sight now shows up as a drive on your computer. Copy the new firmware onto it.")
-            "name" -> { val n = m.str("name") ?: ""; if (s.sight != null) { updateSight { it.copy(name = n) }; toast(if (n.isEmpty()) "Name removed from the sight" else "Sight named $n") } }
+            "clear" -> { send("log info"); if (m.bool("ok") != true) toast(tr("Could not delete the sessions on the sight."), true) else afterClear(m.int("count") ?: 0) }
+            "dfu" -> toast(tr("The sight now shows up as a drive on your computer. Copy the new firmware onto it."))
+            "name" -> { val n = m.str("name") ?: ""; if (s.sight != null) { updateSight { it.copy(name = n) }; toast(if (n.isEmpty()) tr("Name removed from the sight") else tr("Sight named {n}", "n" to n)) } }
         }
     }
 
@@ -554,7 +554,7 @@ class SightController(
     fun sightNameOf(id: String?): String = id?.let { x -> s.sights.firstOrNull { it.id == x }?.label } ?: ""
     /** Give the connected sight a name (empty removes it); the sight stores and announces it. */
     fun renameSight(name: String) {
-        if (s.conn != ConnState.CONNECTED || s.sight == null) { toast("Connect to the sight first.", true); return }
+        if (s.conn != ConnState.CONNECTED || s.sight == null) { toast(tr("Connect to the sight first."), true); return }
         send("name " + name.trim().ifEmpty { "-" })
     }
     fun forgetSight(id: String) {
@@ -574,7 +574,7 @@ class SightController(
     private fun setAwaiting(on: Boolean) {
         set { copy(awaitingEnd = on) }
         awaitJob?.cancel()
-        if (on) awaitJob = scope.launch { delay(6000); set { copy(awaitingEnd = false) }; toast("No answer from the sight. Scores kept, try again.", true) }
+        if (on) awaitJob = scope.launch { delay(6000); set { copy(awaitingEnd = false) }; toast(tr("No answer from the sight. Scores kept, try again."), true) }
     }
 
     fun sendEnd() {
@@ -617,8 +617,8 @@ class SightController(
     // ---- shot matching ----
     /** Ask the sight for the shots of the open end (with its predictions for the given distance). */
     fun requestShots() { if (s.conn == ConnState.CONNECTED && s.session?.active == true) send("shot list" + (if (s.distM > 0) " ${s.distM}" else "")) }
-    fun shotMatching(on: Boolean) { if (s.conn != ConnState.CONNECTED) { toast("Connect to the sight first.", true); return }; send(if (on) "shot on" else "shot off") }
-    fun shotReset(setupId: Int) { if (s.conn != ConnState.CONNECTED) { toast("Connect to the sight first.", true); return }; send("shot reset $setupId") }
+    fun shotMatching(on: Boolean) { if (s.conn != ConnState.CONNECTED) { toast(tr("Connect to the sight first."), true); return }; send(if (on) "shot on" else "shot off") }
+    fun shotReset(setupId: Int) { if (s.conn != ConnState.CONNECTED) { toast(tr("Connect to the sight first."), true); return }; send("shot reset $setupId") }
     /** The aim trace of one shot of the open end (last = of the last closed end). */
     fun requestTrace(i: Int, last: Boolean = false) { if (s.conn == ConnState.CONNECTED) send("shot trace " + (if (last) "last " else "") + i) }
     fun clearTrace() { set { copy(trace = null) } }
@@ -692,8 +692,8 @@ class SightController(
         val stored = ls == null || ls.stored
         archive.archiveSlot(sl.epoch, sl, false, s.sight?.id)
         archive.markOnSight(setOf("${sl.epoch}-${sl.id}"), stored)
-        if (stored) toast("Session saved: ${sl.scored} arrows, average ${fmt(sl.avg, 2)}, ${sl.x} X")
-        else toast("The sight could not store this session" + (ls?.error?.let { " ($it)" } ?: "") + ". It is kept on this phone.", true)
+        if (stored) toast(tr("Session saved: {scored} arrows, average {avg}, {x} X", "scored" to sl.scored, "avg" to (fmt(sl.avg, 2)), "x" to sl.x))
+        else toast(tr("The sight could not store this session") + (ls?.error?.let { " ($it)" } ?: "") + tr(". It is kept on this phone."), true)
         if (stored && sl.seq != null && sl.seq == archive.logSeq + 1) archive.logSeq = sl.seq
         if (ls != null && !ls.manual) _events.tryEmit(CoreEvent.SessionAutoEnded(sl.ends, sl.scored, sl.avg, sl.x, sl.min))
         liveSlot = null
@@ -710,7 +710,7 @@ class SightController(
             send("log since $syncSince")
             return
         }
-        if (!complete) toast("Some lines from the sight were lost. Move closer and sync again.", true)
+        if (!complete) toast(tr("Some lines from the sight were lost. Move closer and sync again."), true)
         syncRetries = 0
         syncEpoch = null; inLogAnswer = false
         syncSeen?.let { archive.markOnSight(it, true) }
@@ -734,14 +734,14 @@ class SightController(
         if (syncResync) { syncResync = false; archive.logSeq = 0; fullScan = true; send("log since 0"); return }
         val last = m.long("last")
         if (complete && last != null && last >= archive.logSeq) archive.logSeq = last
-        if (syncCount > 0) toast("$syncCount new ${if (syncCount == 1) "session" else "sessions"} from the sight")
-        else if (!s.autoCopy && complete) toast("Everything is already on this phone")
+        if (syncCount > 0) toast(tr("{syncCount} new {syncCount2} from the sight", "syncCount" to syncCount, "syncCount2" to (if (syncCount == 1) tr("session") else tr("sessions"))))
+        else if (!s.autoCopy && complete) toast(tr("Everything is already on this phone"))
         refreshHistory()
         startAutoCopy()
         if (autoCopyState == null) runBackfill()
     }
 
-    fun requestLogNow() { if (s.conn != ConnState.CONNECTED) { toast("Connect to the sight first.", true); return }; requestLog() }
+    fun requestLogNow() { if (s.conn != ConnState.CONNECTED) { toast(tr("Connect to the sight first."), true); return }; requestLog() }
 
     private fun setSyncLine(t: String) = set { copy(syncLine = t) }
 
@@ -767,7 +767,7 @@ class SightController(
         if (s.conn != ConnState.CONNECTED) { stopAutoCopy(); return }
         if (syncBlocked()) { c.wait = scope.launch { delay(3000); autoCopyNext() }; return }
         if (c.i >= c.queue.size) {
-            if (c.added > 0) toast("${c.added} ${if (c.added == 1) "session" else "sessions"} copied to the sight")
+            if (c.added > 0) toast(tr("{added} {added2} copied to the sight", "added" to c.added, "added2" to (if (c.added == 1) tr("session") else tr("sessions"))))
             stopAutoCopy(); send("log info"); runBackfill(); return
         }
         val r = c.queue[c.i]
@@ -891,12 +891,12 @@ class SightController(
         archive.markDeleted(r.key)
         archive.update(r.key) { it.copy(hidden = true) }
         refreshHistory()
-        toast("Removed from this phone. The sight keeps its copy.")
+        toast(tr("Removed from this phone. The sight keeps its copy."))
     }
     fun removeCompletely(r: ArchiveSession) {
         scope.launch {
             if (!withConnection {}) return@launch
-            pendingDel = PendingDel(r, scope.launch { delay(8000); pendingDel = null; toast("The sight did not answer. Nothing was removed.", true) })
+            pendingDel = PendingDel(r, scope.launch { delay(8000); pendingDel = null; toast(tr("The sight did not answer. Nothing was removed."), true) })
             send("log del ${r.epoch} ${r.id}")
         }
     }
@@ -907,19 +907,19 @@ class SightController(
         val res = m.str("result")
         if (res == "deleted" || res == "notfound") {
             archive.markDeleted(p.r.key); archive.removeSession(p.r.key); refreshHistory()
-            toast(if (res == "deleted") "Removed from this phone and the sight." else "Removed from this phone. The sight did not have it anymore.")
-        } else toast("The sight could not delete the session. Nothing was removed.", true)
+            toast(if (res == "deleted") tr("Removed from this phone and the sight.") else tr("Removed from this phone. The sight did not have it anymore."))
+        } else toast(tr("The sight could not delete the session. Nothing was removed."), true)
     }
     fun unhideSession(r: ArchiveSession) {
         archive.unmarkDeleted(r.key)
         archive.update(r.key) { it.copy(hidden = false) }
         refreshHistory()
-        toast("Shown in History again.")
+        toast(tr("Shown in History again."))
     }
     fun setShowHidden(on: Boolean) {
         store.put(SHOW_HIDDEN_KEY, if (on) "1" else "0")
         set { copy(showHidden = on) }
-        if (on) { if (s.conn == ConnState.CONNECTED) fetchHiddenOnce(); toast("Removed sessions are now shown greyed out in History.") }
+        if (on) { if (s.conn == ConnState.CONNECTED) fetchHiddenOnce(); toast(tr("Removed sessions are now shown greyed out in History.")) }
     }
     private fun fetchHiddenOnce() {
         if (!s.showHidden || store.get(HIDDEN_FETCHED_KEY) == "1") return
@@ -944,7 +944,7 @@ class SightController(
         set { copy(afterClearCount = null) }
         store.put(AUTOCOPY_KEY, if (copyBack) "on" else "off")
         set { copy(autoCopy = copyBack) }
-        if (copyBack) startAutoCopy() else toast("Automatic sync is off. You can turn it on again in Settings.")
+        if (copyBack) startAutoCopy() else toast(tr("Automatic sync is off. You can turn it on again in Settings."))
     }
 
     // ---- export / import ----
@@ -977,12 +977,12 @@ class SightController(
                     archive.importSessions(ss, ee, "CSV")
                 } else archive.importSessions(Csv.importSessionsCsv(rows, clock.now()), null, "CSV")
             }
-        } catch (e: Exception) { toast("Import failed: ${e.message}", true); return null }
+        } catch (e: Exception) { toast(tr("Import failed: {message}", "message" to e.message), true); return null }
         refreshHistory()
         val parts = ArrayList<String>(); parts.add("${result.added} new")
         if (result.filled > 0) parts.add("${result.filled} dates added")
         if (result.skipped > 0) parts.add("${result.skipped} skipped (removed before)")
-        toast("Imported from ${result.what}: ${parts.joinToString(", ")}" + if (result.added > 0 && s.autoCopy) ". They are copied to the sight when it is connected." else "")
+        toast(tr("Imported from {what}: {parts}", "what" to result.what, "parts" to (parts.joinToString(", "))) + if (result.added > 0 && s.autoCopy) tr(". They are copied to the sight when it is connected.") else "")
         if (result.added > 0) startAutoCopy()
         return result
     }
@@ -999,7 +999,7 @@ class SightController(
     fun retryCfg() { cfgRetries = 0; set { copy(cfgGaveUp = false) }; requestCfg() }
 
     fun sendSet(k: String, v: Double) {
-        if (s.confirm != null || s.awaitingEnd) { toast("Finish the open end first.", true); return }
+        if (s.confirm != null || s.awaitingEnd) { toast(tr("Finish the open end first."), true); return }
         send("set $k ${fmtSetting(k, v)}")
     }
     private fun fmtSetting(k: String, v: Double): String {
@@ -1033,7 +1033,7 @@ class SightController(
     fun setLedMode(m: String) { set { copy(status = status?.copy(mode = m)) }; send("mode $m") }
     fun setCheckDist(v0: Int) { val v = max(0, min(150, v0)); set { copy(range = range?.copy(dist = v)) }; send("dist $v") }
     fun shotsSwitch(on: Boolean) {
-        if (!on && s.session?.active == true) { toast("End the running session first.", true); return }
+        if (!on && s.session?.active == true) { toast(tr("End the running session first."), true); return }
         send(if (on) "shots on" else "shots off")
     }
 
@@ -1041,7 +1041,7 @@ class SightController(
     fun calStart() = set { copy(calStep = 1, calError = "") }
     fun calCancel() = set { copy(calStep = 0, calError = "", calBusy = false) }.also { calBusy = false }
     fun calMeasure() {
-        if (s.confirm != null || s.awaitingEnd) { toast("Finish the open end first.", true); return }
+        if (s.confirm != null || s.awaitingEnd) { toast(tr("Finish the open end first."), true); return }
         calBusy = true
         set { copy(calBusy = true, calError = "") }
         send(if (s.calStep == 1) "level cal" else "level cal2")
@@ -1077,7 +1077,7 @@ class SightController(
     /** Photo-only mode: the scores were looked at, clear the entry row. */
     fun clearEntries() { set { copy(entries = emptyList(), pendingHits = null, pendingMatch = null, pendingMatchSrc = null) }; saveTraining() }
     fun setConsoleEnabled(on: Boolean) { store.put(CONSOLE_KEY, if (on) "1" else "0"); set { copy(consoleEnabled = on, view = if (!on && view == View.CONSOLE) View.STATUS else view) } }
-    fun sendRaw(cmd: String) { if (s.conn != ConnState.CONNECTED) { toast("Not connected.", true); return }; send(cmd) }
+    fun sendRaw(cmd: String) { if (s.conn != ConnState.CONNECTED) { toast(tr("Not connected."), true); return }; send(cmd) }
 }
 
 fun fmt(v: Double, dec: Int): String = String.format(java.util.Locale.ROOT, "%.${dec}f", v)

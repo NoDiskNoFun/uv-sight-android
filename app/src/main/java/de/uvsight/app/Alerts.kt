@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import de.uvsight.core.tr
 import de.uvsight.core.CoreEvent
 import de.uvsight.core.SightController
 import de.uvsight.core.fmt
@@ -23,17 +24,17 @@ class Alerts(private val context: Context, private val controller: SightControll
 
     init {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "Sight alerts", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Session ended by the sight, battery low, charging finished"
+            NotificationChannel(CHANNEL, tr("Sight alerts"), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = tr("Session ended by the sight, battery low, charging finished")
             })
         scope.launch {
             controller.events.collect { e ->
                 val p = controller.state.value.notif
                 when (e) {
-                    is CoreEvent.SessionAutoEnded -> if (p.autoEnd) show(ID_AUTO_END, "Session ended by the sight",
-                        "${e.ends} ${if (e.ends == 1) "end" else "ends"}, ${e.scored} arrows, average ${fmt(e.avg, 2)}, ${e.x} X, ${e.min} min. No shot for a while.", "history")
-                    is CoreEvent.LowBattery -> if (p.lowBat) show(ID_LOW_BAT, "Sight battery low", "${e.pct} % left. The UV light switches off when the battery is empty.", "status")
-                    CoreEvent.ChargeFull -> if (p.chargeFull) show(ID_CHARGED, "Sight fully charged", "You can unplug the USB cable.", "status")
+                    is CoreEvent.SessionAutoEnded -> if (p.autoEnd) show(ID_AUTO_END, tr("Session ended by the sight"),
+                        tr("{ends} {endsWord}, {scored} arrows, average {avg}, {x} X, {min} min. No shot for a while.", "ends" to e.ends, "endsWord" to (if (e.ends == 1) tr("end") else tr("ends")), "scored" to e.scored, "avg" to fmt(e.avg, 2), "x" to e.x, "min" to e.min), "history")
+                    is CoreEvent.LowBattery -> if (p.lowBat) show(ID_LOW_BAT, tr("Sight battery low"), tr("{pct} % left. The UV light switches off when the battery is empty.", "pct" to e.pct), "status")
+                    CoreEvent.ChargeFull -> if (p.chargeFull) show(ID_CHARGED, tr("Sight fully charged"), tr("You can unplug the USB cable."), "status")
                 }
             }
         }

@@ -81,6 +81,7 @@ import java.io.File
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import de.uvsight.core.tr
 
 /** One arrow placed on the photo (display-bitmap pixels). */
 private data class Mark(val pos: Offset, val ring: Int, val ringAuto: Int, val tool: String, val moved: Boolean = false, val source: String = "user")
@@ -168,7 +169,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         val b = bitmap ?: return@LaunchedEffect
         if (modelInfo == null) return@LaunchedEffect
         val found = withContext(Dispatchers.IO) { runCatching { de.uvsight.app.TfliteArrowDetector(modelStore.modelFile).use { it.detect(b, prefs.modelConf) } } }
-        found.onFailure { vm.toast("Arrow detection failed: ${it.message}", true); detections = emptyList() }
+        found.onFailure { vm.toast(tr("Arrow detection failed: {message}", "message" to it.message), true); detections = emptyList() }
         found.onSuccess { detections = it }
     }
     LaunchedEffect(step, detections) {
@@ -178,7 +179,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         val proposed = dets.map { d -> val p = Offset(d.x.toFloat(), d.y.toFloat()); val r = ringAt(p); Mark(p, r, r, "model", false, "model") }
         marks = marks + proposed
         selected = null
-        vm.toast(if (proposed.isEmpty()) "No arrows found. Mark them by hand." else "${proposed.size} ${if (proposed.size == 1) "arrow" else "arrows"} found. Check and correct them.")
+        vm.toast(if (proposed.isEmpty()) tr("No arrows found. Mark them by hand.") else tr("{proposed} {proposed2} found. Check and correct them.", "proposed" to proposed.size, "proposed2" to (if (proposed.size == 1) tr("arrow") else tr("arrows"))))
     }
     // Marks placed before the face was (re)marked get their ring from the current geometry
     LaunchedEffect(geometry) {
@@ -221,11 +222,11 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().background(uv.paper).statusBarsPadding().navigationBarsPadding()) {
         // Top bar
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onClose) { Text("Cancel") }
-            Text(if (step == 1) "Mark the face" else "Mark the arrows", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            TextButton(onClick = onClose) { Text(tr("Cancel")) }
+            Text(if (step == 1) tr("Mark the face") else tr("Mark the arrows"), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(onClick = { zoomAround(0.7f, Offset(container.width / 2f, container.height / 2f)) }) { Text("−") }
             TextButton(onClick = { zoomAround(1.4f, Offset(container.width / 2f, container.height / 2f)) }) { Text("+") }
-            TextButton(onClick = { bitmap?.let { b -> scale = min(container.width.toFloat() / b.width, container.height.toFloat() / b.height); offset = Offset((container.width - b.width * scale) / 2, (container.height - b.height * scale) / 2) } }) { Text("Fit") }
+            TextButton(onClick = { bitmap?.let { b -> scale = min(container.width.toFloat() / b.width, container.height.toFloat() / b.height); offset = Offset((container.width - b.width * scale) / 2, (container.height - b.height * scale) / 2) } }) { Text(tr("Fit")) }
         }
 
         // Image with marks
@@ -321,27 +322,27 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
             if (step == 1) {
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    for (f in FaceType.values()) { FilterChip(selected = faceType == f, onClick = { faceType = f }, label = { Text(f.label) }, modifier = Modifier.padding(end = 6.dp)) }
+                    for (f in FaceType.values()) { FilterChip(selected = faceType == f, onClick = { faceType = f }, label = { Text(tr(f.label)) }, modifier = Modifier.padding(end = 6.dp)) }
                 }
                 Row {
-                    FilterChip(selected = environment == "outdoor", onClick = { environment = "outdoor" }, label = { Text("Outdoor") }, modifier = Modifier.padding(end = 6.dp))
-                    FilterChip(selected = environment == "indoor", onClick = { environment = "indoor" }, label = { Text("Indoor") })
+                    FilterChip(selected = environment == "outdoor", onClick = { environment = "outdoor" }, label = { Text(tr("Outdoor")) }, modifier = Modifier.padding(end = 6.dp))
+                    FilterChip(selected = environment == "indoor", onClick = { environment = "indoor" }, label = { Text(tr("Indoor")) })
                 }
                 Text(when {
-                    faceRestored && geometry != null -> "Marking from the last photo. Drag a point to adjust, or Clear to mark anew."
-                    center == null -> "Tap the centre of the face."
-                    edge.size < 4 -> "Tap 4 points on the outer edge of the blue ring (${edge.size} of 4), best top, bottom, left and right."
-                    geometry == null && edge.size == 4 -> "The 4 points don't fit an ellipse around the centre. Add a 5th point on the blue edge (that also handles a photo taken from the side), or Undo."
-                    geometry == null -> "These points don't form an ellipse. Undo and tap again, spread around the blue edge."
-                    edge.size == 4 -> "Face found. A 5th edge point also corrects a photo taken from the side; or continue."
-                    else -> "Face found. Add more edge points for precision, or continue."
+                    faceRestored && geometry != null -> tr("Marking from the last photo. Drag a point to adjust, or Clear to mark anew.")
+                    center == null -> tr("Tap the centre of the face.")
+                    edge.size < 4 -> tr("Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right.", "edge" to edge.size)
+                    geometry == null && edge.size == 4 -> tr("The 4 points don't fit an ellipse around the centre. Add a 5th point on the blue edge (that also handles a photo taken from the side), or Undo.")
+                    geometry == null -> tr("These points don't form an ellipse. Undo and tap again, spread around the blue edge.")
+                    edge.size == 4 -> tr("Face found. A 5th edge point also corrects a photo taken from the side; or continue.")
+                    else -> tr("Face found. Add more edge points for precision, or continue.")
                 }, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SecondaryButton("Undo", enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null; faceRestored = false }
-                    SecondaryButton("Clear", enabled = center != null) { center = null; edge = emptyList(); faceRestored = false }
-                    SecondaryButton("Skip face") { skipFace = true; center = null; edge = emptyList(); step = 2 }
+                    SecondaryButton(tr("Undo"), enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null; faceRestored = false }
+                    SecondaryButton(tr("Clear"), enabled = center != null) { center = null; edge = emptyList(); faceRestored = false }
+                    SecondaryButton(tr("Skip face")) { skipFace = true; center = null; edge = emptyList(); step = 2 }
                     Spacer(Modifier.weight(1f))
-                    PrimaryButton("Next", enabled = geometry != null) {
+                    PrimaryButton(tr("Next"), enabled = geometry != null) {
                         // keep the marking for the next photo, as fractions of the image
                         val b = bitmap; val c = center
                         val fm = if (b != null && c != null) listOf(c.x / b.width.toDouble(), c.y / b.height.toDouble()) + edge.flatMap { listOf(it.x / b.width.toDouble(), it.y / b.height.toDouble()) } else prefs.faceMarks
@@ -352,16 +353,16 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 val sightShots = state.session?.takeIf { it.active }?.endShots
                 val hits = if (geometry != null) marks.map { m -> Scoring.mmFromCenter(geometry.toFace(Pt(m.pos.x.toDouble(), m.pos.y.toDouble())), faceType) } else emptyList()
                 val gc = Scoring.groupCenterMm(hits)
-                Text("${marks.size} marked" + (sightShots?.let { " · sight counted $it" } ?: "") +
+                Text(tr("{marks} marked", "marks" to marks.size) + (sightShots?.let { " · sight counted $it" } ?: "") +
                     (gc?.let { " · group centre ${fmt(kotlin.math.abs(it.x) / 10, 1)} cm ${if (it.x < 0) "left" else "right"}, ${fmt(kotlin.math.abs(it.y) / 10, 1)} cm ${if (it.y < 0) "low" else "high"}" } ?: ""),
                     color = uv.muted, fontSize = 14.sp)
-                if (skipFace) Text("Without the face marking, pick the ring of each arrow below.", color = uv.muted, fontSize = 13.sp)
-                if (modelInfo != null && detections == null) Text("Looking for arrows…", color = uv.muted, fontSize = 12.sp)
+                if (skipFace) Text(tr("Without the face marking, pick the ring of each arrow below."), color = uv.muted, fontSize = 13.sp)
+                if (modelInfo != null && detections == null) Text(tr("Looking for arrows…"), color = uv.muted, fontSize = 12.sp)
                 if (endShots != null && shotAssign != null) {
                     val acc = ctl.matchAccuracy(state.setups?.active)
-                    Text("Shot matching accuracy " + (acc?.let { "${(it * 100).roundToInt()} %" } ?: "–") + "  ·  tap an arrow to set its shot", color = uv.muted, fontSize = 12.sp)
+                    Text(tr("Shot matching accuracy ") + (acc?.let { "${(it * 100).roundToInt()} %" } ?: "–") + tr("  ·  tap an arrow to set its shot"), color = uv.muted, fontSize = 12.sp)
                 } else if (endShots != null && marks.isNotEmpty() && endShots.shots.size != marks.size && geometry != null)
-                    Text("Shot matching: the sight counted ${endShots.shots.size} ${if (endShots.shots.size == 1) "shot" else "shots"}, ${marks.size} marked.", color = uv.muted, fontSize = 12.sp)
+                    Text(tr("Shot matching: the sight counted {shots} {shots2}, {marks} marked.", "shots" to endShots.shots.size, "shots2" to (if (endShots.shots.size == 1) tr("shot") else tr("shots")), "marks" to marks.size), color = uv.muted, fontSize = 12.sp)
                 val sel = selected
                 if (sel != null && sel < marks.size) {
                     FlowRow(Modifier.padding(vertical = 4.dp)) {
@@ -369,21 +370,21 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                             FilterChip(selected = marks[sel].ring == r, onClick = { marks = marks.toMutableList().also { it[sel] = it[sel].copy(ring = r) } },
                                 label = { Text(Scoring.label(r)) }, modifier = Modifier.padding(end = 4.dp))
                         }
-                        TextButton(onClick = { marks = marks.filterIndexed { i, _ -> i != sel }; selected = null }) { Text("Delete", color = uv.red) }
+                        TextButton(onClick = { marks = marks.filterIndexed { i, _ -> i != sel }; selected = null }) { Text(tr("Delete"), color = uv.red) }
                     }
                     shotAssign?.let { sa ->
                         FlowRow(Modifier.padding(bottom = 4.dp), verticalArrangement = Arrangement.Center) {
-                            Text("Shot", color = uv.muted, fontSize = 13.sp, modifier = Modifier.padding(end = 6.dp, top = 12.dp))
+                            Text(tr("Shot"), color = uv.muted, fontSize = 13.sp, modifier = Modifier.padding(end = 6.dp, top = 12.dp))
                             for (sh in 0 until marks.size) FilterChip(selected = sa.shotOf[sel] == sh, onClick = { manualShot = manualShot + (sel to sh) },
                                 label = { Text("${sh + 1}") }, modifier = Modifier.padding(end = 4.dp))
                         }
                     }
-                } else Text("Tap each arrow where it enters the face. Tap a mark to change its ring, drag to move it.", color = uv.muted, fontSize = 13.sp)
+                } else Text(tr("Tap each arrow where it enters the face. Tap a mark to change its ring, drag to move it."), color = uv.muted, fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                    SecondaryButton("Undo", enabled = marks.isNotEmpty()) { marks = marks.dropLast(1); selected = null }
-                    if (!skipFace) SecondaryButton("Face") { step = 1 }
+                    SecondaryButton(tr("Undo"), enabled = marks.isNotEmpty()) { marks = marks.dropLast(1); selected = null }
+                    if (!skipFace) SecondaryButton(tr("Face")) { step = 1 }
                     Spacer(Modifier.weight(1f))
-                    PrimaryButton("Use scores", enabled = marks.isNotEmpty() && marks.all { it.ring >= 0 }) {
+                    PrimaryButton(tr("Use scores"), enabled = marks.isNotEmpty() && marks.all { it.ring >= 0 }) {
                         val rings = marks.map { it.ring }
                         val hitList: List<Hit>? = hitsOf(marks)
                         val sa = shotAssign
@@ -411,7 +412,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                 model = if (marks.any { it.source == "model" }) modelInfo?.name else null, modelConf = if (marks.any { it.source == "model" }) prefs.modelConf else null,
                                 shots = endShots?.shots,
                             )
-                            runCatching { TrainingStore(context).save(rec, file) }.onFailure { vm.toast("Could not keep the photo: ${it.message}", true) }
+                            runCatching { TrainingStore(context).save(rec, file) }.onFailure { vm.toast(tr("Could not keep the photo: {message}", "message" to it.message), true) }
                         }
                         file.delete()
                         onClose()

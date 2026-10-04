@@ -56,42 +56,42 @@ object Insights {
             val tight = base.groupRadius == null || g.radius <= base.groupRadius * 1.3
             if (off > max(2.0, 0.6 * g.radius) && g.n >= 3) {
                 val parts = ArrayList<String>()
-                if (abs(g.cx) >= 1.0) parts.add(f1(abs(g.cx)) + " cm " + if (g.cx < 0) "left" else "right")
-                if (abs(g.cy) >= 1.0) parts.add(f1(abs(g.cy)) + " cm " + if (g.cy < 0) "low" else "high")
-                var s = "Group " + parts.joinToString(", ") + if (tight) ": move the sight" else ""
+                if (abs(g.cx) >= 1.0) parts.add(tr("{cm} cm {side}", "cm" to f1(abs(g.cx)), "side" to (if (g.cx < 0) tr("left") else tr("right"))))
+                if (abs(g.cy) >= 1.0) parts.add(tr("{cm} cm {side}", "cm" to f1(abs(g.cy)), "side" to (if (g.cy < 0) tr("low") else tr("high"))))
+                var s = tr("Group {offset}", "offset" to parts.joinToString(", ")) + if (tight) tr(": move the sight") else ""
                 val d = e.dist
                 if (clickMmAt18 != null && clickMmAt18 > 0 && d != null && d > 0) {
                     val perClickCm = clickMmAt18 / 10 * d / 18.0
                     val cl = ArrayList<String>()
                     val kx = (abs(g.cx) / perClickCm).roundToInt(); val ky = (abs(g.cy) / perClickCm).roundToInt()
-                    if (kx >= 1) cl.add("$kx ${if (kx == 1) "click" else "clicks"} ${if (g.cx < 0) "left" else "right"}")
-                    if (ky >= 1) cl.add("$ky ${if (ky == 1) "click" else "clicks"} ${if (g.cy < 0) "down" else "up"}")
+                    if (kx >= 1) cl.add(tr("{n} {clicks} {dir}", "n" to kx, "clicks" to (if (kx == 1) tr("click") else tr("clicks")), "dir" to (if (g.cx < 0) tr("left") else tr("right"))))
+                    if (ky >= 1) cl.add(tr("{n} {clicks} {dir}", "n" to ky, "clicks" to (if (ky == 1) tr("click") else tr("clicks")), "dir" to (if (g.cy < 0) tr("down") else tr("up"))))
                     if (cl.isNotEmpty()) s += " (" + cl.joinToString(", ") + ")"
                 }
                 out.add(s + ".")
             }
             if (g.n >= 4) {
-                if (g.sdY > 1.5 * g.sdX && g.sdY > 3) out.add("Vertical spread (${f1(g.sdY)} cm up/down vs ${f1(g.sdX)} sideways): check anchor and draw length.")
-                else if (g.sdX > 1.5 * g.sdY && g.sdX > 3) out.add("Horizontal spread (${f1(g.sdX)} cm sideways vs ${f1(g.sdY)} up/down): check the release.")
+                if (g.sdY > 1.5 * g.sdX && g.sdY > 3) out.add(tr("Vertical spread ({v} cm up/down vs {h} sideways): check anchor and draw length.", "v" to f1(g.sdY), "h" to f1(g.sdX)))
+                else if (g.sdX > 1.5 * g.sdY && g.sdX > 3) out.add(tr("Horizontal spread ({h} cm sideways vs {v} up/down): check the release.", "h" to f1(g.sdX), "v" to f1(g.sdY)))
             }
-            if (base.groupRadius != null && g.n >= 3 && g.radius > base.groupRadius * 1.5 && g.radius > 3) out.add("Wider group than usual (${f1(g.radius)} cm vs ${f1(base.groupRadius)} cm).")
+            if (base.groupRadius != null && g.n >= 3 && g.radius > base.groupRadius * 1.5 && g.radius > 3) out.add(tr("Wider group than usual ({now} cm vs {usual} cm).", "now" to f1(g.radius), "usual" to f1(base.groupRadius)))
         }
         val hold = holdOf(e)
-        if (hold != null && base.hold != null && base.ends >= 3 && hold > base.hold * 1.5 && hold > 0.05) out.add("Unsteady hold (±${f2(hold)}° vs your usual ±${f2(base.hold)}°).")
+        if (hold != null && base.hold != null && base.ends >= 3 && hold > base.hold * 1.5 && hold > 0.05) out.add(tr("Unsteady hold (±{now}° vs your usual ±{usual}°).", "now" to f2(hold), "usual" to f2(base.hold)))
         val canted = e.canted ?: 0
         val cant = e.cant
-        if (canted >= 2 && cant != null) out.add("Bow canted ${if (cant < 0) "left" else "right"} in $canted of ${e.cantN ?: e.arrows} shots.")
-        else if (cant != null && abs(cant) > cantTol) out.add("Bow canted ${f1(abs(cant))}° ${if (cant < 0) "left" else "right"} on average.")
+        if (canted >= 2 && cant != null) out.add(tr("Bow canted {side} in {n} of {total} shots.", "side" to (if (cant < 0) tr("left") else tr("right")), "n" to canted, "total" to (e.cantN ?: e.arrows)))
+        else if (cant != null && abs(cant) > cantTol) out.add(tr("Bow canted {deg}° {side} on average.", "deg" to f1(abs(cant)), "side" to (if (cant < 0) tr("left") else tr("right"))))
         e.shots?.let { shots ->
             val sinking = shots.count { (it.drop ?: 0.0) < -0.4 }
-            if (sinking >= 2) out.add("Aim sank before the release in $sinking shots.")
+            if (sinking >= 2) out.add(tr("Aim sank before the release in {n} shots.", "n" to sinking))
             val rates = shots.mapNotNull { it.rate }
             if (rates.size >= 3) {
                 val med = median(rates)!!
                 val hard = shots.filter { (it.rate ?: 0.0) > 2 * med && (it.rate ?: 0.0) > 150 }
-                if (hard.isNotEmpty()) out.add("Hard release in ${if (hard.size == 1) "shot ${hard[0].i + 1}" else "shots " + hard.joinToString(", ") { "${it.i + 1}" }}: the bow turned ${f1(hard.maxOf { it.rate!! })}°/s.")
+                if (hard.isNotEmpty()) out.add(tr("Hard release in {shots}: the bow turned {rate}°/s.", "shots" to (if (hard.size == 1) tr("shot {n}", "n" to hard[0].i + 1) else tr("shots {list}", "list" to hard.joinToString(", ") { "${it.i + 1}" })), "rate" to f1(hard.maxOf { it.rate!! })))
             }
-            rhythm(shots)?.let { (cv, lo, hi) -> if (shots.size >= 4 && cv > 0.5) out.add("Uneven rhythm: ${f1(lo)} to ${f1(hi)} s between shots.") }
+            rhythm(shots)?.let { (cv, lo, hi) -> if (shots.size >= 4 && cv > 0.5) out.add(tr("Uneven rhythm: {lo} to {hi} s between shots.", "lo" to f1(lo), "hi" to f1(hi))) }
         }
         return out
     }
@@ -125,7 +125,7 @@ object Insights {
         }
         if (endsWith >= 4 && firstN >= 4 && restN >= 8) {
             val d = rest / restN - first / firstN
-            if (d >= 0.8) out.add("The first arrow of an end scores ${f1(d)} points below the others (${firstN} ends).")
+            if (d >= 0.8) out.add(tr("The first arrow of an end scores {d} points below the others ({n} ends).", "d" to f1(d), "n" to firstN))
         }
         // fatigue: last third vs first third
         if (valid.size >= 6) {
@@ -133,8 +133,8 @@ object Insights {
             fun avg(l: List<EndDetail>) = l.mapNotNull { e -> e.sum?.toDouble()?.div(max(1, e.arrows)) }.average()
             val a = avg(valid.take(k)); val b = avg(valid.takeLast(k))
             val ha = valid.take(k).mapNotNull { holdOf(it) }; val hb = valid.takeLast(k).mapNotNull { holdOf(it) }
-            if (a - b >= 0.5) out.add("Scores fell from ${f2(a)} to ${f2(b)} per arrow over the session" +
-                (if (ha.isNotEmpty() && hb.isNotEmpty() && hb.average() > ha.average() * 1.3) ", and the hold got less steady" else "") + ".")
+            if (a - b >= 0.5) out.add(tr("Scores fell from {a} to {b} per arrow over the session", "a" to f2(a), "b" to f2(b)) +
+                (if (ha.isNotEmpty() && hb.isNotEmpty() && hb.average() > ha.average() * 1.3) tr(", and the hold got less steady") else "") + ".")
         }
         return out
     }

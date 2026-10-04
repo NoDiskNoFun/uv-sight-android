@@ -54,9 +54,10 @@ import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import de.uvsight.core.tr
 
 fun fmtStamp(ms: Long): String = SimpleDateFormat("EEE d MMM, HH:mm", Locale.getDefault()).format(Date(ms))
-fun fmtDate(r: ArchiveSession): String = r.startedAt?.let { fmtStamp(it) } ?: ("Before " + fmtStamp(r.importedAt))
+fun fmtDate(r: ArchiveSession): String = r.startedAt?.let { fmtStamp(it) } ?: tr("Before {time}", "time" to fmtStamp(r.importedAt))
 
 @Composable
 fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
@@ -67,36 +68,36 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     var removing by remember { mutableStateOf<ArchiveSession?>(null) }
     val today = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date())
     val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-        uri?.let { runCatching { context.contentResolver.openOutputStream(it)?.use { o -> o.write(ctl.exportCsv().toByteArray()) } }.onFailure { e -> vm.toast("Export failed: ${e.message}", true) } }
+        uri?.let { runCatching { context.contentResolver.openOutputStream(it)?.use { o -> o.write(ctl.exportCsv().toByteArray()) } }.onFailure { e -> vm.toast(tr("Export failed: {message}", "message" to e.message), true) } }
     }
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri?.let { runCatching { context.contentResolver.openOutputStream(it)?.use { o -> o.write(ctl.exportBackup().toByteArray()) } }.onFailure { e -> vm.toast("Backup failed: ${e.message}", true) } }
+        uri?.let { runCatching { context.contentResolver.openOutputStream(it)?.use { o -> o.write(ctl.exportBackup().toByteArray()) } }.onFailure { e -> vm.toast(tr("Backup failed: {message}", "message" to e.message), true) } }
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             val name = it.lastPathSegment ?: ""
             val text = runCatching { context.contentResolver.openInputStream(it)?.bufferedReader()?.use { r -> r.readText() } }.getOrNull()
-            if (text == null) vm.toast("Could not read the file.", true) else ctl.importText(name, text)
+            if (text == null) vm.toast(tr("Could not read the file."), true) else ctl.importText(name, text)
         }
     }
 
     LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
         item {
             if (!state.autoCopy) Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SecondaryButton("Get from sight", Modifier.weight(1f)) { ctl.requestLogNow() }
-                SecondaryButton("Copy to sight", Modifier.weight(1f), enabled = state.copyProgress.isEmpty()) { ctl.copyToSight() }
+                SecondaryButton(tr("Get from sight"), Modifier.weight(1f)) { ctl.requestLogNow() }
+                SecondaryButton(tr("Copy to sight"), Modifier.weight(1f), enabled = state.copyProgress.isEmpty()) { ctl.copyToSight() }
             }
             Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SecondaryButton("CSV", Modifier.weight(1f), enabled = list.isNotEmpty()) { csvLauncher.launch("uv-sight-ends-$today.csv") }
-                SecondaryButton("Backup", Modifier.weight(1f)) { backupLauncher.launch("uv-sight-backup-$today.json") }
-                SecondaryButton("Import", Modifier.weight(1f)) { importLauncher.launch(arrayOf("application/json", "text/csv", "text/comma-separated-values", "text/plain", "*/*")) }
+                SecondaryButton(tr("CSV"), Modifier.weight(1f), enabled = list.isNotEmpty()) { csvLauncher.launch("uv-sight-ends-$today.csv") }
+                SecondaryButton(tr("Backup"), Modifier.weight(1f)) { backupLauncher.launch("uv-sight-backup-$today.json") }
+                SecondaryButton(tr("Import"), Modifier.weight(1f)) { importLauncher.launch(arrayOf("application/json", "text/csv", "text/comma-separated-values", "text/plain", "*/*")) }
             }
             if (state.syncLine.isNotEmpty()) Text(state.syncLine, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
             if (state.copyProgress.isNotEmpty()) Text(state.copyProgress, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
             if (list.isNotEmpty()) AverageChart(list.filter { !it.hidden }, state.ends)
             if (list.isNotEmpty()) TrendsCard(list.filter { !it.hidden }, state.ends)
         }
-        if (list.isEmpty()) item { EmptyBox("No sessions yet. Finished sessions appear here once the app has been connected to the sight.") }
+        if (list.isEmpty()) item { EmptyBox(tr("No sessions yet. Finished sessions appear here once the app has been connected to the sight.")) }
         else item {
             UvCard(padding = 0) {
                 list.forEachIndexed { i, r ->
@@ -107,12 +108,12 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(fmtDate(r), fontWeight = FontWeight.SemiBold, color = if (r.hidden) uv.muted else uv.ink)
-                            Text("${r.ends} ${if (r.ends == 1) "end" else "ends"}, ${r.scored} arrows, ${r.x} X, ${r.min} min", color = uv.muted, fontSize = 14.sp)
+                            Text(tr("{ends} {ends2}, {scored} arrows, {x} X, {r} min", "ends" to r.ends, "ends2" to (if (r.ends == 1) tr("end") else tr("ends")), "scored" to r.scored, "x" to r.x, "r" to r.min), color = uv.muted, fontSize = 14.sp)
                             val flags = ArrayList<String>()
-                            if (r.invalidEnds > 0) flags.add("${r.invalidEnds} invalid ${if (r.invalidEnds == 1) "end" else "ends"} (${r.invalidArrows} arrows)")
-                            if (r.mismatch && r.invalidEnds == 0) flags.add("counts corrected by hand")
+                            if (r.invalidEnds > 0) flags.add(tr("{invalidEnds} invalid {invalidEnds2} ({invalidArrows} arrows)", "invalidEnds" to r.invalidEnds, "invalidEnds2" to (if (r.invalidEnds == 1) tr("end") else tr("ends")), "invalidArrows" to r.invalidArrows))
+                            if (r.mismatch && r.invalidEnds == 0) flags.add(tr("counts corrected by hand"))
                             if (flags.isNotEmpty()) Text(flags.joinToString(", "), color = uv.red, fontSize = 13.sp)
-                            if (r.hidden) Text("removed from this phone", color = uv.muted, fontSize = 13.sp)
+                            if (r.hidden) Text(tr("removed from this phone"), color = uv.muted, fontSize = 13.sp)
                         }
                         Text(fmt(r.avg, 2), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = if (r.hidden) uv.muted else uv.ink, modifier = Modifier.padding(top = if (sightOf != null || state.sights.size > 1) 10.dp else 0.dp))
                     }
@@ -127,20 +128,20 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
         SessionDialog(r, state.ends[r.key] ?: emptyList(), ctl, state.sights.firstOrNull { it.id == r.sightId }, onClose = { shown = null }, onRemove = { shown = null; removing = r })
     }
     removing?.let { r ->
-        AlertDialog(onDismissRequest = { removing = null }, title = { Text("Remove this session?") },
+        AlertDialog(onDismissRequest = { removing = null }, title = { Text(tr("Remove this session?")) },
             text = {
                 Column {
-                    Text(fmtDate(r) + ": ${r.ends} ends, ${r.scored} arrows, average ${fmt(r.avg, 2)}.", color = uv.muted)
+                    Text(fmtDate(r) + tr(": {ends} ends, {scored} arrows, average {avg}.", "ends" to r.ends, "scored" to r.scored, "avg" to (fmt(r.avg, 2))), color = uv.muted)
                     Spacer(Modifier.height(12.dp))
-                    if (!r.hidden) PrimaryButton("Remove from phone", Modifier.fillMaxWidth()) { removing = null; ctl.removeFromPhone(r) }
-                    Text("The sight keeps its copy as a backup.", color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                    if (!r.hidden) PrimaryButton(tr("Remove from phone"), Modifier.fillMaxWidth()) { removing = null; ctl.removeFromPhone(r) }
+                    Text(tr("The sight keeps its copy as a backup."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                     if (r.hasSightKey) {
-                        SecondaryButton("Remove completely", Modifier.fillMaxWidth(), danger = true) { removing = null; ctl.removeCompletely(r) }
-                        Text("Also deleted on the sight. Only your backup files still have it.", color = uv.muted, fontSize = 12.sp)
+                        SecondaryButton(tr("Remove completely"), Modifier.fillMaxWidth(), danger = true) { removing = null; ctl.removeCompletely(r) }
+                        Text(tr("Also deleted on the sight. Only your backup files still have it."), color = uv.muted, fontSize = 12.sp)
                     }
                 }
             },
-            confirmButton = {}, dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } })
+            confirmButton = {}, dismissButton = { TextButton(onClick = { removing = null }) { Text(tr("Cancel")) } })
     }
 }
 
@@ -150,9 +151,9 @@ private fun AverageChart(list: List<ArchiveSession>, endsStore: Map<String, List
     val pts = list.filter { it.scored > 0 }.take(20).reversed()
     UvCard(padding = 14) {
         val withEnds = pts.count { (endsStore[it.key] ?: emptyList()).any { e -> e.valid && e.arrows > 0 } }
-        Text("Average per session" + if (withEnds > 0) "  (dots: single ends)" else "", fontWeight = FontWeight.SemiBold)
+        Text(tr("Average per session") + if (withEnds > 0) tr("  (dots: single ends)") else "", fontWeight = FontWeight.SemiBold)
         if (pts.size < 2) {
-            Note("The chart appears as soon as two sessions with scores are stored on this phone" + if (pts.size == 1) ". One is there so far." else ".")
+            Note(tr("The chart appears as soon as two sessions with scores are stored on this phone") + if (pts.size == 1) tr(". One is there so far.") else ".")
             return@UvCard
         }
         val vals = pts.map { it.avg }
@@ -170,7 +171,7 @@ private fun AverageChart(list: List<ArchiveSession>, endsStore: Map<String, List
             vals.forEachIndexed { i, v -> drawCircle(uv.gold, 3.5.dp.toPx(), Offset(x(i), y(v))) }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("older  (${fmt(lo, 0)} to ${fmt(hi, 0)})", color = uv.muted, fontSize = 11.sp); Text("newest", color = uv.muted, fontSize = 11.sp)
+            Text(tr("older  ({lo} to {hi})", "lo" to (fmt(lo, 0)), "hi" to (fmt(hi, 0))), color = uv.muted, fontSize = 11.sp); Text(tr("newest"), color = uv.muted, fontSize = 11.sp)
         }
     }
     Spacer(Modifier.height(14.dp))
@@ -182,53 +183,53 @@ private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightCo
     WideDialog(onDismiss = onClose,
         title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(fmtDate(r), Modifier.weight(1f)); SightBadge(sightOf) } },
         buttons = {
-            if (r.hidden) TextButton(onClick = { onClose(); ctl.unhideSession(r) }) { Text("Show again") }
-            TextButton(onClick = onRemove) { Text("Remove…") }
+            if (r.hidden) TextButton(onClick = { onClose(); ctl.unhideSession(r) }) { Text(tr("Show again")) }
+            TextButton(onClick = onRemove) { Text(tr("Remove…")) }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onClose) { Text("Close") }
+            TextButton(onClick = onClose) { Text(tr("Close")) }
         }) {
             Column {
                 val lines = ArrayList<String>()
-                lines.add("${r.ends} ends, ${r.scored} arrows scored, average ${fmt(r.avg, 2)}, ${r.x} X, ${r.min} min.")
-                if (r.invalidEnds > 0) lines.add("${r.invalidEnds} invalid ends with ${r.invalidArrows} arrows.")
-                if (r.mismatch) lines.add("Counts corrected by hand.")
-                lines.add(if (r.manual) "Ended by hand." else "Ended automatically.")
+                lines.add(tr("{ends} ends, {scored} arrows scored, average {avg}, {x} X, {r} min.", "ends" to r.ends, "scored" to r.scored, "avg" to (fmt(r.avg, 2)), "x" to r.x, "r" to r.min))
+                if (r.invalidEnds > 0) lines.add(tr("{invalidEnds} invalid ends with {invalidArrows} arrows.", "invalidEnds" to r.invalidEnds, "invalidArrows" to r.invalidArrows))
+                if (r.mismatch) lines.add(tr("Counts corrected by hand."))
+                lines.add(if (r.manual) tr("Ended by hand.") else tr("Ended automatically."))
                 Text(lines.joinToString(" "), color = uv.muted, fontSize = 14.sp)
                 val sessionHints = remember(r.key, ends.size) { ctl.sessionHints(r.key) }
                 for (h in sessionHints) Text("• $h", color = uv.ink, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-                if (ends.isEmpty()) Note("No end details: this session was not scored in this app.")
+                if (ends.isEmpty()) Note(tr("No end details: this session was not scored in this app."))
                 else {
-                    GroupTitle("Points per end")
+                    GroupTitle(tr("Points per end"))
                     EndsBars(ends)
-                    Note("Bar height is the average per arrow, the number above is the end's total. Dashed: invalid end.")
+                    Note(tr("Bar height is the average per arrow, the number above is the end's total. Dashed: invalid end."))
                     if (ends.any { it.dist != null || it.ang != null || it.cant != null }) {
-                        GroupTitle("Ends")
-                        Row(Modifier.fillMaxWidth()) { listOf("End", "Distance", "Points", "Angle", "Cant").forEach { Text(it, Modifier.weight(1f), color = uv.muted, fontSize = 12.sp) } }
+                        GroupTitle(tr("Ends"))
+                        Row(Modifier.fillMaxWidth()) { listOf(tr("End"), tr("Distance"), tr("Points"), tr("Angle"), tr("Cant")).forEach { Text(it, Modifier.weight(1f), color = uv.muted, fontSize = 12.sp) } }
                         for (e in ends) {
                             HorizontalDivider(color = uv.line)
                             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                                 Text(e.n.toString(), Modifier.weight(1f), fontSize = 13.sp)
                                 Text(e.dist?.let { "$it m" } ?: "–", Modifier.weight(1f), fontSize = 13.sp)
-                                Text(if (e.valid) e.sum.toString() else "invalid", Modifier.weight(1f), fontSize = 13.sp)
+                                Text(if (e.valid) e.sum.toString() else tr("invalid"), Modifier.weight(1f), fontSize = 13.sp)
                                 Text(e.ang?.let { fmt(it, 2) + "° ±" + fmt(e.angSd ?: 0.0, 2) } ?: "–", Modifier.weight(1f), fontSize = 13.sp)
-                                Text(e.cant?.let { fmt(abs(it), 1) + "°" + (if ((e.canted ?: 0) > 0) " ${e.canted} over" else "") } ?: "–", Modifier.weight(1f), fontSize = 13.sp)
+                                Text(e.cant?.let { fmt(abs(it), 1) + "°" + (if ((e.canted ?: 0) > 0) tr(" {canted} over", "canted" to e.canted) else "") } ?: "–", Modifier.weight(1f), fontSize = 13.sp)
                             }
                             val eh = remember(e) { ctl.endHints(e) }
                             if (eh.isNotEmpty()) Text(eh.joinToString(" "), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
                         }
-                        Note("Cant: average at release; \"over\" counts arrows outside your cant tolerance.")
+                        Note(tr("Cant: average at release; \"over\" counts arrows outside your cant tolerance."))
                     }
                     if (ends.any { !it.hits.isNullOrEmpty() }) {
-                        GroupTitle("Hits (from photos)")
+                        GroupTitle(tr("Hits (from photos)"))
                         FacePlot(ends.flatMap { e -> (e.hits ?: emptyList()).mapIndexed { i, h ->
                             val shot = e.shotOf?.getOrNull(i)?.let { s -> "·" + (s + 1) + (if (e.shotSrc?.getOrNull(i) == "coin") "?" else "") } ?: ""
                             h to "${e.n}$shot" } })
-                        Note("One dot per arrow at its position on the face: end·shot. A \"?\" marks a shot the matching could not tell apart.")
+                        Note(tr("One dot per arrow at its position on the face: end·shot. A \"?\" marks a shot the matching could not tell apart."))
                     }
                     val count = HashMap<String, Int>(); var total = 0
                     for (e in ends) for (v in e.scores ?: emptyList()) { count[v] = (count[v] ?: 0) + 1; total++ }
                     if (total > 0) {
-                        GroupTitle("Arrows by score ($total arrows)")
+                        GroupTitle(tr("Arrows by score ({total} arrows)", "total" to total))
                         val mx = count.values.max()
                         for (v in listOf("X", "10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "M")) {
                             val c = count[v] ?: 0
@@ -303,14 +304,14 @@ private fun TrendsCard(list: List<ArchiveSession>, endsStore: Map<String, List<E
     val uv = LocalUv.current
     val rows = list.sortedBy { it.sortTime }.mapNotNull { s -> endsStore[s.key]?.takeIf { it.isNotEmpty() }?.let { de.uvsight.core.Insights.sessionStats(it) } }.takeLast(12)
     val series = listOf(
-        Triple("Group size", rows.map { it.groupRadius }, "cm"),
-        Triple("Hold steadiness", rows.map { it.hold }, "°"),
-        Triple("Cant consistency", rows.map { it.cantSd }, "°"),
-        Triple("Hold time", rows.map { it.holdMs?.div(1000.0) }, "s"),
+        Triple(tr("Group size"), rows.map { it.groupRadius }, "cm"),
+        Triple(tr("Hold steadiness"), rows.map { it.hold }, "°"),
+        Triple(tr("Cant consistency"), rows.map { it.cantSd }, "°"),
+        Triple(tr("Hold time"), rows.map { it.holdMs?.div(1000.0) }, "s"),
     ).filter { (_, v, _) -> v.count { it != null } >= 2 }
     if (series.isEmpty()) return
     UvCard(padding = 14) {
-        Text("Trends over the last ${rows.size} sessions", fontWeight = FontWeight.SemiBold)
+        Text(tr("Trends over the last {rows} sessions", "rows" to rows.size), fontWeight = FontWeight.SemiBold)
         for ((label, values, unit) in series) {
             val vals = values.map { it ?: Double.NaN }
             val present = vals.filter { !it.isNaN() }
@@ -318,7 +319,7 @@ private fun TrendsCard(list: List<ArchiveSession>, endsStore: Map<String, List<E
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.width(120.dp)) {
                     Text(label, fontSize = 13.sp, color = uv.ink)
-                    Text("now ${fmt(last, if (unit == "°") 2 else 1)} $unit", fontSize = 12.sp, color = uv.muted)
+                    Text(tr("now {unit} {unit2}", "unit" to (fmt(last, if (unit == "°") 2 else 1)), "unit2" to unit), fontSize = 12.sp, color = uv.muted)
                 }
                 Canvas(Modifier.weight(1f).height(36.dp)) {
                     val lo = present.min(); val hi = present.max(); val range = (hi - lo).takeIf { it > 1e-9 } ?: 1.0
@@ -333,7 +334,7 @@ private fun TrendsCard(list: List<ArchiveSession>, endsStore: Map<String, List<E
                 }
             }
         }
-        Note("Lower is better for all four except hold time. Group size is the mean distance of the arrows from their centre (from photos).")
+        Note(tr("Lower is better for all four except hold time. Group size is the mean distance of the arrows from their centre (from photos)."))
     }
     Spacer(Modifier.height(14.dp))
 }

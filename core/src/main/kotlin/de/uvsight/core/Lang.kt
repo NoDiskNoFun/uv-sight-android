@@ -18,7 +18,9 @@ object Lang {
     fun set(code: String, table: Map<String, String>) { this.code = code; this.table = table }
 
     fun tr(key: String, vararg args: Pair<String, Any?>): String {
-        var s = table[key]?.takeIf { it.isNotEmpty() } ?: key
+        // keys are matched without their surrounding spaces (editors trim them), the key's own spacing is kept
+        val core = key.trim()
+        var s = table[core]?.takeIf { it.isNotEmpty() }?.let { v -> key.takeWhile { it == ' ' } + v + key.takeLastWhile { it == ' ' } } ?: key
         for ((k, v) in args) s = s.replace("{$k}", v.toString())
         return s
     }
@@ -31,7 +33,7 @@ object Lang {
             if (line.isBlank() || line.startsWith("#")) continue
             val i = line.indexOf(" = ")
             if (i <= 0) continue
-            val k = unescape(line.substring(0, i).trim()); val v = unescape(line.substring(i + 3).trim())
+            val k = unescape(line.substring(0, i)).trim(); val v = unescape(line.substring(i + 3)).trim()
             if (v.isNotEmpty()) out[k] = v
         }
         return out

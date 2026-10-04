@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.uvsight.core.AppState
 import de.uvsight.core.SightController
+import de.uvsight.core.tr
 
 @Composable
 fun ConsoleScreen(state: AppState, ctl: SightController) {
@@ -42,9 +43,9 @@ fun ConsoleScreen(state: AppState, ctl: SightController) {
         }
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(value = cmd, onValueChange = { cmd = it }, modifier = Modifier.weight(1f), singleLine = true,
-                placeholder = { Text("Command, e.g. help") })
+                placeholder = { Text(tr("Command, e.g. help")) })
             Spacer(Modifier.width(8.dp))
-            PrimaryButton("Send") { val c = cmd.trim(); if (c.isNotEmpty()) { ctl.sendRaw(c); cmd = "" } }
+            PrimaryButton(tr("Send")) { val c = cmd.trim(); if (c.isNotEmpty()) { ctl.sendRaw(c); cmd = "" } }
         }
     }
 }

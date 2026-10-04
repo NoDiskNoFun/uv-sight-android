@@ -54,6 +54,7 @@ import de.uvsight.app.SightViewModel
 import de.uvsight.core.AppState
 import de.uvsight.core.ConnState
 import de.uvsight.core.View
+import de.uvsight.core.tr
 
 @Composable
 fun UvSightApp(vm: SightViewModel) {
@@ -69,7 +70,7 @@ fun UvSightApp(vm: SightViewModel) {
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         // Notifications are optional; Bluetooth is not
         val bleOk = SightBle.requiredPermissions().all { granted[it] == true }
-        if (bleOk) ctl.connect() else vm.toast("Bluetooth permission is needed to find the sight.", true)
+        if (bleOk) ctl.connect() else vm.toast(tr("Bluetooth permission is needed to find the sight."), true)
     }
     var photoFile by remember { mutableStateOf<java.io.File?>(null) }
     val connect = {
@@ -86,11 +87,11 @@ fun UvSightApp(vm: SightViewModel) {
         bottomBar = {
             NavigationBar(containerColor = uv.surface) {
                 val tabs = buildList {
-                    if (!state.photoOnly) add(Triple(View.STATUS, "Status", Icons.Outlined.Speed))
-                    add(Triple(View.TRAINING, if (state.photoOnly) "Scoring" else "Training", Icons.Outlined.GpsFixed))
-                    if (!state.photoOnly) add(Triple(View.HISTORY, "History", Icons.Filled.History))
-                    add(Triple(View.SETTINGS, "Settings", Icons.Filled.Settings))
-                    if (state.consoleEnabled && !state.photoOnly) add(Triple(View.CONSOLE, "Console", Icons.Filled.Terminal))
+                    if (!state.photoOnly) add(Triple(View.STATUS, tr("Status"), Icons.Outlined.Speed))
+                    add(Triple(View.TRAINING, if (state.photoOnly) tr("Scoring") else tr("Training"), Icons.Outlined.GpsFixed))
+                    if (!state.photoOnly) add(Triple(View.HISTORY, tr("History"), Icons.Filled.History))
+                    add(Triple(View.SETTINGS, tr("Settings"), Icons.Filled.Settings))
+                    if (state.consoleEnabled && !state.photoOnly) add(Triple(View.CONSOLE, tr("Console"), Icons.Filled.Terminal))
                 }
                 for ((v, label, icon) in tabs) {
                     NavigationBarItem(selected = state.view == v, onClick = { ctl.setView(v) },
@@ -124,39 +125,39 @@ fun UvSightApp(vm: SightViewModel) {
     state.confirm?.let { c ->
         val rest = c.counted - c.entered
         AlertDialog(onDismissRequest = { ctl.answerConfirm("no") },
-            title = { Text("End ${c.end}: counts differ") },
-            text = { Text("The sight counted ${c.counted} ${if (c.counted == 1) "shot" else "shots"}, you entered ${c.entered} ${if (c.entered == 1) "score" else "scores"}. " +
-                if (c.canSplit) "Forgot to save the last end? Split saves your ${c.entered} scores as this end and keeps the other $rest ${if (rest == 1) "shot" else "shots"} for the next one."
-                else "Save with your ${c.entered} scores?") },
+            title = { Text(tr("End {end}: counts differ", "end" to c.end)) },
+            text = { Text(tr("The sight counted {counted} {counted2}, you entered {entered} {entered2}. ", "counted" to c.counted, "counted2" to (if (c.counted == 1) tr("shot") else tr("shots")), "entered" to c.entered, "entered2" to (if (c.entered == 1) tr("score") else tr("scores"))) +
+                if (c.canSplit) tr("Forgot to save the last end? Split saves your {entered} scores as this end and keeps the other {rest} {rest2} for the next one.", "entered" to c.entered, "rest" to rest, "rest2" to (if (rest == 1) tr("shot") else tr("shots")))
+                else tr("Save with your {entered} scores?", "entered" to c.entered)) },
             confirmButton = {
                 Row {
-                    if (c.canSplit) TextButton(onClick = { ctl.answerConfirm("split") }) { Text("Split") }
-                    TextButton(onClick = { ctl.answerConfirm("yes") }) { Text("Save anyway") }
+                    if (c.canSplit) TextButton(onClick = { ctl.answerConfirm("split") }) { Text(tr("Split")) }
+                    TextButton(onClick = { ctl.answerConfirm("yes") }) { Text(tr("Save anyway")) }
                 }
             },
-            dismissButton = { TextButton(onClick = { ctl.answerConfirm("no") }) { Text("Edit scores") } })
+            dismissButton = { TextButton(onClick = { ctl.answerConfirm("no") }) { Text(tr("Edit scores")) } })
     }
     state.afterClearCount?.let { n ->
         AlertDialog(onDismissRequest = { ctl.afterClearAnswer(false) },
-            title = { Text("$n ${if (n == 1) "session" else "sessions"} deleted on the sight") },
-            text = { Text("Copy the sessions from this phone back to the sight? Choose No if you give the sight away. Automatic sync is then switched off.") },
-            confirmButton = { TextButton(onClick = { ctl.afterClearAnswer(true) }) { Text("Copy back") } },
+            title = { Text(tr("{n} {n2} deleted on the sight", "n" to n, "n2" to (if (n == 1) tr("session") else tr("sessions")))) },
+            text = { Text(tr("Copy the sessions from this phone back to the sight? Choose No if you give the sight away. Automatic sync is then switched off.")) },
+            confirmButton = { TextButton(onClick = { ctl.afterClearAnswer(true) }) { Text(tr("Copy back")) } },
             dismissButton = { TextButton(onClick = { ctl.afterClearAnswer(false) }) { Text("No") } })
     }
     state.copyChoice?.let { list ->
         val checked = remember(list) { mutableStateOf(list.map { it.key }.toSet()) }
         WideDialog(onDismiss = { ctl.chooseCopies(emptySet()) },
-            title = { Text("Copy to the sight") },
+            title = { Text(tr("Copy to the sight")) },
             buttons = {
-                TextButton(onClick = { ctl.chooseCopies(emptySet()) }) { Text("Cancel") }
-                TextButton(onClick = { ctl.chooseCopies(checked.value) }, enabled = checked.value.isNotEmpty()) { Text(if (checked.value.isEmpty()) "Copy" else "Copy ${checked.value.size}") }
+                TextButton(onClick = { ctl.chooseCopies(emptySet()) }) { Text(tr("Cancel")) }
+                TextButton(onClick = { ctl.chooseCopies(checked.value) }, enabled = checked.value.isNotEmpty()) { Text(if (checked.value.isEmpty()) tr("Copy") else tr("Copy {checked}", "checked" to checked.value.size)) }
             }) {
                 Column {
-                    Text("${list.size} ${if (list.size == 1) "session is" else "sessions are"} on this phone but not on the sight. Untick the ones you don't want to copy.", color = uv.muted, fontSize = 14.sp)
+                    Text(tr("{list} {list2} on this phone but not on the sight. Untick the ones you don't want to copy.", "list" to list.size, "list2" to (if (list.size == 1) tr("session is") else tr("sessions are"))), color = uv.muted, fontSize = 14.sp)
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                        Text("${checked.value.size} of ${list.size} selected", color = uv.muted, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { checked.value = list.map { it.key }.toSet() }) { Text("All") }
-                        TextButton(onClick = { checked.value = emptySet() }) { Text("None") }
+                        Text(tr("{checked} of {list} selected", "checked" to checked.value.size, "list" to list.size), color = uv.muted, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { checked.value = list.map { it.key }.toSet() }) { Text(tr("All")) }
+                        TextButton(onClick = { checked.value = emptySet() }) { Text(tr("None")) }
                     }
                     Column {
                         for (r in list) {
@@ -164,7 +165,7 @@ fun UvSightApp(vm: SightViewModel) {
                                 Checkbox(checked = checked.value.contains(r.key), onCheckedChange = { on -> checked.value = if (on) checked.value + r.key else checked.value - r.key })
                                 Column(Modifier.weight(1f)) {
                                     Text(fmtDate(r), fontWeight = FontWeight.SemiBold)
-                                    Text("${r.ends} ends, ${r.scored} arrows" + if (r.hidden) ", removed from this phone" else "", color = uv.muted, fontSize = 13.sp)
+                                    Text(tr("{ends} ends, {scored} arrows", "ends" to r.ends, "scored" to r.scored) + if (r.hidden) tr(", removed from this phone") else "", color = uv.muted, fontSize = 13.sp)
                                 }
                                 Text(de.uvsight.core.fmt(r.avg, 2), fontWeight = FontWeight.Bold)
                             }
@@ -179,12 +180,12 @@ fun UvSightApp(vm: SightViewModel) {
 private fun Header(state: AppState) {
     val uv = LocalUv.current
     val text = when {
-        state.photoOnly -> "Photo scoring"
-        state.conn == ConnState.OFF && state.sightAsleep -> "Sight asleep"
-        state.conn == ConnState.OFF && state.autoReconnect -> "Reconnecting…"
-        state.conn == ConnState.OFF -> "Not connected"
-        state.conn == ConnState.CONNECTING -> "Connecting"
-        else -> "Connected" + (state.sight?.let { " · ${it.label}" } ?: "")
+        state.photoOnly -> tr("Photo scoring")
+        state.conn == ConnState.OFF && state.sightAsleep -> tr("Sight asleep")
+        state.conn == ConnState.OFF && state.autoReconnect -> tr("Reconnecting…")
+        state.conn == ConnState.OFF -> tr("Not connected")
+        state.conn == ConnState.CONNECTING -> tr("Connecting")
+        else -> tr("Connected") + (state.sight?.let { " · ${it.label}" } ?: "")
     }
     val dot = when {
         state.conn == ConnState.CONNECTED -> uv.ok
@@ -192,7 +193,7 @@ private fun Header(state: AppState) {
         else -> uv.line
     }
     Row(Modifier.fillMaxWidth().background(uv.paper).statusBarsPadding().padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("UV-Sight", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = uv.ink, modifier = Modifier.weight(1f))
+        Text(tr("UV-Sight"), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = uv.ink, modifier = Modifier.weight(1f))
         Box(Modifier.size(10.dp).background(dot, CircleShape))
         Spacer(Modifier.width(8.dp))
         Text(text, color = uv.muted, fontSize = 14.sp)
