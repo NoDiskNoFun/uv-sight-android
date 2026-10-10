@@ -54,10 +54,13 @@ class TfliteArrowDetector(file: File) : AutoCloseable {
     private val input = interpreter.getInputTensor(0)
     private val output = interpreter.getOutputTensor(0)
     val inputSize: Int
+    /** True for a channels-first input [1, 3, N, N] (kept from PyTorch by some exporters); false for [1, N, N, 3]. */
+    private val channelsFirst: Boolean
     init {
         val s = input.shape()
-        require(s.size == 4 && s[3] == 3 && s[1] == s[2]) { "input shape ${s.toList()} is not [1, N, N, 3]" }
-        inputSize = s[1]
+        require(s.size == 4 && ((s[3] == 3 && s[1] == s[2]) || (s[1] == 3 && s[2] == s[3]))) { "input shape ${s.toList()} is neither [1, N, N, 3] nor [1, 3, N, N]" }
+        channelsFirst = s[1] == 3 && s[3] != 3
+        inputSize = if (channelsFirst) s[2] else s[1]
         val o = output.shape().filter { it != 1 }
         require(o.size == 2 && (o[0] == YoloPoseDecoder.ROW || o[1] == YoloPoseDecoder.ROW)) { "output shape ${output.shape().toList()} is not a one-keypoint pose output" }
     }
@@ -78,16 +81,19 @@ class TfliteArrowDetector(file: File) : AutoCloseable {
         val inType = input.dataType()
         val inBuf = ByteBuffer.allocateDirect(inputSize * inputSize * 3 * if (inType == DataType.FLOAT32) 4 else 1).order(ByteOrder.nativeOrder())
         val q = input.quantizationParams()
-        for (p in pixels) {
-            val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val b = p and 0xFF
-            when (inType) {
-                DataType.FLOAT32 -> { inBuf.putFloat(r / 255f); inBuf.putFloat(g / 255f); inBuf.putFloat(b / 255f) }
-                DataType.UINT8 -> { inBuf.put(r.toByte()); inBuf.put(g.toByte()); inBuf.put(b.toByte()) }
-                else -> for (c in intArrayOf(r, g, b)) {            // INT8 with quantisation
-                    val v = if (q.scale > 0f) ((c / 255f) / q.scale + q.zeroPoint).roundToInt() else c - 128
-                    inBuf.put(v.coerceIn(-128, 127).toByte())
-                }
+        fun putChannel(c: Int) = when (inType) {
+            DataType.FLOAT32 -> inBuf.putFloat(c / 255f)
+            DataType.UINT8 -> inBuf.put(c.toByte())
+            else -> {                                                // INT8 with quantisation
+                val v = if (q.scale > 0f) ((c / 255f) / q.scale + q.zeroPoint).roundToInt() else c - 128
+                inBuf.put(v.coerceIn(-128, 127).toByte())
             }
+        }
+        if (channelsFirst) {
+            // one plane per colour: all red values, then green, then blue
+            for (shift in intArrayOf(16, 8, 0)) for (p in pixels) putChannel((p shr shift) and 0xFF)
+        } else {
+            for (p in pixels) { putChannel((p shr 16) and 0xFF); putChannel((p shr 8) and 0xFF); putChannel(p and 0xFF) }
         }
         inBuf.rewind()
         val outShape = output.shape()
