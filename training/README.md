@@ -19,7 +19,7 @@ pip install -r requirements.txt        # ultralytics pulls in PyTorch; litert-to
 python3 webui.py                        # then open http://localhost:8000 in Chromium
 ```
 
-Always start the page from the virtual environment (`. .venv/bin/activate` first, or `.venv/bin/python webui.py`). The page prints which Python it runs on and refuses to start a run when the export packages are missing, because Ultralytics would otherwise train for an hour and then fail at the export while trying to `pip install` into the system Python, which Arch and Debian forbid.
+Always start the page from the virtual environment: `. .venv/bin/activate` in bash or zsh, `source .venv/bin/activate.fish` in fish (the plain `activate` is a bash script and fish cannot read it), or skip activating and run `.venv/bin/python webui.py`. The page prints which Python it runs on and refuses to start a run when the export packages are missing, because Ultralytics would otherwise train for an hour and then fail at the export while trying to `pip install` into the system Python, which Arch and Debian forbid.
 
 The page shows which device PyTorch found. It should say `cuda` and your card's name:
 
