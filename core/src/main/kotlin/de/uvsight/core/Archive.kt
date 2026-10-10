@@ -153,12 +153,21 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
             dist = m.dist, distAuto = m.distSrc == "auto", setup = m.setup,
             ang = m.ang, angSd = m.angSd, angN = m.angN, cant = m.cant, cantMax = m.cantMax, canted = m.canted, cantN = m.cantN,
             hits = if (withHits) hits else null,
-            shots = m.shots?.shots?.takeIf { it.isNotEmpty() },
             shotOf = if (withMatch) match!!.shotOf else null, shotConf = if (withMatch) match!!.conf else null, shotSrc = if (withMatch) matchSrc else null,
         )
         list.add(rec)
         list.sortBy { it.n }
         all[key] = list
+        saveEnds(all)
+    }
+
+    /** The sight's shot list of an end arrived (after the end closed): attach it to the end. */
+    fun setEndShots(key: String, n: Int, shots: List<ShotInfo>) {
+        val all = ends().toMutableMap()
+        val list = all[key] ?: return
+        val i = list.indexOfFirst { it.n == n }
+        if (i < 0) return
+        all[key] = list.toMutableList().also { it[i] = it[i].copy(shots = shots.takeIf { s -> s.isNotEmpty() }) }
         saveEnds(all)
     }
 

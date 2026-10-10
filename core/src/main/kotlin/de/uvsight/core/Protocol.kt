@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 
-const val PROTO_EXPECTED = 20
+const val PROTO_EXPECTED = 21
 const val NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 const val NUS_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"   // app -> device (write)
 const val NUS_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"   // device -> app (notify)
@@ -81,13 +81,14 @@ fun Msg.toCfgItem() = CfgItem(str("k") ?: "", dbl("v") ?: 0.0, dbl("def") ?: 0.0
 
 fun Msg.toEnd() = EndMsg(int("n") ?: 0, bool("valid") ?: false, int("arrows") ?: 0, int("sum"), int("x"), dbl("avg"),
     str("reason"), int("dist"), str("distSrc"), int("setup"), dbl("ang"), dbl("angSd"), int("angN"), dbl("cant"),
-    dbl("cantMax"), int("canted"), int("cantN"), bool("stored") ?: true, if (has("shots")) toShots(int("n") ?: 0) else null)
+    dbl("cantMax"), int("canted"), int("cantN"), bool("stored") ?: true)
 
 fun Msg.toShotInfo() = ShotInfo(int("i") ?: 0, dbl("ang"), dbl("cant"), dbl("yaw"), dbl("roll"), dbl("rate"), dbl("px"), dbl("py"),
     t = dbl("t"), hold = dbl("hold"), holdMs = int("holdMs"), drop = dbl("drop"))
 fun Msg.toTrace() = AimTrace(int("end") ?: 0, int("i") ?: 0, dbls("ms").map { it.toInt() }, dbls("pitch").map { it / 100.0 }, dbls("cant").map { it / 100.0 })
-fun Msg.toShots(end: Int = int("end") ?: 0) = EndShots(end, int("n") ?: 0, int("dist")?.takeIf { it > 0 }, dbl("sdx") ?: 15.0, dbl("sdy") ?: 4.0,
-    int("modelN") ?: 0, bool("matching") ?: true, objs("shots").map { it.toShotInfo() })
+/** "shotsStart": the frame of a shot list; the shotItem lines follow, then shotsEnd. */
+fun Msg.toShotsStart() = EndShots(int("end") ?: 0, int("n") ?: 0, int("dist")?.takeIf { it > 0 }, dbl("sdx") ?: 15.0, dbl("sdy") ?: 4.0,
+    int("modelN") ?: 0, bool("matching") ?: true, emptyList())
 fun Msg.toShotModel() = ShotModelInfo(int("setup") ?: 0, bool("on") ?: true, int("n") ?: 0, dbl("ky") ?: 1.0, dbl("sdy") ?: 4.0, dbls("kx"), dbl("sdx") ?: 15.0)
 
 fun Msg.toConfirm() = ConfirmMsg(int("end") ?: 0, int("counted") ?: 0, int("entered") ?: 0, bool("split") ?: false)

@@ -135,7 +135,7 @@ data class LogInfo(val ok: Boolean, val jedec: String, val count: Int, val capac
 data class EndMsg(val n: Int, val valid: Boolean, val arrows: Int, val sum: Int?, val x: Int?, val avg: Double?,
                   val reason: String?, val dist: Int?, val distSrc: String?, val setup: Int?, val ang: Double?,
                   val angSd: Double?, val angN: Int?, val cant: Double?, val cantMax: Double?, val canted: Int?,
-                  val cantN: Int?, val stored: Boolean, val shots: EndShots? = null)
+                  val cantN: Int?, val stored: Boolean)
 
 /** One shot as the sight measured it: aiming angle, cant, bow rotation before the impact (deg), and the model's predicted position (cm from the end's mean). */
 @Serializable

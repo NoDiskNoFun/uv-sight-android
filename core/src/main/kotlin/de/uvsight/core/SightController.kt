@@ -158,6 +158,8 @@ class SightController(
     private var lastSentScores: List<String>? = null
     private var lastSentHits: List<Hit>? = null
     private var lastSentMatch: ShotMatch.Result? = null
+    private var shotsBuf: EndShots? = null              // shot list being received (shotsStart .. shotsEnd)
+    private var shotItems: ArrayList<ShotInfo>? = null
     private var lastSentMatchSrc: List<String>? = null
     private var distPresetAt = 0L
     private var levelResyncJob: Job? = null
@@ -411,7 +413,18 @@ class SightController(
             "logEnd" -> onLogEnd(m)
             "loginfo" -> set { copy(loginfo = m.toLogInfo()) }
             "range" -> set { copy(range = m.toRange()) }
-            "shots" -> set { copy(endShots = m.toShots()) }
+            "shotsStart" -> { shotsBuf = m.toShotsStart(); shotItems = ArrayList() }
+            "shotItem" -> shotItems?.add(m.toShotInfo())
+            "shotsEnd" -> {
+                val frame = shotsBuf; val items = shotItems ?: emptyList<ShotInfo>()
+                shotsBuf = null; shotItems = null
+                if (frame != null) {
+                    val list = frame.copy(shots = items)
+                    val open = s.session?.takeIf { it.active }?.end
+                    if (open != null && frame.end == open) set { copy(endShots = list) }
+                    else s.currentSessionKey?.let { key -> archive.setEndShots(key, frame.end, items); refreshHistory() }
+                }
+            }
             "shotModel" -> set { copy(shotModel = m.toShotModel()) }
             "trace" -> set { copy(trace = m.toTrace()) }
             "setupsStart" -> setupBuf = SetupsInfo(m.int("active") ?: 0, emptyList())
