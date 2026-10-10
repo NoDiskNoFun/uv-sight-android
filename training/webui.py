@@ -5,9 +5,11 @@
     python3 webui.py            # then open http://localhost:8000
 
 Upload the export ZIP from the app (Settings -> Photo scoring -> Export), pick the
-parameters, start. The page shows the progress, evaluates the result in archery terms
-(arrows found, entry-point error in millimetres, rings right) and offers the int8
-TFLite file for import into the app.
+parameters, start. Two models are trained: the arrow detector (entry point per arrow) and
+the face finder (centre and four edge points of the blue ring). The page shows the
+progress, evaluates the result in archery terms (arrows found, entry-point error in
+millimetres, rings right, face found) and offers a ZIP with both int8 TFLite files and
+the evaluation (model.json) for import into the app.
 
 --mock trains a stand-in model in seconds (for checking the page without a GPU).
 """
@@ -45,7 +47,8 @@ class Job:
         self.state = "running"     # running / done / failed / stopped
         self.epoch = 0
         self.epochs = int(params["epochs"])
-        self.metrics = []          # [{epoch, loss, ...}]
+        self.metrics = []          # [{epoch, loss, ...}] of the current stage
+        self.stage = "arrows"      # "arrows" / "face": which model is training
         self.log = []
         self.error = None
         self.started = time.time()
@@ -57,7 +60,7 @@ class Job:
         del self.log[:-300]
 
     def snapshot(self):
-        return {k: getattr(self, k) for k in ("name", "state", "epoch", "epochs", "metrics", "log", "error", "started", "result", "params")}
+        return {k: getattr(self, k) for k in ("name", "state", "stage", "epoch", "epochs", "metrics", "log", "error", "started", "result", "params")}
 
 
 # ----------------------------------------------------------------------------- hardware
@@ -82,13 +85,31 @@ def ultralytics_available():
 
 
 # ----------------------------------------------------------------------------- evaluation
-def evaluate(val_recs, predict):
-    """predict(record, image_path) -> [(x, y, conf)] in upright pixels. Returns archery metrics."""
+def evaluate(val_recs, predict, predict_face=None):
+    """predict(record, image_path) -> [(x, y, conf)] in upright pixels;
+    predict_face(record, image_path) -> (conf, [centre, top, right, bottom, left]) or None.
+    Returns archery metrics: arrows found, entry error, rings right; face found, centre error and
+    how often the user's arrows get the same ring with the model's face as with the user's."""
     found = total = false = ring_ok = ring_n = 0
     px_err = []; mm_err = []
+    face_n = face_found = face_ring_ok = face_ring_n = 0; face_mm = []
     per_image = []
     for rec, img in val_recs:
         preds = predict(rec, img)
+        face_hit = None
+        g_user = facegeom.geometry_of_record(rec)
+        if predict_face and g_user:
+            face_n += 1; face_hit = False
+            pf = predict_face(rec, img)
+            gp = facegeom.fit(pf[1][0], pf[1][1:5]) if pf and len(pf[1]) >= 5 else None
+            if gp:
+                face_found += 1; face_hit = True
+                dia, min_ring = facegeom.FACES.get(rec["face"], (rec.get("faceDiameterMm", 400), 1))
+                face_mm.append(math.hypot(*facegeom.mm_from_center(g_user.to_face(pf[1][0]), dia)))
+                for a in rec["arrows"]:
+                    face_ring_n += 1
+                    if facegeom.ring(gp.to_face((a["px"], a["py"])), dia, min_ring, rec.get("arrowMm", 6.0)) == a["ring"]:
+                        face_ring_ok += 1
         marks = [(a["px"], a["py"], a) for a in rec["arrows"]]
         total += len(marks)
         used = set(); matched = []
@@ -114,7 +135,7 @@ def evaluate(val_recs, predict):
                 ring_n += 1
                 if facegeom.ring(up, dia, min_ring, rec.get("arrowMm", 6.0)) == a["ring"]:
                     ring_ok += 1
-        per_image.append({"id": rec["id"], "export": rec.get("_export"), "marks": len(marks), "found": len(used), "false": len(preds) - len(used)})
+        per_image.append({"id": rec["id"], "export": rec.get("_export"), "marks": len(marks), "found": len(used), "false": len(preds) - len(used), "face": face_hit})
     per_export = {}
     for pi in per_image:
         e = per_export.setdefault(pi["export"] or "", {"photos": 0, "arrows": 0, "found": 0, "false_alarms": 0})
@@ -128,6 +149,9 @@ def evaluate(val_recs, predict):
         "mm_error_mean": round(sum(mm_err) / len(mm_err), 1) if mm_err else None,
         "mm_error_median": round(sorted(mm_err)[len(mm_err) // 2], 1) if mm_err else None,
         "ring_accuracy": round(ring_ok / ring_n, 3) if ring_n else None,
+        "face_photos": face_n, "face_found": face_found,
+        "face_center_mm_median": round(sorted(face_mm)[len(face_mm) // 2], 1) if face_mm else None,
+        "face_ring_accuracy": round(face_ring_ok / face_ring_n, 3) if face_ring_n else None,
         "per_image": per_image,
     }
 
@@ -154,23 +178,41 @@ def run_job(job, mock):
         ds = run / "dataset"
         n_tr = prepare_dataset.write_split(train, ds, "train", False)
         n_va = prepare_dataset.write_split(val, ds, "val", False)
-        (ds / "data.yaml").write_text(f"path: {ds.resolve()}\ntrain: images/train\nval: images/val\nkpt_shape: [1, 3]\nnames:\n  0: arrow\n")
+        (ds / "data.yaml").write_text(prepare_dataset.data_yaml(ds, False))
         job.say(f"{len(train)} training photos ({n_tr} arrows), {len(val)} validation photos ({n_va} arrows)")
+        # the face finder learns from the photos whose marking gives a geometry
+        dsf = run / "dataset_face"
+        f_tr = prepare_dataset.write_split(train, dsf, "train", True)
+        f_va = prepare_dataset.write_split(val, dsf, "val", True)
+        (dsf / "data.yaml").write_text(prepare_dataset.data_yaml(dsf, True))
+        train_face = f_tr > 0 and f_va > 0
+        job.say(f"face marked on {f_tr} training and {f_va} validation photos" + ("" if train_face else ": no face model this run"))
         imgsz = int(p["imgsz"])
         if mock:
-            predict = mock_train(job, run, imgsz)
+            predict, predict_face = mock_train(job, run, imgsz, train_face)
         else:
-            predict = real_train(job, run, ds, imgsz)
+            predict = real_train(job, run, ds, imgsz, "arrows")
+            predict_face = real_train(job, run, dsf, imgsz, "face") if train_face and not job.stop else None
         if job.stop:
             job.state = "stopped"; job.say("stopped"); return
         job.say("evaluating on the validation photos")
-        ev = evaluate(val, predict)
+        ev = evaluate(val, predict, predict_face)
+        ev["train_photos"] = len(train); ev["val_photos"] = len(val)
+        has_face = (run / "face.tflite").exists()
+        info = {"name": job.name, "imgsz": imgsz, "task": "pose", "trained": time.time(), "train_photos": len(train), "val_photos": len(val),
+                "arrows": {"file": "arrows.tflite", "kpt": ["entry"]},
+                "face": {"file": "face.tflite", "kpt": facegeom.FACE_KPT} if has_face else None,
+                "eval": {k: v for k, v in ev.items() if k != "per_image"}}
+        (run / "model.json").write_text(json.dumps(info, indent=1))
+        with zipfile.ZipFile(run / "model.zip", "w", zipfile.ZIP_DEFLATED) as z:
+            z.write(run / "arrows.tflite", "arrows.tflite")
+            if has_face:
+                z.write(run / "face.tflite", "face.tflite")
+            z.write(run / "model.json", "model.json")
         summary = {"name": job.name, "params": p, "finished": time.time(), "duration_s": round(time.time() - job.started),
-                   "train_photos": len(train), "val_photos": len(val), "eval": ev, "model": "model.tflite", "mock": mock,
+                   "train_photos": len(train), "val_photos": len(val), "eval": ev, "model": "model.zip", "face_model": has_face, "mock": mock,
                    "final_metrics": job.metrics[-1] if job.metrics else None}
         (run / "summary.json").write_text(json.dumps(summary, indent=1))
-        (run / "model.json").write_text(json.dumps({"name": job.name, "imgsz": imgsz, "task": "pose", "kpt": ["entry"], "trained": time.time(),
-                                                    "eval": {k: v for k, v in ev.items() if k != "per_image"}}, indent=1))
         job.result = summary
         job.state = "done"
         job.say("done")
@@ -178,16 +220,19 @@ def run_job(job, mock):
         job.state = "failed"; job.error = f"{e}"; job.say("failed: " + "".join(traceback.format_exception_only(type(e), e)).strip())
 
 
-def mock_train(job, run, imgsz):
-    for ep in range(1, job.epochs + 1):
-        if job.stop:
-            return None
-        time.sleep(0.05)
-        job.epoch = ep
-        job.metrics.append({"epoch": ep, "loss": round(3.0 / (1 + ep * 0.3), 3), "mAP50": round(min(0.95, 0.2 + ep * 0.04), 3)})
-        if ep % 5 == 0 or ep == job.epochs:
-            job.say(f"epoch {ep}/{job.epochs} loss {job.metrics[-1]['loss']}")
-    (run / "model.tflite").write_bytes(b"TFL3-mock-" + str(time.time()).encode())
+def mock_train(job, run, imgsz, train_face):
+    for stage in (["arrows", "face"] if train_face else ["arrows"]):
+        job.stage = stage; job.metrics = []
+        job.say(f"--- {stage} model ---")
+        for ep in range(1, job.epochs + 1):
+            if job.stop:
+                return None, None
+            time.sleep(0.02)
+            job.epoch = ep
+            job.metrics.append({"epoch": ep, "loss": round(3.0 / (1 + ep * 0.3), 3), "mAP50": round(min(0.95, 0.2 + ep * 0.04), 3)})
+            if ep % 5 == 0 or ep == job.epochs:
+                job.say(f"epoch {ep}/{job.epochs} loss {job.metrics[-1]['loss']}")
+        (run / f"{stage}.tflite").write_bytes(b"TFL3-mock-" + str(time.time()).encode())
     rnd = random.Random(1)
 
     def predict(rec, img):
@@ -198,12 +243,40 @@ def mock_train(job, run, imgsz):
         if rnd.random() < 0.2:
             out.append((rnd.uniform(0, rec["width"]), rnd.uniform(0, rec["height"]), 0.5))
         return out
-    return predict
+
+    def predict_face(rec, img):
+        g = facegeom.geometry_of_record(rec)
+        if g is None or rnd.random() < 0.1:
+            return None
+        return (0.85, [(x + rnd.gauss(0, 4), y + rnd.gauss(0, 4)) for x, y in facegeom.face_keypoints(g)])
+    return predict, (predict_face if train_face else None)
 
 
-def real_train(job, run, ds, imgsz):
+def export_int8(job, trained, imgsz, ds, dest):
+    """int8 TFLite of a trained model, calibrated on all photos of the run (not only the few validation ones).
+    Ultralytics 8.4 calls the format "litert" and the option "quantize"; older versions take tflite/int8."""
+    calib = ds / "calib.yaml"
+    calib.write_text((ds / "data.yaml").read_text().replace("val: images/val", "val: [images/train, images/val]"))
+    try:
+        out = trained.export(format="litert", quantize="int8", imgsz=imgsz, data=str(calib))
+    except Exception as e:
+        job.say(f"litert export not available ({e.__class__.__name__}), using the tflite export")
+        out = trained.export(format="tflite", int8=True, imgsz=imgsz, data=str(calib))
+    src = Path(out)
+    if src.is_dir():
+        cands = sorted(src.glob("*int8*.tflite")) or sorted(src.glob("*.tflite"))
+        src = cands[0]
+    shutil.copy(src, dest)
+    job.say(f"{dest.name}: {dest.stat().st_size // 1024} kB")
+
+
+def real_train(job, run, ds, imgsz, stage):
+    """Trains one pose model ("arrows": 1 keypoint, "face": 5) and exports it as run/<stage>.tflite.
+    Returns the prediction function used by the evaluation."""
     from ultralytics import YOLO
     p = job.params
+    job.stage = stage; job.metrics = []
+    job.say(f"--- {stage} model ---")
     model = YOLO(f"yolo11{p['size']}-pose.pt")
 
     def on_fit_epoch_end(trainer):
@@ -223,19 +296,14 @@ def real_train(job, run, ds, imgsz):
     gi = gpu_info()
     device = 0 if gi["device"] == "cuda" else gi["device"] if gi["device"] == "mps" else "cpu"
     job.say(f"training on {gi['name']}")
-    model.train(data=str(ds / "data.yaml"), imgsz=imgsz, epochs=job.epochs, batch=int(p["batch"]), project=str(run), name="train",
+    model.train(data=str(ds / "data.yaml"), imgsz=imgsz, epochs=job.epochs, batch=int(p["batch"]), project=str(run), name=f"train_{stage}",
                 exist_ok=True, device=device, verbose=False, plots=False)
     if job.stop:
         return None
-    best = run / "train" / "weights" / "best.pt"
+    best = run / f"train_{stage}" / "weights" / "best.pt"
     job.say("exporting int8 TFLite")
     trained = YOLO(str(best))
-    out = trained.export(format="tflite", int8=True, imgsz=imgsz, data=str(ds / "data.yaml"))
-    src = Path(out)
-    if src.is_dir():
-        cands = sorted(src.glob("*int8*.tflite")) or sorted(src.glob("*.tflite"))
-        src = cands[0]
-    shutil.copy(src, run / "model.tflite")
+    export_int8(job, trained, imgsz, ds, run / f"{stage}.tflite")
 
     def predict(rec, img):
         res = trained.predict(str(img), imgsz=imgsz, conf=0.25, verbose=False)[0]
@@ -245,7 +313,15 @@ def real_train(job, run, ds, imgsz):
             for i in range(len(conf)):
                 out.append((float(kp[i][0][0]), float(kp[i][0][1]), float(conf[i])))
         return out
-    return predict
+
+    def predict_face(rec, img):
+        res = trained.predict(str(img), imgsz=imgsz, conf=0.25, verbose=False)[0]
+        if res.keypoints is None or res.boxes is None or len(res.boxes.conf) == 0:
+            return None
+        conf = res.boxes.conf.cpu().numpy(); i = int(conf.argmax())
+        kp = res.keypoints.xy[i].cpu().numpy()
+        return (float(conf[i]), [(float(x), float(y)) for x, y in kp])
+    return predict_face if stage == "face" else predict
 
 
 # ----------------------------------------------------------------------------- state
@@ -257,7 +333,7 @@ def runs_list():
             out.append({"name": s["name"], "finished": s["finished"], "duration_s": s["duration_s"], "train_photos": s["train_photos"],
                         "val_photos": s["val_photos"], "eval": {k: v for k, v in s["eval"].items() if k != "per_image"},
                         "params": s["params"], "exports": s["params"].get("exports") or [s["params"].get("export")],
-                        "mock": s.get("mock", False), "model": (d.parent / "model.tflite").exists()})
+                        "mock": s.get("mock", False), "model": (d.parent / "model.zip").exists(), "face_model": s.get("face_model", False)})
         except Exception:
             pass
     return out
@@ -281,6 +357,7 @@ def preview(run, index):
     return {"index": index, "count": len(pool), "id": rec["id"], "width": rec["width"], "height": rec["height"], "rotation": rec.get("rotation", 0),
             "image": f"/files/{run}/dataset/images/{'val' if val else 'train'}/{rec['id']}.jpg",
             "marks": [{"x": a["px"], "y": a["py"], "ring": a["ring"], "source": a.get("source", "user")} for a in rec["arrows"]],
+            "center": rec.get("center"), "edge": rec.get("edge") or [],
             "stats": per.get(rec["id"]), "face": rec["face"], "env": rec.get("environment"), "export": rec.get("_export")}
 
 
@@ -306,12 +383,12 @@ progress{width:100%;height:14px}
 <h1>UV-Sight trainer</h1><div class="muted" id="gpu">…</div>
 <div class="card"><h2>1. Export from the app</h2>
 <div class="row"><input type="file" id="file" accept=".zip" multiple><button class="sec" id="upload">Upload</button><span id="upmsg" class="muted"></span></div>
-<div class="muted" style="margin-top:8px">Exports from several phones can be uploaded and trained together; tick the ones to use.</div>
+<div class="muted" style="margin-top:8px">Exports from several phones can be uploaded and trained together; tick the ones to use. Every run trains two models: the arrow detector and the face finder (centre and four edge points of the blue ring).</div>
 <div id="exports" style="margin-top:6px"></div></div>
 <div class="card"><h2>2. Train</h2>
 <div class="row">
 <label>Image size<select id="imgsz"><option>320</option><option selected>640</option><option>800</option></select></label>
-<label>Epochs<input id="epochs" type="number" value="120" min="1" style="width:80px"></label>
+<label>Epochs (per model)<input id="epochs" type="number" value="120" min="1" style="width:80px"></label>
 <label>Model size<select id="size"><option value="n" selected>nano</option><option value="s">small</option></select></label>
 <label>Batch<input id="batch" type="number" value="16" min="1" style="width:70px"></label>
 <label>Validation share<input id="val" type="number" value="0.2" step="0.05" min="0" max="0.5" style="width:70px"></label>
@@ -325,7 +402,7 @@ progress{width:100%;height:14px}
 <div class="card" id="prevcard" hidden><h2>Preview</h2>
 <div class="row"><button class="sec" id="prev">◀</button><span id="pinfo" class="muted grow"></span><button class="sec" id="next">▶</button></div>
 <canvas id="pv" width="900" height="600"></canvas>
-<div class="muted">Your marks: green with the ring. Nothing else is drawn here yet; the model's proposals appear in the app after import. The counts under the picture come from the evaluation.</div></div>
+<div class="muted">Your marks: arrows green with the ring, face centre gold, edge points blue. The models' proposals appear in the app after import. The counts under the picture come from the evaluation.</div></div>
 </main><script>
 const $=id=>document.getElementById(id);let st=null,prevRun=null,prevIdx=0;const chosen=new Map();
 async function api(p,o){const r=await fetch(p,o);return r.json()}
@@ -337,7 +414,7 @@ $('exports').innerHTML=st.exports.length?st.exports.map(e=>`<label style="flex-d
 for(const cb of $('exports').querySelectorAll('input'))cb.onchange=()=>{chosen.set(cb.dataset.n,cb.checked);refresh()};
 const j=st.job;const running=j&&j.state==='running';
 $('start').disabled=running||!st.exports.some(e=>chosen.get(e.name))||!(st.ultralytics||st.mock);$('stop').disabled=!running;
-if(j){$('jobmsg').textContent=`${j.name}: ${j.state}`+(j.error?` – ${j.error}`:'')+(running?` · epoch ${j.epoch}/${j.epochs}`:'');
+if(j){$('jobmsg').textContent=`${j.name}: ${j.state}`+(j.error?` – ${j.error}`:'')+(running?` · ${j.stage} model, epoch ${j.epoch}/${j.epochs}`:'');
 $('jobmsg').className=j.state==='failed'?'err':j.state==='done'?'ok':'muted';
 $('prog').hidden=false;$('prog').value=j.epoch/j.epochs;$('log').hidden=false;$('log').textContent=j.log.join('\n');$('log').scrollTop=1e9;drawCurve(j.metrics)}
 renderRuns(st.runs);}
@@ -347,13 +424,16 @@ keys.forEach((k,ki)=>{const vs=m.map(x=>x[k]).filter(v=>v!=null);if(!vs.length)r
 m.forEach((x,i)=>{if(x[k]==null)return;const X=30+i*(c.width-40)/Math.max(1,m.length-1),Y=10+(1-(x[k]-lo)/((hi-lo)||1))*(c.height-30);i?g.lineTo(X,Y):g.moveTo(X,Y)});g.stroke();
 g.fillStyle=cols[k]||'#fff';g.font='12px system-ui';g.fillText(`${k}: ${vs[vs.length-1]}`,30+ki*160,c.height-6)});}
 function renderRuns(runs){if(!runs.length){$('runs').textContent='No runs yet.';return}
-$('runs').innerHTML='<table><tr><th>Run</th><th>Photos</th><th>Arrows found</th><th>False alarms</th><th>Entry error</th><th>Rings right</th><th>Time</th><th></th></tr>'+runs.slice().reverse().map(r=>{const e=r.eval;
+$('runs').innerHTML='<table><tr><th>Run</th><th>Photos</th><th>Arrows found</th><th>False alarms</th><th>Entry error</th><th>Rings right</th><th>Face found</th><th>Time</th><th></th></tr>'+runs.slice().reverse().map(r=>{const e=r.eval;
+const face=e.face_photos?`${e.face_found}/${e.face_photos}`+(e.face_center_mm_median!=null?`<br><span class="muted" style="font-size:.8rem">centre ${e.face_center_mm_median} mm off, rings ${e.face_ring_accuracy!=null?Math.round(e.face_ring_accuracy*100)+' %':'–'} the same</span>`:''):'–';
 const pe=e.per_export||{};const peTxt=Object.keys(pe).length>1?'<br><span class="muted" style="font-size:.8rem">'+Object.entries(pe).map(([k,v])=>`${k}: ${v.found}/${v.arrows}, ${v.false_alarms} false`).join('<br>')+'</span>':'';
-return `<tr><td>${r.name}${r.mock?' <span class="muted">(mock)</span>':''}${peTxt}</td><td>${r.train_photos}+${r.val_photos}</td><td>${e.found}/${e.arrows}${e.recall!=null?` (${Math.round(e.recall*100)} %)`:''}</td><td>${e.false_alarms}</td><td>${e.mm_error_median!=null?e.mm_error_median+' mm median':fmt(e.px_error_mean)+' px'}</td><td>${e.ring_accuracy!=null?Math.round(e.ring_accuracy*100)+' %':'–'}</td><td>${Math.round(r.duration_s/60)} min</td>
-<td>${r.model?`<a href="/files/${r.name}/model.tflite" download="${r.name}.tflite"><button>Download .tflite</button></a>`:''} <button class="sec" onclick="openPreview('${r.name}')">Preview</button></td></tr>`}).join('')+'</table>';}
+return `<tr><td>${r.name}${r.mock?' <span class="muted">(mock)</span>':''}${peTxt}</td><td>${r.train_photos}+${r.val_photos}</td><td>${e.found}/${e.arrows}${e.recall!=null?` (${Math.round(e.recall*100)} %)`:''}</td><td>${e.false_alarms}</td><td>${e.mm_error_median!=null?e.mm_error_median+' mm median':fmt(e.px_error_mean)+' px'}</td><td>${e.ring_accuracy!=null?Math.round(e.ring_accuracy*100)+' %':'–'}</td><td>${face}</td><td>${Math.round(r.duration_s/60)} min</td>
+<td>${r.model?`<a href="/files/${r.name}/model.zip" download="${r.name}.zip"><button>Download model (.zip)</button></a>`:''} <button class="sec" onclick="openPreview('${r.name}')">Preview</button></td></tr>`}).join('')+'</table>';}
 async function openPreview(run,idx=0){prevRun=run;const p=await api(`/api/preview?run=${encodeURIComponent(run)}&i=${idx}`);if(p.error){alert(p.error);return}prevIdx=p.index;
-$('prevcard').hidden=false;$('pinfo').textContent=`${run}: photo ${p.index+1} of ${p.count} · ${p.id} · ${p.face} · ${p.env||''}`+(p.export?` · from ${p.export}`:'')+(p.stats?` · marks ${p.stats.marks}, found ${p.stats.found}, false ${p.stats.false}`:'');
+$('prevcard').hidden=false;$('pinfo').textContent=`${run}: photo ${p.index+1} of ${p.count} · ${p.id} · ${p.face} · ${p.env||''}`+(p.export?` · from ${p.export}`:'')+(p.stats?` · marks ${p.stats.marks}, found ${p.stats.found}, false ${p.stats.false}`+(p.stats.face==null?'':p.stats.face?', face found':', face missed'):'');
 const img=new Image();img.onload=()=>{const c=$('pv');const k=Math.min(900/img.width,600/img.height);c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);const g=c.getContext('2d');g.drawImage(img,0,0,c.width,c.height);
+if(p.center){g.strokeStyle='#F2C230';g.lineWidth=2;g.beginPath();g.moveTo(p.center[0]*k-8,p.center[1]*k);g.lineTo(p.center[0]*k+8,p.center[1]*k);g.moveTo(p.center[0]*k,p.center[1]*k-8);g.lineTo(p.center[0]*k,p.center[1]*k+8);g.stroke()}
+for(const e of p.edge){g.strokeStyle='#5B93D6';g.lineWidth=2;g.beginPath();g.arc(e[0]*k,e[1]*k,6,0,7);g.stroke()}
 for(const m of p.marks){g.strokeStyle='#58B27E';g.lineWidth=2;g.beginPath();g.arc(m.x*k,m.y*k,9,0,7);g.stroke();g.fillStyle='#58B27E';g.font='bold 12px system-ui';g.fillText(m.ring===11?'X':m.ring===0?'M':m.ring,m.x*k+12,m.y*k+4)}};
 img.src=p.image+'?t='+Date.now();$('prevcard').scrollIntoView({behavior:'smooth'});}
 $('prev').onclick=()=>openPreview(prevRun,prevIdx-1);$('next').onclick=()=>openPreview(prevRun,prevIdx+1);
@@ -395,7 +475,7 @@ class Handler(BaseHTTPRequestHandler):
             if not str(f).startswith(str(RUNS.resolve())) or not f.is_file():
                 self.send_json({"error": "not found"}, 404); return
             data = f.read_bytes()
-            self.send_response(200); self.send_header("content-type", "application/octet-stream" if f.suffix == ".tflite" else "image/jpeg")
+            self.send_response(200); self.send_header("content-type", {".tflite": "application/octet-stream", ".zip": "application/zip", ".json": "application/json"}.get(f.suffix, "image/jpeg"))
             self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
         else:
             self.send_json({"error": "not found"}, 404)

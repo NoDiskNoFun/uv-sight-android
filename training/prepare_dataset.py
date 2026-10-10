@@ -2,8 +2,10 @@
 """Turn a UV-Sight training export (ZIP or unpacked folder) into a YOLO pose dataset.
 
 Each arrow becomes one object of class "arrow" with a single keypoint: the entry point.
-Optionally (--faces) a second dataset marks the target face: a box around the fitted
-ellipse with the tapped centre as keypoint.
+With --faces the dataset marks the target face instead: a box around the blue edge with five
+keypoints, the centre and the highest, rightmost, lowest and leftmost point of the edge
+(computed from the fitted ellipse, so they are the same for every photo). Photos without a
+usable face marking are left out of the face dataset.
 
 The JSON records hold coordinates in the *upright* image (EXIF orientation applied),
 so the images are rotated here the same way before they are written out.
@@ -17,6 +19,9 @@ import random
 import sys
 import zipfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import facegeom  # noqa: E402
 
 try:
     from PIL import Image, ImageOps
@@ -72,10 +77,36 @@ def split_by_session(recs, val_frac, seed=1):
     return [x for x in recs if (x[0].get("sessionKey") or x[0]["id"]) not in val], [x for x in recs if (x[0].get("sessionKey") or x[0]["id"]) in val]
 
 
+def face_label(r):
+    """YOLO pose line for the face of a record, or None without a usable marking."""
+    g = facegeom.geometry_of_record(r)
+    if g is None:
+        return None
+    w, h = r["width"], r["height"]
+    k = facegeom.face_keypoints(g)
+    x0, y0, x1, y1 = facegeom.face_box(k, w, h)
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return None
+    return f"0 {(x0 + x1) / 2 / w:.6f} {(y0 + y1) / 2 / h:.6f} {(x1 - x0) / w:.6f} {(y1 - y0) / h:.6f} " + " ".join(f"{p[0] / w:.6f} {p[1] / h:.6f} 2" for p in k)
+
+
+def with_face(recs):
+    """The records whose face marking gives a geometry (what the face model can learn from)."""
+    return [x for x in recs if face_label(x[0]) is not None]
+
+
+def data_yaml(out: Path, faces: bool):
+    if faces:
+        return f"path: {out.resolve()}\ntrain: images/train\nval: images/val\nkpt_shape: [5, 3]\nflip_idx: [0, 1, 4, 3, 2]\nnames:\n  0: face\n"
+    return f"path: {out.resolve()}\ntrain: images/train\nval: images/val\nkpt_shape: [1, 3]\nflip_idx: [0]\nnames:\n  0: arrow\n"
+
+
 def write_split(recs, out: Path, name: str, faces: bool):
     (out / "images" / name).mkdir(parents=True, exist_ok=True)
     (out / "labels" / name).mkdir(parents=True, exist_ok=True)
     n_obj = 0
+    if faces:
+        recs = with_face(recs)
     for r, img_path in recs:
         w, h = r["width"], r["height"]
         if Image is not None:
@@ -90,11 +121,8 @@ def write_split(recs, out: Path, name: str, faces: bool):
             for a in r["arrows"]:
                 cx, cy = a["px"] / w, a["py"] / h
                 lines.append(f"0 {cx:.6f} {cy:.6f} {ARROW_BOX / w:.6f} {ARROW_BOX / h:.6f} {cx:.6f} {cy:.6f} 2")
-        elif r.get("center") and r.get("conic"):
-            xs = [p[0] for p in r["edge"]]; ys = [p[1] for p in r["edge"]]
-            x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-            cx, cy = (x0 + x1) / 2 / w, (y0 + y1) / 2 / h
-            lines.append(f"0 {cx:.6f} {cy:.6f} {(x1 - x0) / w:.6f} {(y1 - y0) / h:.6f} {r['center'][0] / w:.6f} {r['center'][1] / h:.6f} 2")
+        else:
+            lines.append(face_label(r))
         n_obj += len(lines)
         (out / "labels" / name / (r["id"] + ".txt")).write_text("\n".join(lines) + ("\n" if lines else ""))
     return n_obj
@@ -118,8 +146,7 @@ def main():
     n_tr = write_split(train, args.out, "train", args.faces)
     n_va = write_split(val, args.out, "val", args.faces)
     cls = "face" if args.faces else "arrow"
-    (args.out / "data.yaml").write_text(
-        f"path: {args.out.resolve()}\ntrain: images/train\nval: images/val\nkpt_shape: [1, 3]\nnames:\n  0: {cls}\n")
+    (args.out / "data.yaml").write_text(data_yaml(args.out, args.faces))
     print(f"{len(train)} train photos ({n_tr} {cls}s), {len(val)} val photos ({n_va} {cls}s) -> {args.out}/data.yaml")
 
 

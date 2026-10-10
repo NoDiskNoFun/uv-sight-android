@@ -32,4 +32,33 @@ class DetectorTest {
             assertEquals(0.7, d[1].conf, 1e-6)
         }
     }
+
+    @Test fun recognisesKeypointCountFromTheShape() {
+        assertEquals(1, YoloPoseDecoder.keypointsOf(intArrayOf(1, 8, 8400)))
+        assertEquals(1, YoloPoseDecoder.keypointsOf(intArrayOf(1, 2100, 8)))
+        assertEquals(5, YoloPoseDecoder.keypointsOf(intArrayOf(1, 20, 8400)))
+        assertEquals(5, YoloPoseDecoder.keypointsOf(intArrayOf(1, 13125, 20)))
+        assertEquals(null, YoloPoseDecoder.keypointsOf(intArrayOf(1, 7, 8400)))
+        assertEquals(null, YoloPoseDecoder.keypointsOf(intArrayOf(1, 84, 8400)))       // a detection head, not pose
+    }
+
+    @Test fun decodesFiveKeypointsAndDenormalises() {
+        val lb = Letterbox.fit(640, 640, 640)
+        // one face candidate with fractions of the input instead of pixels, [1, 20, N] layout with N = 2
+        val face = floatArrayOf(0.5f, 0.5f, 0.6f, 0.6f, 0.9f, 0.5f, 0.5f, 1f, 0.5f, 0.2f, 1f, 0.8f, 0.5f, 1f, 0.5f, 0.8f, 1f, 0.2f, 0.5f, 1f)
+        val other = FloatArray(20) { 0.1f }.also { it[4] = 0.05f }
+        val n = 2
+        val out = FloatArray(20 * n) { i -> val k = i / n; val c = i % n; if (c == 0) face[k] else other[k] }
+        val shape = intArrayOf(1, 20, n)
+        YoloPoseDecoder.denormalise(out, shape, 640)
+        val d = YoloPoseDecoder.decode(out, shape, lb, 0.4)
+        assertEquals(1, d.size)
+        assertEquals(5, d[0].kpts.size)
+        assertEquals(320.0, d[0].kpts[0].x, 1e-3); assertEquals(320.0, d[0].kpts[0].y, 1e-3)   // centre
+        assertEquals(128.0, d[0].kpts[1].y, 1e-3)                                             // top
+        assertEquals(512.0, d[0].kpts[2].x, 1e-3)                                             // right
+        assertEquals(384.0, d[0].boxW, 1e-3)
+        val g = FaceGeometry.fit(d[0].kpts[0], d[0].kpts.drop(1))
+        assertEquals(true, g != null)
+    }
 }

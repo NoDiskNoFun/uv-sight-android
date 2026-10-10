@@ -379,29 +379,51 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 val modelInfo = remember(modelVersion) { modelStore.info() }
                 val modelLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                     uri?.let { u -> scope.launch {
-                        val name = u.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.tflite"
+                        val name = u.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.zip"
                         val res = withContext(Dispatchers.IO) { runCatching { val bytes = context.contentResolver.openInputStream(u)?.use { it.readBytes() } ?: throw IllegalArgumentException("could not read the file"); modelStore.import(bytes, name) } }
-                        res.onSuccess { vm.toast(tr("Model imported: {name}, input {inputSize} px", "name" to it.name, "inputSize" to it.inputSize)); modelVersion++; if (ph.collect) ctl.setPhotoPrefs(ph.copy(collect = false)) }.onFailure { vm.toast(it.message ?: tr("Import failed"), true) }
+                        res.onSuccess { vm.toast(tr("Model imported: {name}", "name" to it.name) + (if (it.face != null) "" else " · " + tr("no face model"))); modelVersion++ }.onFailure { vm.toast(it.message ?: tr("Import failed"), true) }
                     } }
                 }
                 HorizontalDivider(color = uv.line)
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(tr("Detection model"), color = uv.ink)
-                        Text(modelInfo?.let { "${it.name}, input ${it.inputSize} px. Score from photo finds the arrows with it; check and correct the marks." } ?: tr("None. Score from photo works by hand; train a model with the trainer in training/ and import the .tflite file."), color = uv.muted, fontSize = 13.sp)
+                        Text(tr("Detection models"), color = uv.ink)
+                        Text(modelInfo?.let { mi ->
+                            listOfNotNull(
+                                tr("{name}, input {inputSize} px.", "name" to mi.name, "inputSize" to mi.inputSize),
+                                if (mi.arrows != null) tr("Arrows: found and marked for you; check and correct them.") else tr("Arrows: no model, mark them by hand."),
+                                if (mi.face != null) tr("Face: found and marked for you; check it with Face on the arrow step.") else tr("Face: no model, mark it by hand (the marking of the last photo is taken over)."),
+                            ).joinToString(" ")
+                        } ?: tr("None. Score from photo works by hand; train the models with the trainer in training/ and import the ZIP it offers."), color = uv.muted, fontSize = 13.sp)
                     }
                     Spacer(Modifier.width(8.dp))
                     SecondaryButton(tr("Import")) { modelLauncher.launch(arrayOf("*/*")) }
                     if (modelInfo != null) { Spacer(Modifier.width(8.dp)); SecondaryButton(tr("Remove"), danger = true) { modelStore.remove(); modelVersion++ } }
                 }
-                if (modelInfo != null) {
+                modelInfo?.eval?.let { ev ->
+                    // what the trainer measured on its validation photos, the same numbers as in its results table
+                    val pct = { v: Double? -> v?.let { "${(it * 100).roundToInt()} %" } ?: "–" }
+                    val lines = listOfNotNull(
+                        if (ev.trainPhotos != null) tr("Trained on {train} photos, checked on {val} others.", "train" to ev.trainPhotos, "val" to (ev.valPhotos ?: 0)) else null,
+                        if (ev.arrows != null) tr("Arrows found: {found} of {arrows} ({recall}), {false} false alarms, entry point {mm} mm off, rings right {rings}.",
+                            "found" to (ev.found ?: 0), "arrows" to ev.arrows, "recall" to pct(ev.recall), "false" to (ev.falseAlarms ?: 0), "mm" to (ev.mmErrorMedian?.let { fmt(it, 1) } ?: "–"), "rings" to pct(ev.ringAccuracy)) else null,
+                        if (ev.facePhotos != null && ev.facePhotos > 0) tr("Face found: {found} of {photos}, centre {mm} mm off, {rings} of the arrows keep their ring with it.",
+                            "found" to (ev.faceFound ?: 0), "photos" to ev.facePhotos, "mm" to (ev.faceCenterMm?.let { fmt(it, 1) } ?: "–"), "rings" to pct(ev.faceRingAccuracy)) else null,
+                    )
+                    if (lines.isNotEmpty()) Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        Text(tr("Trainer's evaluation"), color = uv.ink, fontSize = 13.sp)
+                        for (l in lines) Text(l, color = uv.muted, fontSize = 13.sp)
+                        if ((ev.valPhotos ?: 0) < 5) Text(tr("Few validation photos: these numbers say little yet."), color = uv.muted, fontSize = 12.sp)
+                    }
+                }
+                if (modelInfo?.arrows != null) {
                     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                         Text(tr("Confidence: {modelConf} %", "modelConf" to ((ph.modelConf * 100).roundToInt())), color = uv.muted, fontSize = 13.sp)
                         Slider(value = ph.modelConf.toFloat(), onValueChange = { ctl.setPhotoPrefs(ph.copy(modelConf = (it * 20).roundToInt() / 20.0)) }, valueRange = 0.1f..0.9f,
                             colors = SliderDefaults.colors(thumbColor = uv.gold, activeTrackColor = uv.gold))
                     }
                 }
-                SwitchRow(tr("Collect training data"), if (modelInfo != null) tr("Off while a detection model is installed. Remove the model to collect hand-marked photos again.") else tr("Keeps every scored photo with its marks on this phone, so a recognition model can be trained later. Photos never leave the phone unless you export them."), ph.collect && modelInfo == null, enabled = modelInfo == null) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
+                SwitchRow(tr("Collect training data"), tr("Keeps every scored photo with its marks on this phone, so the recognition models can be trained (again) later; corrected model proposals count too. Photos never leave the phone unless you export them."), ph.collect) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
                 if (ph.collect || count > 0) {
                     HorizontalDivider(color = uv.line)
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {

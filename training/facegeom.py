@@ -165,6 +165,24 @@ def mm_from_center(u, diameter_mm):
 
 def geometry_of_record(rec):
     """FaceGeometry of a PhotoRecord (dict), or None if the face was not marked."""
-    if not rec.get("center") or len(rec.get("edge") or []) < 5:
+    if not rec.get("center") or len(rec.get("edge") or []) < 4:
         return None
     return fit(tuple(rec["center"]), [tuple(p) for p in rec["edge"]])
+
+
+FACE_KPT = ["centre", "top", "right", "bottom", "left"]
+
+
+def face_keypoints(g, n=360):
+    """The five face keypoints the face model learns, in image pixels: the centre and the points of
+    the blue edge that are highest, rightmost, lowest and leftmost in the image. They are the same
+    for every photo whatever the user tapped, which pose training needs."""
+    pts = [g.to_image((math.cos(2 * math.pi * i / n), math.sin(2 * math.pi * i / n))) for i in range(n)]
+    return [g.to_image((0.0, 0.0)), min(pts, key=lambda p: p[1]), max(pts, key=lambda p: p[0]), max(pts, key=lambda p: p[1]), min(pts, key=lambda p: p[0])]
+
+
+def face_box(kpts, w, h, margin=0.04):
+    """Bounding box (x0, y0, x1, y1) of the blue edge from its extreme points, a little wider, clipped to the image."""
+    c, top, right, bottom, left = kpts
+    bw, bh = right[0] - left[0], bottom[1] - top[1]
+    return (max(0.0, left[0] - margin * bw), max(0.0, top[1] - margin * bh), min(float(w), right[0] + margin * bw), min(float(h), bottom[1] + margin * bh))

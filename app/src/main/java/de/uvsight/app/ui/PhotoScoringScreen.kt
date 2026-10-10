@@ -112,6 +112,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var edge by remember { mutableStateOf(listOf<Offset>()) }
     var skipFace by remember { mutableStateOf(false) }
     var faceRestored by remember { mutableStateOf(false) }   // marking taken over from the last photo
+    var faceFromModel by remember { mutableStateOf(false) }  // marking proposed by the face finder
     var marks by remember { mutableStateOf(listOf<Mark>()) }
     var selected by remember { mutableStateOf<Int?>(null) }
     var scale by remember { mutableStateOf(1f) }
@@ -120,7 +121,10 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var magPos by remember { mutableStateOf<Offset?>(null) }
     val modelStore = remember { de.uvsight.app.ModelStore(context) }
     val modelInfo = remember { modelStore.info() }
-    var detections by remember { mutableStateOf<List<de.uvsight.core.Detection>?>(null) }   // model proposals, null until the model ran
+    val hasArrowModel = remember { modelStore.hasArrows }
+    val hasFaceModel = remember { modelStore.hasFace }
+    var detections by remember { mutableStateOf<List<de.uvsight.core.Detection>?>(null) }   // arrow proposals, null until the model ran
+    var faceLooked by remember { mutableStateOf(!hasFaceModel) }                             // the face finder has run (or there is none)
     var manualShot by remember { mutableStateOf(mapOf<Int, Int>()) }   // mark index -> shot index the user set by hand
     val endShots = state.endShots
     LaunchedEffect(step) { if (step == 2) ctl.requestShots() }
@@ -142,15 +146,40 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             val fw = if (exifRot % 180 == 0) bounds.outWidth else bounds.outHeight
             val fh = if (exifRot % 180 == 0) bounds.outHeight else bounds.outWidth
             rotation = exifRot; fullSize = IntSize(fw, fh); bitmap = upright
-            // Take over the face marking of the last photo: the face lands in the same place when
-            // the phone is held as before, so only a check or a small adjustment is needed.
+            // The face finder proposes the centre and four edge points; without it (or when it finds
+            // nothing) the marking of the last photo is taken over: the face lands in the same place
+            // when the phone is held as before, so only a check or a small adjustment is needed.
+            var proposed = false
+            if (hasFaceModel) {
+                val best = runCatching { de.uvsight.app.TflitePoseDetector(modelStore.faceFile).use { it.detect(upright, 0.3) } }.getOrNull()
+                    ?.filter { it.kpts.size >= 5 }?.maxByOrNull { it.conf }
+                if (best != null) {
+                    val c = best.kpts[0]; val e = best.kpts.subList(1, 5)
+                    if (FaceGeometry.fit(c, e) != null) {
+                        center = Offset(c.x.toFloat(), c.y.toFloat()); edge = e.map { Offset(it.x.toFloat(), it.y.toFloat()) }
+                        faceFromModel = true; proposed = true
+                    }
+                }
+                faceLooked = true
+            }
             val fm = prefs.faceMarks
-            if (fm != null && fm.size >= 10 && fm.size % 2 == 0) {
+            if (!proposed && fm != null && fm.size >= 10 && fm.size % 2 == 0) {
                 center = Offset((fm[0] * upright.width).toFloat(), (fm[1] * upright.height).toFloat())
                 edge = (2 until fm.size step 2).map { Offset((fm[it] * upright.width).toFloat(), (fm[it + 1] * upright.height).toFloat()) }
                 faceRestored = true
             }
         }
+    }
+    /** On to the arrows; the marking is kept for the next photo, as fractions of the image. */
+    fun goToArrows() {
+        val b = bitmap; val c = center
+        val fm = if (b != null && c != null) listOf(c.x / b.width.toDouble(), c.y / b.height.toDouble()) + edge.flatMap { listOf(it.x / b.width.toDouble(), it.y / b.height.toDouble()) } else prefs.faceMarks
+        ctl.setPhotoPrefs(prefs.copy(face = faceType.name, environment = environment, faceMarks = fm)); step = 2
+    }
+    // A face the model found goes straight on to the arrows (once); the rings stay on the photo and Face leads back to check.
+    var autoJumped by remember { mutableStateOf(false) }
+    LaunchedEffect(faceFromModel, geometry) {
+        if (faceFromModel && geometry != null && step == 1 && !skipFace && !autoJumped) { autoJumped = true; goToArrows(); vm.toast(tr("Face found by the model. Tap Face to check or adjust it.")) }
     }
     // Fit the image into the container once both are known
     LaunchedEffect(bitmap, container) {
@@ -167,8 +196,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     // proposals appear when the arrow step is reached (the rings need the face marking).
     LaunchedEffect(bitmap) {
         val b = bitmap ?: return@LaunchedEffect
-        if (modelInfo == null) return@LaunchedEffect
-        val found = withContext(Dispatchers.IO) { runCatching { de.uvsight.app.TfliteArrowDetector(modelStore.modelFile).use { it.detect(b, prefs.modelConf) } } }
+        if (!hasArrowModel) return@LaunchedEffect
+        val found = withContext(Dispatchers.IO) { runCatching { de.uvsight.app.TflitePoseDetector(modelStore.arrowsFile).use { it.detect(b, prefs.modelConf) } } }
         found.onFailure { vm.toast(tr("Arrow detection failed: {message}", "message" to it.message), true); detections = emptyList() }
         found.onSuccess { detections = it }
     }
@@ -329,6 +358,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     FilterChip(selected = environment == "indoor", onClick = { environment = "indoor" }, label = { Text(tr("Indoor")) })
                 }
                 Text(when {
+                    !faceLooked && center == null -> tr("Looking for the face…")
+                    faceFromModel && geometry != null -> tr("Face found by the model. Drag a point to adjust, or Clear to mark anew.")
                     faceRestored && geometry != null -> tr("Marking from the last photo. Drag a point to adjust, or Clear to mark anew.")
                     center == null -> tr("Tap the centre of the face.")
                     edge.size < 4 -> tr("Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right.", "edge" to edge.size)
@@ -338,16 +369,11 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     else -> tr("Face found. Add more edge points for precision, or continue.")
                 }, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SecondaryButton(tr("Undo"), enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null; faceRestored = false }
-                    SecondaryButton(tr("Clear"), enabled = center != null) { center = null; edge = emptyList(); faceRestored = false }
+                    SecondaryButton(tr("Undo"), enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null; faceRestored = false; faceFromModel = false }
+                    SecondaryButton(tr("Clear"), enabled = center != null) { center = null; edge = emptyList(); faceRestored = false; faceFromModel = false }
                     SecondaryButton(tr("Skip face")) { skipFace = true; center = null; edge = emptyList(); step = 2 }
                     Spacer(Modifier.weight(1f))
-                    PrimaryButton(tr("Next"), enabled = geometry != null) {
-                        // keep the marking for the next photo, as fractions of the image
-                        val b = bitmap; val c = center
-                        val fm = if (b != null && c != null) listOf(c.x / b.width.toDouble(), c.y / b.height.toDouble()) + edge.flatMap { listOf(it.x / b.width.toDouble(), it.y / b.height.toDouble()) } else prefs.faceMarks
-                        ctl.setPhotoPrefs(prefs.copy(face = faceType.name, environment = environment, faceMarks = fm)); step = 2
-                    }
+                    PrimaryButton(tr("Next"), enabled = geometry != null) { goToArrows() }
                 }
             } else {
                 val sightShots = state.session?.takeIf { it.active }?.endShots
@@ -357,7 +383,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     (gc?.let { " · group centre ${fmt(kotlin.math.abs(it.x) / 10, 1)} cm ${if (it.x < 0) "left" else "right"}, ${fmt(kotlin.math.abs(it.y) / 10, 1)} cm ${if (it.y < 0) "low" else "high"}" } ?: ""),
                     color = uv.muted, fontSize = 14.sp)
                 if (skipFace) Text(tr("Without the face marking, pick the ring of each arrow below."), color = uv.muted, fontSize = 13.sp)
-                if (modelInfo != null && detections == null) Text(tr("Looking for arrows…"), color = uv.muted, fontSize = 12.sp)
+                if (hasArrowModel && detections == null) Text(tr("Looking for arrows…"), color = uv.muted, fontSize = 12.sp)
                 if (endShots != null && shotAssign != null) {
                     val acc = ctl.matchAccuracy(state.setups?.active)
                     Text(tr("Shot matching accuracy ") + (acc?.let { "${(it * 100).roundToInt()} %" } ?: "–") + tr("  ·  tap an arrow to set its shot"), color = uv.muted, fontSize = 12.sp)
@@ -389,7 +415,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                         val hitList: List<Hit>? = hitsOf(marks)
                         val sa = shotAssign
                         ctl.applyPhotoScores(rings, hitList, sa?.result(), sa?.src)
-                        if (prefs.collect && modelInfo == null && bitmap != null) {
+                        // Every scored photo is a training example, corrected model proposals included
+                        if (prefs.collect && bitmap != null) {
                             val b = bitmap!!
                             val k = fullSize.width.toDouble() / b.width
                             val exif = runCatching { ExifInterface(file.path) }.getOrNull()
@@ -411,6 +438,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                 environment = environment, light = state.status?.takeIf { state.conn == de.uvsight.core.ConnState.CONNECTED }?.light, exif = exifMap, device = "${Build.MANUFACTURER} ${Build.MODEL}", app = APP_VERSION, timestamp = System.currentTimeMillis(),
                                 model = if (marks.any { it.source == "model" }) modelInfo?.name else null, modelConf = if (marks.any { it.source == "model" }) prefs.modelConf else null,
                                 shots = endShots?.shots,
+                                faceSource = if (center == null) null else if (faceFromModel) "model" else if (faceRestored) "restored" else "user",
+                                faceModel = if (center != null && faceFromModel) modelInfo?.face?.name ?: modelInfo?.name else null,
                             )
                             runCatching { TrainingStore(context).save(rec, file) }.onFailure { vm.toast(tr("Could not keep the photo: {message}", "message" to it.message), true) }
                         }

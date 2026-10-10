@@ -257,4 +257,6 @@ data class PhotoRecord(
     val model: String? = null,               // detection model that proposed marks, if any
     val modelConf: Double? = null,           // confidence threshold used
     val shots: List<ShotInfo>? = null,       // the sight's shots of this end, as received
+    val faceSource: String? = null,          // "user" (tapped), "restored" (taken over from the last photo) or "model" (proposed by the face finder)
+    val faceModel: String? = null,           // face finder that proposed the marking, if any
 )
