@@ -138,7 +138,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             UvCard {
                 Text(tr("Mode"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 SegRow(tr("Use the app"), if (state.photoOnly) tr("Photo scoring only: no Bluetooth, no sight. Score from photos and collect training data, for example on a club mate's phone.")
-                    else tr("With the UV sight: connection, sessions, settings and history."), if (state.photoOnly) tr("Photos only") else tr("With sight"), listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
+                    else tr("With the UV sight: connection, sessions, settings and history."), if (state.photoOnly) "Photos only" else "With sight", listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
             }
             Spacer(Modifier.height(14.dp))
             // The sights this phone knows: name the connected one, pick which to connect to, forget old ones
@@ -250,7 +250,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         items.forEachIndexed { i, it ->
                             if (it.k == "bright_mode") {
                                 SegRow(tr("Brightness mode"), if (autoMode) tr("Auto: fades in from Bright above and reaches full brightness at Dark below.") else tr("Fixed: one brightness, switched at Dark below / Bright above."),
-                                    if (autoMode) tr("auto") else tr("fixed"), listOf("fixed", "auto"), first = i == 0 && !g.cal) { ctl.sendSet("bright_mode", if (it == "auto") 1.0 else 0.0) }
+                                    if (autoMode) "auto" else "fixed", listOf("fixed", "auto"), first = i == 0 && !g.cal) { ctl.sendSet("bright_mode", if (it == "auto") 1.0 else 0.0) }
                                 return@forEachIndexed
                             }
                             if ((it.k == "bright_min" || it.k == "fade") && !autoMode) return@forEachIndexed
@@ -332,7 +332,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 SegRow(tr("Face"), tr("Preselected on the photo screen; change it there per session."), runCatching { de.uvsight.core.FaceType.valueOf(ph.face) }.getOrDefault(de.uvsight.core.FaceType.WA40).label,
                     de.uvsight.core.FaceType.values().map { it.label }, first = true) { l -> de.uvsight.core.FaceType.values().firstOrNull { it.label == l }?.let { ctl.setPhotoPrefs(ph.copy(face = it.name)) } }
                 SegRow(tr("Photo source"), tr("Camera opens the camera app for Score from photo. Gallery lets you pick a picture you took before, for phones whose camera app fails on the request."),
-                    if (ph.source == "gallery") tr("Gallery") else tr("Camera"), listOf("Camera", "Gallery")) { ctl.setPhotoPrefs(ph.copy(source = if (it == "Gallery") "gallery" else "camera")) }
+                    if (ph.source == "gallery") "Gallery" else "Camera", listOf("Camera", "Gallery")) { ctl.setPhotoPrefs(ph.copy(source = if (it == "Gallery") "gallery" else "camera")) }
                 if (ph.source != "gallery") {
                     // Which camera app gets the request. Android 11+ hands the plain request to the system camera only,
                     // so a third-party camera (e.g. Open Camera) has to be named here.
@@ -349,10 +349,12 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             }.getOrDefault(emptyList())
                         }
                     }
+                    // The app Android picks for the plain request; the hint only talks about a choice when another one exists.
+                    val systemPkg = remember { runCatching { pm.resolveActivity(android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE), 0)?.activityInfo?.packageName }.getOrNull() }
                     HorizontalDivider(color = uv.line)
                     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                         Text(tr("Camera app"), color = uv.ink)
-                        Text(if (cameraApps.size <= 1) tr("Only the built-in camera was found.") else tr("System lets Android choose (usually the built-in camera). Pick another app if the built-in one fails."), color = uv.muted, fontSize = 13.sp)
+                        Text(if (cameraApps.all { it.first == systemPkg }) tr("Only the built-in camera was found.") else tr("System lets Android choose (usually the built-in camera). Pick another app if the built-in one fails."), color = uv.muted, fontSize = 13.sp)
                         Spacer(Modifier.height(8.dp))
                         Row(Modifier.horizontalScroll(rememberScrollState())) {
                             FilterChip(selected = ph.cameraApp.isEmpty(), onClick = { ctl.setPhotoPrefs(ph.copy(cameraApp = "")) }, label = { Text(tr("System")) }, modifier = Modifier.padding(end = 6.dp))
