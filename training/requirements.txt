@@ -1,3 +1,8 @@
-# Training the arrow detector on your own machine (Linux, NVIDIA: the default PyTorch wheel has CUDA)
+# Training the arrow detector and the face finder on your own machine (Linux, NVIDIA: the default PyTorch wheel has CUDA).
+# Install into a virtual environment (python3 -m venv .venv && . .venv/bin/activate); Arch and Debian refuse pip installs
+# into the system Python, and Ultralytics would then fail at the export trying to fetch the LiteRT packages itself.
 ultralytics>=8.3
 pillow>=10
+# the TFLite (LiteRT) export of Ultralytics 8.4
+litert-torch>=0.9.0
+ai-edge-litert>=2.1.4

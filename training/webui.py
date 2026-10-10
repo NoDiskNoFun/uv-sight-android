@@ -84,6 +84,32 @@ def ultralytics_available():
         return False
 
 
+def export_missing():
+    """Names of the packages the TFLite export needs that this Python lacks (Ultralytics 8.4 uses LiteRT; older
+    versions bring their own converter). Checked before a run starts, so the hours of training are not wasted
+    on an export that fails and that Ultralytics cannot repair by installing into a system Python."""
+    try:
+        from ultralytics import __version__ as v
+        major, minor = (int(x) for x in v.split(".")[:2])
+    except Exception:
+        return []
+    if (major, minor) < (8, 4):
+        return []
+    missing = []
+    for mod, pkg in (("litert_torch", "litert-torch"), ("ai_edge_litert", "ai-edge-litert")):
+        try:
+            __import__(mod)
+        except Exception:
+            missing.append(pkg)
+    return missing
+
+
+def env_note():
+    """One line about the Python in use, so a run outside the virtual environment is spotted at once."""
+    venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+    return f"Python {sys.version.split()[0]} at {sys.executable}" + ("" if venv else " (no virtual environment)")
+
+
 # ----------------------------------------------------------------------------- evaluation
 def evaluate(val_recs, predict, predict_face=None):
     """predict(record, image_path) -> [(x, y, conf)] in upright pixels;
@@ -408,12 +434,13 @@ const $=id=>document.getElementById(id);let st=null,prevRun=null,prevIdx=0;const
 async function api(p,o){const r=await fetch(p,o);return r.json()}
 function fmt(v){return v==null?'–':v}
 async function refresh(){st=await api('/api/state');
-$('gpu').textContent=`GPU: ${st.gpu.name}`+(st.gpu.torch?` · PyTorch ${st.gpu.torch}`:'')+(st.ultralytics?' · Ultralytics ready':' · Ultralytics not installed: pip install -r requirements.txt')+(st.mock?' · MOCK MODE':'');
+$('gpu').textContent=`GPU: ${st.gpu.name}`+(st.gpu.torch?` · PyTorch ${st.gpu.torch}`:'')+(st.ultralytics?' · Ultralytics ready':' · Ultralytics not installed: pip install -r requirements.txt')+(st.mock?' · MOCK MODE':'')+` · ${st.env}`;
+$('gpu').className=st.export_missing&&st.export_missing.length?'err':'muted';if(st.export_missing&&st.export_missing.length)$('gpu').textContent+=` · export needs ${st.export_missing.join(', ')}: pip install -r requirements.txt in this Python`;
 for(const e of st.exports)if(!chosen.has(e.name))chosen.set(e.name,true);
 $('exports').innerHTML=st.exports.length?st.exports.map(e=>`<label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-n="${e.name}" ${chosen.get(e.name)?'checked':''}> ${e.name} <span class="muted">(${(e.size/1048576).toFixed(1)} MB)</span></label>`).join('<br>'):'<span class="muted">No export uploaded yet.</span>';
 for(const cb of $('exports').querySelectorAll('input'))cb.onchange=()=>{chosen.set(cb.dataset.n,cb.checked);refresh()};
 const j=st.job;const running=j&&j.state==='running';
-$('start').disabled=running||!st.exports.some(e=>chosen.get(e.name))||!(st.ultralytics||st.mock);$('stop').disabled=!running;
+$('start').disabled=running||!st.exports.some(e=>chosen.get(e.name))||!(st.ultralytics||st.mock)||(!st.mock&&st.export_missing&&st.export_missing.length>0);$('stop').disabled=!running;
 if(j){$('jobmsg').textContent=`${j.name}: ${j.state}`+(j.error?` – ${j.error}`:'')+(running?` · ${j.stage} model, epoch ${j.epoch}/${j.epochs}`:'');
 $('jobmsg').className=j.state==='failed'?'err':j.state==='done'?'ok':'muted';
 $('prog').hidden=false;$('prog').value=j.epoch/j.epochs;$('log').hidden=false;$('log').textContent=j.log.join('\n');$('log').scrollTop=1e9;drawCurve(j.metrics)}
@@ -463,7 +490,8 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/state":
             with LOCK:
                 job = JOB.snapshot() if JOB else None
-            self.send_json({"gpu": gpu_info(), "ultralytics": ultralytics_available(), "mock": Handler.mock, "exports": exports_list(), "job": job, "runs": runs_list()})
+            self.send_json({"gpu": gpu_info(), "ultralytics": ultralytics_available(), "export_missing": export_missing(), "env": env_note(),
+                            "mock": Handler.mock, "exports": exports_list(), "job": job, "runs": runs_list()})
         elif u.path == "/api/preview":
             try:
                 self.send_json(preview(Path(q["run"][0]).name, int(q.get("i", ["0"])[0])))
@@ -518,6 +546,9 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({"ok": False, "error": "upload an export first and tick at least one"}); return
                 if not (ultralytics_available() or Handler.mock):
                     self.send_json({"ok": False, "error": "Ultralytics is not installed"}); return
+                miss = export_missing() if not Handler.mock else []
+                if miss:
+                    self.send_json({"ok": False, "error": "the TFLite export needs " + ", ".join(miss) + f": run pip install -r requirements.txt with the Python this page uses ({sys.executable})"}); return
                 name = (body.get("name") or "").strip() or time.strftime("run-%Y%m%d-%H%M%S")
                 params = {"exports": exports, "imgsz": int(body.get("imgsz", 640)), "epochs": int(body.get("epochs", 120)),
                           "size": body.get("size", "n"), "batch": int(body.get("batch", 16)), "val": float(body.get("val", 0.2)), "name": name}
@@ -543,6 +574,10 @@ def main():
     DATA.mkdir(exist_ok=True); RUNS.mkdir(exist_ok=True)
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     print(f"UV-Sight trainer at http://{'localhost' if a.host == '127.0.0.1' else a.host}:{a.port}" + ("  (mock)" if a.mock else ""))
+    print(env_note())
+    miss = export_missing()
+    if miss and not a.mock:
+        print("the TFLite export needs " + ", ".join(miss) + ": pip install -r requirements.txt (with this Python; use the virtual environment, a system Python refuses)")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
