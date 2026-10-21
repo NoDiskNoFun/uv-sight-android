@@ -122,8 +122,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var magPos by remember { mutableStateOf<Offset?>(null) }
     val modelStore = remember { de.uvsight.app.ModelStore(context) }
     val modelInfo = remember { modelStore.info() }
-    val hasArrowModel = remember { modelStore.hasArrows }
-    val hasFaceModel = remember { modelStore.hasFace }
+    val hasArrowModel = remember { modelStore.hasArrows && prefs.useArrowModel }
+    val hasFaceModel = remember { modelStore.hasFace && prefs.useFaceModel }
     var detections by remember { mutableStateOf<List<de.uvsight.core.Detection>?>(null) }   // arrow proposals, null until the model ran
     var faceLooked by remember { mutableStateOf(!hasFaceModel) }                             // the face finder has run (or there is none)
     var manualShot by remember { mutableStateOf(mapOf<Int, Int>()) }   // mark index -> shot index the user set by hand
@@ -431,7 +431,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                         val hitList: List<Hit>? = hitsOf(marks)
                         val sa = shotAssign
                         ctl.applyPhotoScores(rings, hitList, sa?.result(), sa?.src)
-                        // Every scored photo is a training example, corrected model proposals included
+                        // Every scored photo is kept; the trainer uses only what was marked by hand (see trainArrows / trainFace)
                         if (prefs.collect && bitmap != null) {
                             val b = bitmap!!
                             val k = fullSize.width.toDouble() / b.width
@@ -456,6 +456,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                 shots = endShots?.shots,
                                 faceSource = if (center == null) null else if (faceFromModel) "model" else if (faceRestored) "restored" else "user",
                                 faceModel = if (center != null && faceFromModel) modelInfo?.face?.name ?: modelInfo?.name else null,
+                                trainArrows = marks.none { it.source == "model" },
+                                trainFace = center != null && !faceFromModel,
                             )
                             runCatching { TrainingStore(context).save(rec, file) }.onFailure { vm.toast(tr("Could not keep the photo: {message}", "message" to it.message), true) }
                         }

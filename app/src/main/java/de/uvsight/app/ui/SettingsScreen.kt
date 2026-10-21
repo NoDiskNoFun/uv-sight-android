@@ -446,14 +446,17 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         if ((ev.valPhotos ?: 0) < 5) Text(tr("Few validation photos: these numbers say little yet."), color = uv.muted, fontSize = 12.sp)
                     }
                 }
-                if (modelInfo?.arrows != null) {
+                // Each model can be switched off on its own: that part is then marked by hand and counts as training data
+                if (modelInfo?.arrows != null) SwitchRow(tr("Use the arrow detector"), tr("Off: you tap the arrows yourself and the photo trains the arrow detector."), ph.useArrowModel) { ctl.setPhotoPrefs(ph.copy(useArrowModel = it)) }
+                if (modelInfo?.face != null) SwitchRow(tr("Use the face finder"), tr("Off: you mark the face yourself (or take over the last marking) and the photo trains the face finder."), ph.useFaceModel) { ctl.setPhotoPrefs(ph.copy(useFaceModel = it)) }
+                if (modelInfo?.arrows != null && ph.useArrowModel) {
                     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                         Text(tr("Confidence: {modelConf} %", "modelConf" to ((ph.modelConf * 100).roundToInt())), color = uv.muted, fontSize = 13.sp)
                         Slider(value = ph.modelConf.toFloat(), onValueChange = { ctl.setPhotoPrefs(ph.copy(modelConf = (it * 20).roundToInt() / 20.0)) }, valueRange = 0.1f..0.9f,
                             colors = SliderDefaults.colors(thumbColor = uv.gold, activeTrackColor = uv.gold))
                     }
                 }
-                SwitchRow(tr("Collect training data"), tr("Keeps every scored photo with its marks on this phone, so the recognition models can be trained (again) later; corrected model proposals count too. Photos never leave the phone unless you export them."), ph.collect) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
+                SwitchRow(tr("Collect training data"), tr("Keeps every scored photo with its marks on this phone, so the recognition models can be trained (again) later. Only what you marked by hand is used: with the face finder on, the photo trains the arrow detector; with the arrow detector on, the face finder; with both on, neither. Photos never leave the phone unless you export them."), ph.collect) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
                 if (ph.collect || count > 0) {
                     HorizontalDivider(color = uv.line)
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {

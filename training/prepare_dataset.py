@@ -5,7 +5,8 @@ Each arrow becomes one object of class "arrow" with a single keypoint: the entry
 With --faces the dataset marks the target face instead: a box around the blue edge with five
 keypoints, the centre and the highest, rightmost, lowest and leftmost point of the edge
 (computed from the fitted ellipse, so they are the same for every photo). Photos without a
-usable face marking are left out of the face dataset.
+usable face marking are left out of the face dataset. Either dataset only takes photos whose
+part was marked by hand: what a model proposed in the app never trains that same model.
 
 The JSON records hold coordinates in the *upright* image (EXIF orientation applied),
 so the images are rotated here the same way before they are written out.
@@ -90,9 +91,24 @@ def face_label(r):
     return f"0 {(x0 + x1) / 2 / w:.6f} {(y0 + y1) / 2 / h:.6f} {(x1 - x0) / w:.6f} {(y1 - y0) / h:.6f} " + " ".join(f"{p[0] / w:.6f} {p[1] / h:.6f} 2" for p in k)
 
 
+def hand_marked(rec, part):
+    """True when the given part ("arrows" / "face") of the record was marked by hand, so it may train that model.
+    Records of newer apps say so (trainArrows / trainFace); older ones are judged by what proposed the marks."""
+    if part == "arrows":
+        v = rec.get("trainArrows")
+        return v if v is not None else not rec.get("model")
+    v = rec.get("trainFace")
+    return v if v is not None else rec.get("faceSource") != "model"
+
+
+def for_arrows(recs):
+    """The records whose arrows were marked by hand."""
+    return [x for x in recs if hand_marked(x[0], "arrows")]
+
+
 def with_face(recs):
-    """The records whose face marking gives a geometry (what the face model can learn from)."""
-    return [x for x in recs if face_label(x[0]) is not None]
+    """The records whose face was marked by hand and gives a geometry (what the face model can learn from)."""
+    return [x for x in recs if hand_marked(x[0], "face") and face_label(x[0]) is not None]
 
 
 def data_yaml(out: Path, faces: bool):
@@ -105,8 +121,7 @@ def write_split(recs, out: Path, name: str, faces: bool):
     (out / "images" / name).mkdir(parents=True, exist_ok=True)
     (out / "labels" / name).mkdir(parents=True, exist_ok=True)
     n_obj = 0
-    if faces:
-        recs = with_face(recs)
+    recs = with_face(recs) if faces else for_arrows(recs)
     for r, img_path in recs:
         w, h = r["width"], r["height"]
         if Image is not None:

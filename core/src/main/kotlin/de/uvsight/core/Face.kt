@@ -259,4 +259,6 @@ data class PhotoRecord(
     val shots: List<ShotInfo>? = null,       // the sight's shots of this end, as received
     val faceSource: String? = null,          // "user" (tapped), "restored" (taken over from the last photo) or "model" (proposed by the face finder)
     val faceModel: String? = null,           // face finder that proposed the marking, if any
+    val trainArrows: Boolean? = null,        // the arrows were marked by hand: use this photo to train the arrow detector
+    val trainFace: Boolean? = null,          // the face was marked by hand (or taken over): use this photo to train the face finder
 )

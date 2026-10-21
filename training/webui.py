@@ -121,10 +121,12 @@ def evaluate(val_recs, predict, predict_face=None):
     face_n = face_found = face_ring_ok = face_ring_n = 0; face_mm = []
     per_image = []
     for rec, img in val_recs:
-        preds = predict(rec, img)
+        # only hand-made marks serve as the truth: a part a model proposed in the app is not compared
+        arrows_hand = prepare_dataset.hand_marked(rec, "arrows"); face_hand = prepare_dataset.hand_marked(rec, "face")
+        preds = predict(rec, img) if arrows_hand else []
         face_hit = None
         g_user = facegeom.geometry_of_record(rec)
-        if predict_face and g_user:
+        if predict_face and g_user and face_hand:
             face_n += 1; face_hit = False
             pf = predict_face(rec, img)
             gp = facegeom.fit(pf[1][0], pf[1][1:5]) if pf and len(pf[1]) >= 5 else None
@@ -136,7 +138,7 @@ def evaluate(val_recs, predict, predict_face=None):
                     face_ring_n += 1
                     if facegeom.ring(gp.to_face((a["px"], a["py"])), dia, min_ring, rec.get("arrowMm", 6.0)) == a["ring"]:
                         face_ring_ok += 1
-        marks = [(a["px"], a["py"], a) for a in rec["arrows"]]
+        marks = [(a["px"], a["py"], a) for a in rec["arrows"]] if arrows_hand else []
         total += len(marks)
         used = set(); matched = []
         for mx, my, a in marks:
@@ -195,6 +197,10 @@ def run_job(job, mock):
             raise RuntimeError("no records in the export")
         if len(exports) > 1:
             job.say(f"{len(exports)} exports merged: " + ", ".join(exports))
+        n_arrow_hand = len(prepare_dataset.for_arrows(recs)); n_face_hand = len(prepare_dataset.with_face(recs))
+        job.say(f"{len(recs)} photos: arrows marked by hand on {n_arrow_hand}, face on {n_face_hand} (what a model proposed in the app is left out)")
+        if n_arrow_hand == 0:
+            raise RuntimeError("no photo with hand-marked arrows: switch the arrow detector off in the app to collect some")
         train, val = prepare_dataset.split_by_session(recs, float(p["val"]))
         if not val:
             # a single session (or a single photo): the trainer needs a validation set, so the
@@ -204,6 +210,8 @@ def run_job(job, mock):
         ds = run / "dataset"
         n_tr = prepare_dataset.write_split(train, ds, "train", False)
         n_va = prepare_dataset.write_split(val, ds, "val", False)
+        if n_tr == 0:
+            raise RuntimeError("no hand-marked arrows in the training split; use a smaller validation share or collect more photos")
         (ds / "data.yaml").write_text(prepare_dataset.data_yaml(ds, False))
         job.say(f"{len(train)} training photos ({n_tr} arrows), {len(val)} validation photos ({n_va} arrows)")
         # the face finder learns from the photos whose marking gives a geometry

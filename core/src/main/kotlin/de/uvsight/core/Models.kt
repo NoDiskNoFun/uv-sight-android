@@ -208,6 +208,8 @@ data class PhotoPrefs(
     val source: String = "camera",       // where Score from photo gets the picture: "camera" or "gallery"
     val cameraApp: String = "",          // package of the camera app to use; "" = whatever the system picks
     val deleteGallery: Boolean = false,  // remove a picked gallery picture once the end is done
+    val useArrowModel: Boolean = true,   // let the installed arrow detector propose the arrows
+    val useFaceModel: Boolean = true,    // let the installed face finder propose the face marking
 )
 
 /** The sight's aiming-range signal right now (mirrors the LED): warn = "low" / "high" / "", ok = aim fits. */
