@@ -159,6 +159,7 @@ class SightController(
     private var lastSentHits: List<Hit>? = null
     private var lastSentMatch: ShotMatch.Result? = null
     private var shotsBuf: EndShots? = null              // shot list being received (shotsStart .. shotsEnd)
+    private var traceBuf: AimTrace? = null              // aim trace being received in parts ("trace" lines with k, n)
     private var shotItems: ArrayList<ShotInfo>? = null
     private var lastSentMatchSrc: List<String>? = null
     private var distPresetAt = 0L
@@ -426,7 +427,15 @@ class SightController(
                 }
             }
             "shotModel" -> set { copy(shotModel = m.toShotModel()) }
-            "trace" -> set { copy(trace = m.toTrace()) }
+            "trace" -> {
+                // the sight sends a trace as lines of a few samples each: k = index of the first, n = the whole trace
+                val part = m.toTrace(); val k = m.int("k") ?: 0; val n = m.int("n") ?: part.ms.size
+                val prev = traceBuf
+                val buf = if (k == 0 || prev == null || prev.end != part.end || prev.i != part.i || prev.ms.size != k) part
+                          else prev.copy(ms = prev.ms + part.ms, pitch = prev.pitch + part.pitch, cant = prev.cant + part.cant)
+                traceBuf = buf
+                if (buf.ms.size >= n) { traceBuf = null; set { copy(trace = buf) } }
+            }
             "setupsStart" -> setupBuf = SetupsInfo(m.int("active") ?: 0, emptyList())
             "setupItem" -> setupBuf?.let { setupBuf = it.copy(list = it.list + m.toSetupItem()) }
             "setupsEnd" -> setupBuf?.let { b ->

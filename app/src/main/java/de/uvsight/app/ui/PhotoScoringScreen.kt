@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -130,6 +131,11 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     LaunchedEffect(step) { if (step == 2) ctl.requestShots() }
     var proposalsShown by remember { mutableStateOf(false) }
     val geometry = remember(center, edge) { val c = center; if (c != null && edge.size >= 4) FaceGeometry.fit(Pt(c.x.toDouble(), c.y.toDouble()), edge.map { Pt(it.x.toDouble(), it.y.toDouble()) }) else null }
+    // The gesture handler below is set up once (pointerInput(Unit)) and would keep the geometry of the first
+    // composition, i.e. none: it reads the current one through this state, so every tap gets its ring.
+    val currentGeometry = rememberUpdatedState(geometry)
+    val currentFace = rememberUpdatedState(faceType)
+    val currentArrowMm = rememberUpdatedState(prefs.arrowMm)
     val textMeasurer = rememberTextMeasurer()
 
     LaunchedEffect(file) {
@@ -181,17 +187,27 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     LaunchedEffect(faceFromModel, geometry) {
         if (faceFromModel && geometry != null && step == 1 && !skipFace && !autoJumped) { autoJumped = true; goToArrows(); vm.toast(tr("Face found by the model. Tap Face to check or adjust it.")) }
     }
-    // Fit the image into the container once both are known
+    // Fit the image into the container once both are known. The container changes height whenever the
+    // panel below grows or shrinks (hints, ring chips): then the view only shifts to keep its centre,
+    // the zoom the user set stays.
+    var fittedFor by remember { mutableStateOf<Bitmap?>(null) }
+    var lastContainer by remember { mutableStateOf(IntSize.Zero) }
     LaunchedEffect(bitmap, container) {
         val b = bitmap ?: return@LaunchedEffect
         if (container.width == 0) return@LaunchedEffect
-        scale = min(container.width.toFloat() / b.width, container.height.toFloat() / b.height)
-        offset = Offset((container.width - b.width * scale) / 2, (container.height - b.height * scale) / 2)
+        if (fittedFor !== b) {
+            scale = min(container.width.toFloat() / b.width, container.height.toFloat() / b.height)
+            offset = Offset((container.width - b.width * scale) / 2, (container.height - b.height * scale) / 2)
+            fittedFor = b
+        } else if (lastContainer.width > 0) {
+            offset += Offset((container.width - lastContainer.width) / 2f, (container.height - lastContainer.height) / 2f)
+        }
+        lastContainer = container
     }
 
     fun toImage(p: Offset) = Offset((p.x - offset.x) / scale, (p.y - offset.y) / scale)
     fun toScreen(p: Offset) = Offset(p.x * scale + offset.x, p.y * scale + offset.y)
-    fun ringAt(p: Offset): Int = geometry?.let { g -> Scoring.ring(g.toFace(Pt(p.x.toDouble(), p.y.toDouble())), faceType, prefs.arrowMm) } ?: -1
+    fun ringAt(p: Offset): Int = currentGeometry.value?.let { g -> Scoring.ring(g.toFace(Pt(p.x.toDouble(), p.y.toDouble())), currentFace.value, currentArrowMm.value) } ?: -1
     // With a model installed, the arrows are looked for as soon as the photo is decoded; the
     // proposals appear when the arrow step is reached (the rings need the face marking).
     LaunchedEffect(bitmap) {

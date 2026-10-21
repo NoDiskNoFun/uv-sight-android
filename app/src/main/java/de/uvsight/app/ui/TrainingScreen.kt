@@ -105,8 +105,9 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
         RoundButton("+") { ctl.distPlus() }
         Spacer(Modifier.weight(1f))
         Text(state.lastAng, color = uv.muted, fontSize = 13.sp)
+        // the aim trace of the last shot of the open end; the dialog says so when the sight has none for it
         val lastShot = (ses?.endShots ?: 0) - 1
-        if (connected && known && lastShot >= 0 && state.lastAng.isNotEmpty()) {
+        if (connected && known && lastShot >= 0) {
             Spacer(Modifier.width(6.dp))
             SecondaryButton(tr("Trace")) { ctl.requestTrace(lastShot) }
         }

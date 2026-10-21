@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -23,6 +24,35 @@ class EventsTest {
         override fun disconnect() { connected = false }
     }
 
+    @Test fun traceArrivesInParts() {
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val ctl = SightController(scope, MemoryStore(), FakeTransport(), object : UiSink { override fun toast(text: String, error: Boolean) {} })
+        try {
+            runBlocking {
+                withContext(dispatcher) { ctl.onLinkUp() }
+                delay(100)
+                withContext(dispatcher) {
+                    ctl.onLine("""{"t":"hello","proto":22,"fw":"6.4","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Hoyt"}""")
+                    // three parts of a 7-sample trace; a stale part of another shot in between is dropped
+                    ctl.onLine("""{"t":"trace","end":3,"i":1,"n":7,"k":0,"ms":[1891,1861,1831],"pitch":[120,118,117],"cant":[-30,-28,-25]}""")
+                    assertEquals(null, ctl.state.value.trace)
+                    ctl.onLine("""{"t":"trace","end":3,"i":1,"n":7,"k":3,"ms":[1801,1771,1741],"pitch":[116,116,115],"cant":[-20,-18,-15]}""")
+                    ctl.onLine("""{"t":"trace","end":3,"i":1,"n":7,"k":6,"ms":[1711],"pitch":[114],"cant":[-12]}""")
+                }
+                delay(100)
+                val tr = ctl.state.value.trace!!
+                assertEquals(7, tr.ms.size); assertEquals(1891, tr.ms[0]); assertEquals(1711, tr.ms[6])
+                assertEquals(1.14, tr.pitch[6], 1e-9); assertEquals(-0.12, tr.cant[6], 1e-9)
+                assertEquals(3, tr.end); assertEquals(1, tr.i)
+                // an empty trace (shot without angle) is one part with n = 0
+                withContext(dispatcher) { ctl.clearTrace(); ctl.onLine("""{"t":"trace","end":3,"i":0,"n":0,"k":0,"ms":[],"pitch":[],"cant":[]}""") }
+                delay(100)
+                assertEquals(0, ctl.state.value.trace!!.ms.size)
+            }
+        } finally { scope.cancel(); dispatcher.close() }
+    }
+
     @Test fun rangeEventAndAlerts() {
         val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -35,7 +65,7 @@ class EventsTest {
             runBlocking {
                 withContext(dispatcher) { ctl.onLinkUp() }
                 delay(100)                                   // "app on" goes out, the controller now waits for hello
-                withContext(dispatcher) { ctl.onLine("""{"t":"hello","proto":21,"fw":"6.3","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Hoyt"}""") }
+                withContext(dispatcher) { ctl.onLine("""{"t":"hello","proto":22,"fw":"6.4","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Hoyt"}""") }
                 delay(200)
                 assertEquals(ConnState.CONNECTED, ctl.state.value.conn)
                 withContext(dispatcher) {
