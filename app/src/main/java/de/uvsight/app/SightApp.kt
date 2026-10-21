@@ -35,6 +35,9 @@ class SightRuntime private constructor(private val app: Application) {
         override fun toast(text: String, error: Boolean) { toasts.tryEmit(Toast(text, error)) }
     })
     val haptics = Haptics(app, controller, scope)
+    /** The gallery picture of the photo being scored; deleted once the end is done when the setting says so. */
+    var galleryUri: android.net.Uri? = null
+    var galleryScored = false
     val alerts = Alerts(app, controller, scope)
 
     init {

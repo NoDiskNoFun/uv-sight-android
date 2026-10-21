@@ -12,6 +12,9 @@ class SightViewModel(app: Application) : AndroidViewModel(app) {
     val controller = rt.controller
     val state get() = controller.state
     fun toast(text: String, error: Boolean = false) = rt.toast(text, error)
+    /** The gallery picture behind the photo being scored (null when it came from the camera) and whether its scores were used. */
+    var galleryUri: android.net.Uri? get() = rt.galleryUri; set(v) { rt.galleryUri = v }
+    var galleryScored: Boolean get() = rt.galleryScored; set(v) { rt.galleryScored = v }
     /** Switch the language pack ("" = phone language); the state change re-renders everything. */
     fun setLanguage(code: String) { Language.apply(getApplication(), code); controller.setLanguage(code) }
 }

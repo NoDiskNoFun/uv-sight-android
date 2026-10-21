@@ -333,7 +333,37 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     de.uvsight.core.FaceType.values().map { it.label }, first = true) { l -> de.uvsight.core.FaceType.values().firstOrNull { it.label == l }?.let { ctl.setPhotoPrefs(ph.copy(face = it.name)) } }
                 SegRow(tr("Photo source"), tr("Camera opens the camera app for Score from photo. Gallery lets you pick a picture you took before, for phones whose camera app fails on the request."),
                     if (ph.source == "gallery") "Gallery" else "Camera", listOf("Camera", "Gallery")) { ctl.setPhotoPrefs(ph.copy(source = if (it == "Gallery") "gallery" else "camera")) }
-                if (ph.source != "gallery") {
+                if (ph.source == "gallery") {
+                    // Deleting the picked picture once the end is done. Android asks for every deletion unless the app
+                    // holds Media management (Android 12+), which the user grants once in the system settings.
+                    val readPerm = if (android.os.Build.VERSION.SDK_INT >= 33) android.Manifest.permission.READ_MEDIA_IMAGES else android.Manifest.permission.READ_EXTERNAL_STORAGE
+                    var manageTick by remember { mutableIntStateOf(0) }
+                    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+                    androidx.compose.runtime.DisposableEffect(lifecycle) {
+                        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) manageTick++ }
+                        lifecycle.addObserver(obs); onDispose { lifecycle.removeObserver(obs) }
+                    }
+                    val canManage = remember(manageTick) { de.uvsight.app.GalleryDelete.canManage(context) }
+                    val askManage = {
+                        if (android.os.Build.VERSION.SDK_INT >= 31) runCatching {
+                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_MANAGE_MEDIA, android.net.Uri.parse("package:${context.packageName}")))
+                        }.onFailure { vm.toast(tr("Could not open the Media management setting."), true) }
+                    }
+                    val readLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { if (!de.uvsight.app.GalleryDelete.canManage(context)) askManage() }
+                    SwitchRow(tr("Delete the gallery photo after scoring"), tr("The picked picture is removed from the gallery when the end is done (Done, or Save end). The copy kept as training data stays."), ph.deleteGallery) { on ->
+                        ctl.setPhotoPrefs(ph.copy(deleteGallery = on))
+                        if (on && android.os.Build.VERSION.SDK_INT >= 30) {
+                            if (androidx.core.content.ContextCompat.checkSelfPermission(context, readPerm) != android.content.pm.PackageManager.PERMISSION_GRANTED) readLauncher.launch(readPerm)
+                            else if (!de.uvsight.app.GalleryDelete.canManage(context)) askManage()
+                        }
+                    }
+                    if (ph.deleteGallery && android.os.Build.VERSION.SDK_INT >= 31) {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (canManage) tr("Media management granted: deletes without asking.") else tr("Without Media management Android asks before every deletion."), color = uv.muted, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            if (!canManage) { Spacer(Modifier.width(8.dp)); SecondaryButton(tr("Grant")) { askManage() } }
+                        }
+                    }
+                } else {
                     // Which camera app gets the request. Android 11+ hands the plain request to the system camera only,
                     // so a third-party camera (e.g. Open Camera) has to be named here.
                     // Android 11+ answers the plain capture query with system cameras only, so every installed

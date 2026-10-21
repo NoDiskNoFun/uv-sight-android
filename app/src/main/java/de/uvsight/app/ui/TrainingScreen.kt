@@ -125,6 +125,7 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
     }
 
     val busy = state.awaitingEnd || state.reconnecting
+    val deleteGallery = rememberGalleryDeleter(state, vm)
     PhotoButton(state, vm, enabled = !busy, onPhoto = onPhoto)
     Spacer(Modifier.height(10.dp))
     val keysEnabled = !busy && state.entries.size < SightController.MAX_ARROWS
@@ -150,7 +151,7 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
 
     Spacer(Modifier.height(14.dp))
     PrimaryButton(if (state.reconnecting) tr("Connecting…") else if (state.awaitingEnd) tr("Saving…") else tr("Save end ({entries})", "entries" to state.entries.size),
-        modifier = Modifier.fillMaxWidth().height(54.dp), enabled = !busy && state.entries.isNotEmpty()) { ctl.sendEnd() }
+        modifier = Modifier.fillMaxWidth().height(54.dp), enabled = !busy && state.entries.isNotEmpty()) { ctl.sendEnd(); deleteGallery() }
     Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         SecondaryButton(tr("Skip end"), Modifier.weight(1f), enabled = !busy && known && (ses?.endShots ?: 0) > 0) { askSkip = true }
@@ -207,6 +208,7 @@ fun PhotoButton(state: AppState, vm: SightViewModel, enabled: Boolean, onPhoto: 
         val f = pendingPhoto; pendingPhoto = null
         if (uri != null && f != null) {
             val ok = runCatching { context.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { o -> i.copyTo(o) } } != null }.getOrDefault(false)
+            vm.galleryUri = if (ok) uri else null; vm.galleryScored = false
             if (ok && f.length() > 0) onPhoto(f) else { f.delete(); vm.toast(tr("Could not read the picture."), true) }
         } else f?.delete()
     }
@@ -220,6 +222,31 @@ fun PhotoButton(state: AppState, vm: SightViewModel, enabled: Boolean, onPhoto: 
             val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
             runCatching { takePicture.launch(uri) }.onFailure { vm.toast(if (cameraApp.isEmpty()) tr("No camera app found.") else tr("The chosen camera app could not be started."), true); pendingPhoto = null }
         }
+    }
+}
+
+/**
+ * Removes the gallery picture of the scored photo once the end is done, when Settings → Photo scoring says so.
+ * Returns the action for the Done / Save button. From Android 11 on the deletion is a system request:
+ * silent with the Media management permission, otherwise Android asks.
+ */
+@Composable
+fun rememberGalleryDeleter(state: AppState, vm: SightViewModel): () -> Unit {
+    val context = LocalContext.current
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        vm.toast(if (res.resultCode == android.app.Activity.RESULT_OK) tr("Gallery photo deleted.") else tr("Gallery photo kept."))
+    }
+    return {
+        val uri = vm.galleryUri
+        if (uri != null && vm.galleryScored && state.photo.deleteGallery) {
+            when (val o = de.uvsight.app.GalleryDelete.delete(context, uri)) {
+                is de.uvsight.app.GalleryDelete.Outcome.Deleted -> vm.toast(tr("Gallery photo deleted."))
+                is de.uvsight.app.GalleryDelete.Outcome.Launch -> runCatching { launcher.launch(androidx.activity.result.IntentSenderRequest.Builder(o.sender).build()) }
+                    .onFailure { vm.toast(tr("Gallery photo kept: {why}", "why" to it.message), true) }
+                is de.uvsight.app.GalleryDelete.Outcome.Failed -> vm.toast(tr("Gallery photo kept: {why}", "why" to o.why), true)
+            }
+        }
+        vm.galleryUri = null; vm.galleryScored = false
     }
 }
 
@@ -245,7 +272,8 @@ private fun PhotoOnlyScreen(state: AppState, ctl: SightController, vm: SightView
     }
     PhotoButton(state, vm, enabled = true, onPhoto = onPhoto)
     Spacer(Modifier.height(10.dp))
-    PrimaryButton(tr("Done"), modifier = Modifier.fillMaxWidth().height(54.dp), enabled = state.entries.isNotEmpty()) { ctl.clearEntries() }
+    val deleteGallery = rememberGalleryDeleter(state, vm)
+    PrimaryButton(tr("Done"), modifier = Modifier.fillMaxWidth().height(54.dp), enabled = state.entries.isNotEmpty()) { ctl.clearEntries(); deleteGallery() }
     Spacer(Modifier.height(24.dp))
 }
 

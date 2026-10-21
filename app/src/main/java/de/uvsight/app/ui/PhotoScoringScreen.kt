@@ -459,6 +459,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                             )
                             runCatching { TrainingStore(context).save(rec, file) }.onFailure { vm.toast(tr("Could not keep the photo: {message}", "message" to it.message), true) }
                         }
+                        vm.galleryScored = true          // the gallery original may go once the end is done
                         file.delete()
                         onClose()
                     }
