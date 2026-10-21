@@ -456,7 +456,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             colors = SliderDefaults.colors(thumbColor = uv.gold, activeTrackColor = uv.gold))
                     }
                 }
-                SwitchRow(tr("Collect training data"), tr("Keeps every scored photo with its marks on this phone, so the recognition models can be trained (again) later. Only what you marked by hand is used: with the face finder on, the photo trains the arrow detector; with the arrow detector on, the face finder; with both on, neither. Photos never leave the phone unless you export them."), ph.collect) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
+                SwitchRow(tr("Collect training data"), tr("Keeps every scored photo with its marks on this phone, so the recognition models can be trained (again) later. Only what you marked or corrected by hand is used: with the face finder on, the photo trains the arrow detector; with the arrow detector on, the face finder; a proposal you accepted untouched trains nothing. Photos never leave the phone unless you export them."), ph.collect) { ctl.setPhotoPrefs(ph.copy(collect = it)) }
                 if (ph.collect || count > 0) {
                     HorizontalDivider(color = uv.line)
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {

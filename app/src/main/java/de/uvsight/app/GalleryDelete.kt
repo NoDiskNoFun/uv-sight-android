@@ -30,14 +30,21 @@ object GalleryDelete {
     fun mediaUri(context: Context, picked: Uri): Uri? {
         val auth = picked.authority ?: return null
         val path = picked.path ?: ""
-        return when {
-            auth == MediaStore.AUTHORITY && path.contains("/picker/") ->
+        val direct = when {
+            // the photo picker: content://media/picker/... or, behind "pick content", content://media/picker_get_content/...;
+            // the last segment is the library id of a local picture
+            auth == MediaStore.AUTHORITY && path.contains("/picker") ->
                 picked.lastPathSegment?.toLongOrNull()?.let { ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, it) }
-            auth == MediaStore.AUTHORITY -> picked
+            auth == MediaStore.AUTHORITY && picked.lastPathSegment?.toLongOrNull() != null -> picked
             auth == "com.android.providers.media.documents" && Build.VERSION.SDK_INT >= 29 -> runCatching { MediaStore.getMediaUri(context, picked) }.getOrNull()
-            else -> byNameAndSize(context, picked)
+            else -> null
         }
+        return direct?.takeIf { exists(context, it) } ?: byNameAndSize(context, picked)
     }
+
+    /** True when the library has an item under this id-based URI. */
+    private fun exists(context: Context, uri: Uri): Boolean =
+        runCatching { context.contentResolver.query(uri, arrayOf(MediaStore.Images.Media._ID), null, null, null)?.use { it.count > 0 } ?: false }.getOrDefault(false)
 
     /** Last resort for other providers: the one library picture with the same file name and size. */
     private fun byNameAndSize(context: Context, picked: Uri): Uri? {

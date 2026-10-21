@@ -114,6 +114,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var skipFace by remember { mutableStateOf(false) }
     var faceRestored by remember { mutableStateOf(false) }   // marking taken over from the last photo
     var faceFromModel by remember { mutableStateOf(false) }  // marking proposed by the face finder
+    var faceEdited by remember { mutableStateOf(false) }     // ... and a point of it dragged by hand: counts as hand-marked
+    var arrowsEdited by remember { mutableStateOf(false) }   // a mark added, moved, re-ringed or deleted by hand after the proposals
     var marks by remember { mutableStateOf(listOf<Mark>()) }
     var selected by remember { mutableStateOf<Int?>(null) }
     var scale by remember { mutableStateOf(1f) }
@@ -304,11 +306,12 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                     val m = marks[dragIdx]
                                     val np = m.pos + delta / scale
                                     marks = marks.toMutableList().also { it[dragIdx] = m.copy(pos = np, ringAuto = ringAt(np), ring = if (m.ring == m.ringAuto || m.ringAuto == -1 && m.ring == -1) ringAt(np) else m.ring, moved = true) }
-                                    selected = dragIdx
+                                    selected = dragIdx; arrowsEdited = true
                                     if (tool == "finger") magPos = ch.position
                                 } else if (faceIdx != null) {
                                     if (faceIdx == 0) center = center?.plus(delta / scale)
                                     else edge = edge.toMutableList().also { it[faceIdx - 1] = it[faceIdx - 1] + delta / scale }
+                                    faceEdited = true
                                     if (tool == "finger") magPos = ch.position
                                 } else offset += delta
                             }
@@ -323,7 +326,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                         } else {
                             val hit = nearest(startImg, 24.dp.toPx() / scale)
                             if (hit != null) selected = hit
-                            else { val r = ringAt(startImg); marks = marks + Mark(startImg, r, r, tool); selected = marks.size - 1 }
+                            else { val r = ringAt(startImg); marks = marks + Mark(startImg, r, r, tool); selected = marks.size - 1; arrowsEdited = true }
                         }
                     }
                 }
@@ -409,10 +412,10 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 if (sel != null && sel < marks.size) {
                     FlowRow(Modifier.padding(vertical = 4.dp)) {
                         for (r in listOf(Scoring.X, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, Scoring.MISS)) {
-                            FilterChip(selected = marks[sel].ring == r, onClick = { marks = marks.toMutableList().also { it[sel] = it[sel].copy(ring = r) } },
+                            FilterChip(selected = marks[sel].ring == r, onClick = { marks = marks.toMutableList().also { it[sel] = it[sel].copy(ring = r) }; arrowsEdited = true },
                                 label = { Text(Scoring.label(r)) }, modifier = Modifier.padding(end = 4.dp))
                         }
-                        TextButton(onClick = { marks = marks.filterIndexed { i, _ -> i != sel }; selected = null }) { Text(tr("Delete"), color = uv.red) }
+                        TextButton(onClick = { marks = marks.filterIndexed { i, _ -> i != sel }; selected = null; arrowsEdited = true }) { Text(tr("Delete"), color = uv.red) }
                     }
                     shotAssign?.let { sa ->
                         FlowRow(Modifier.padding(bottom = 4.dp), verticalArrangement = Arrangement.Center) {
@@ -423,7 +426,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     }
                 } else Text(tr("Tap each arrow where it enters the face. Tap a mark to change its ring, drag to move it."), color = uv.muted, fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                    SecondaryButton(tr("Undo"), enabled = marks.isNotEmpty()) { marks = marks.dropLast(1); selected = null }
+                    SecondaryButton(tr("Undo"), enabled = marks.isNotEmpty()) { marks = marks.dropLast(1); selected = null; arrowsEdited = true }
                     if (!skipFace) SecondaryButton(tr("Face")) { step = 1 }
                     Spacer(Modifier.weight(1f))
                     PrimaryButton(tr("Use scores"), enabled = marks.isNotEmpty() && marks.all { it.ring >= 0 }) {
@@ -454,10 +457,12 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                 environment = environment, light = state.status?.takeIf { state.conn == de.uvsight.core.ConnState.CONNECTED }?.light, exif = exifMap, device = "${Build.MANUFACTURER} ${Build.MODEL}", app = APP_VERSION, timestamp = System.currentTimeMillis(),
                                 model = if (marks.any { it.source == "model" }) modelInfo?.name else null, modelConf = if (marks.any { it.source == "model" }) prefs.modelConf else null,
                                 shots = endShots?.shots,
-                                faceSource = if (center == null) null else if (faceFromModel) "model" else if (faceRestored) "restored" else "user",
+                                // a part a model proposed counts as hand-marked once you corrected it (dragged a face point;
+                                // added, moved, re-ringed or deleted an arrow); accepted untouched, it stays the model's
+                                faceSource = if (center == null) null else if (faceFromModel) (if (faceEdited) "model-adjusted" else "model") else if (faceRestored) "restored" else "user",
                                 faceModel = if (center != null && faceFromModel) modelInfo?.face?.name ?: modelInfo?.name else null,
-                                trainArrows = marks.none { it.source == "model" },
-                                trainFace = center != null && !faceFromModel,
+                                trainArrows = marks.isNotEmpty() && (marks.none { it.source == "model" } || arrowsEdited),
+                                trainFace = center != null && (!faceFromModel || faceEdited),
                             )
                             runCatching { TrainingStore(context).save(rec, file) }.onFailure { vm.toast(tr("Could not keep the photo: {message}", "message" to it.message), true) }
                         }
