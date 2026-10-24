@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -120,15 +121,24 @@ fun BadgesCard(state: AppState) {
     UvCard {
         Text(tr("Badges") + " · ${badges.count { it.earned }}/${badges.size}", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
         Spacer(Modifier.height(6.dp))
+        var open by remember { mutableStateOf<String?>(null) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             for (b in badges) {
-                var open by remember(b.id) { mutableStateOf(false) }
-                Column(Modifier.width(96.dp).background(if (b.earned) uv.gold.copy(alpha = 0.18f) else uv.line.copy(alpha = 0.5f), SmallShape).clickable { open = !open }.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                // every box the same size: the emoji on top, the title in at most two lines below
+                Column(Modifier.width(96.dp).height(96.dp).background(if (b.earned) uv.gold.copy(alpha = 0.18f) else uv.line.copy(alpha = 0.5f), SmallShape)
+                    .then(if (open == b.id) Modifier.border(2.dp, uv.gold, SmallShape) else Modifier)
+                    .clickable { open = if (open == b.id) null else b.id }.padding(horizontal = 6.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Top) {
                     Text(if (b.earned) b.emoji else "🔒", fontSize = 26.sp)
-                    Text(b.title, color = if (b.earned) uv.ink else uv.muted, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                    if (open) Text(b.desc, color = uv.muted, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Spacer(Modifier.height(4.dp))
+                    Text(b.title, color = if (b.earned) uv.ink else uv.muted, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
+        }
+        badges.firstOrNull { it.id == open }?.let { b ->
+            Spacer(Modifier.height(8.dp))
+            Text("${b.emoji} ${b.title}: ${b.desc}" + if (b.earned) "" else " " + tr("(not yet)"), color = uv.muted, fontSize = 13.sp)
         }
     }
 }

@@ -215,7 +215,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     LaunchedEffect(bitmap) {
         val b = bitmap ?: return@LaunchedEffect
         if (!hasArrowModel) return@LaunchedEffect
-        val found = withContext(Dispatchers.IO) { runCatching { de.uvsight.app.TflitePoseDetector(modelStore.arrowsFile).use { it.detect(b, prefs.modelConf) } } }
+        // a low floor here; how many proposals are taken is decided when the arrow step opens (the sight's shot count helps)
+        val found = withContext(Dispatchers.IO) { runCatching { de.uvsight.app.TflitePoseDetector(modelStore.arrowsFile).use { it.detect(b, minOf(prefs.modelConf, 0.15)) } } }
         found.onFailure { vm.toast(tr("Arrow detection failed: {message}", "message" to it.message), true); detections = emptyList() }
         found.onSuccess { detections = it }
     }
@@ -223,10 +224,19 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         val dets = detections ?: return@LaunchedEffect
         if (step != 2 || proposalsShown) return@LaunchedEffect
         proposalsShown = true
-        val proposed = dets.map { d -> val p = Offset(d.x.toFloat(), d.y.toFloat()); val r = ringAt(p); Mark(p, r, r, "model", false, "model") }
+        // Candidates above the confidence threshold; when the sight counted the shots of this end, that count wins:
+        // too many proposals are cut to the most confident ones, too few are topped up with the next best.
+        val expected = state.session?.takeIf { it.active }?.endShots?.takeIf { it > 0 } ?: endShots?.shots?.size?.takeIf { it > 0 }
+        val sorted = dets.sortedByDescending { it.conf }
+        val chosen = when {
+            expected == null -> sorted.filter { it.conf >= prefs.modelConf }
+            else -> sorted.take(maxOf(expected, sorted.count { it.conf >= prefs.modelConf }).coerceAtMost(sorted.size)).let { l -> if (l.size > expected) l.take(expected) else l }
+        }
+        val proposed = chosen.map { d -> val p = Offset(d.x.toFloat(), d.y.toFloat()); val r = ringAt(p); Mark(p, r, r, "model", false, "model") }
         marks = marks + proposed
         selected = null
-        vm.toast(if (proposed.isEmpty()) tr("No arrows found. Mark them by hand.") else tr("{proposed} {proposed2} found. Check and correct them.", "proposed" to proposed.size, "proposed2" to (if (proposed.size == 1) tr("arrow") else tr("arrows"))))
+        vm.toast(if (proposed.isEmpty()) tr("No arrows found. Mark them by hand.") else tr("{proposed} {proposed2} found. Check and correct them.", "proposed" to proposed.size, "proposed2" to (if (proposed.size == 1) tr("arrow") else tr("arrows"))) +
+            (expected?.let { if (it != proposed.size) " " + tr("The sight counted {n}.", "n" to it) else "" } ?: ""))
     }
     // Marks placed before the face was (re)marked get their ring from the current geometry
     LaunchedEffect(geometry) {

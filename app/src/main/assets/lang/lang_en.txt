@@ -150,6 +150,7 @@ No arrows found. Mark them by hand. = No arrows found. Mark them by hand.
 {proposed} {proposed2} found. Check and correct them. = {proposed} {proposed2} found. Check and correct them.
 arrow = arrow
 arrows = arrows
+The sight counted {n}. = The sight counted {n}.
 Mark the face = Mark the face
 Mark the arrows = Mark the arrows
 Fit = Fit
@@ -194,6 +195,7 @@ best average = best average
 most X = most X
 steadiest = steadiest
 Badges = Badges
+(not yet) = (not yet)
 
 # --- app/src/main/java/de/uvsight/app/ui/SettingsScreen.kt
 off = off
@@ -457,9 +459,9 @@ All {loginfo}sessions stored on the sight are deleted. The sessions on this phon
 For example the arrow type. Up to 18 characters. = For example the arrow type. Up to 18 characters.
 Rename setup = Rename setup
 Up to 18 characters. = Up to 18 characters.
-This setup is in use. = This setup is in use.
-Use this setup from now on? Deleting keeps its ends in your sessions, under this name. It just can't be chosen any more. = Use this setup from now on? Deleting keeps its ends in your sessions, under this name. It just can't be chosen any more.
-Use = Use
+This setup is in use. To delete it, switch to another setup first. = This setup is in use. To delete it, switch to another setup first.
+Deleting keeps its ends in your sessions, under this name. It just can't be chosen any more. = Deleting keeps its ends in your sessions, under this name. It just can't be chosen any more.
+Use this setup = Use this setup
 Rename = Rename
 Reset learning = Reset learning
 {d} Default {def}, range {shownValue} to {shownValue2}. = {d} Default {def}, range {shownValue} to {shownValue2}.

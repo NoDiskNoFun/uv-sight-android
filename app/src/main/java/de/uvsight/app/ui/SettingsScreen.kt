@@ -691,15 +691,16 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     setupMenu?.let { it ->
         val active = it.id == state.setups?.active
         AlertDialog(onDismissRequest = { setupMenu = null }, title = { Text(it.name) },
-            text = { Text(if (active) tr("This setup is in use.") else tr("Use this setup from now on? Deleting keeps its ends in your sessions, under this name. It just can't be chosen any more.")) },
-            confirmButton = {
-                Row {
-                    if (!active) TextButton(onClick = { setupMenu = null; ctl.setupUse(it.id) }) { Text(tr("Use")) }
-                    TextButton(onClick = { setupMenu = null; rename = it }) { Text(tr("Rename")) }
-                    TextButton(onClick = { setupMenu = null; ctl.shotReset(it.id) }) { Text(tr("Reset learning")) }
-                    if (!active) TextButton(onClick = { setupMenu = null; ctl.setupDelete(it.id) }) { Text(tr("Delete"), color = uv.red) }
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (active) tr("This setup is in use. To delete it, switch to another setup first.") else tr("Deleting keeps its ends in your sessions, under this name. It just can't be chosen any more."), color = uv.muted, fontSize = 14.sp)
+                    if (!active) SecondaryButton(tr("Use this setup"), Modifier.fillMaxWidth()) { setupMenu = null; ctl.setupUse(it.id) }
+                    SecondaryButton(tr("Rename"), Modifier.fillMaxWidth()) { setupMenu = null; rename = it }
+                    SecondaryButton(tr("Reset learning"), Modifier.fillMaxWidth()) { setupMenu = null; ctl.shotReset(it.id) }
+                    SecondaryButton(tr("Delete"), Modifier.fillMaxWidth(), enabled = !active, danger = true) { setupMenu = null; ctl.setupDelete(it.id) }
                 }
             },
+            confirmButton = {},
             dismissButton = { TextButton(onClick = { setupMenu = null }) { Text(tr("Cancel")) } })
     }
 }
