@@ -73,6 +73,8 @@ fun UvSightApp(vm: SightViewModel) {
         if (bleOk) ctl.connect() else vm.toast(tr("Bluetooth permission is needed to find the sight."), true)
     }
     var photoFile by remember { mutableStateOf<java.io.File?>(null) }
+    var celebration by remember { mutableStateOf<de.uvsight.core.CoreEvent.Celebrate?>(null) }
+    LaunchedEffect(Unit) { ctl.events.collect { e -> if (e is de.uvsight.core.CoreEvent.Celebrate && state.game.enabled) celebration = e } }
     val connect = {
         val wanted = SightBle.requiredPermissions().toMutableList()
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -122,6 +124,7 @@ fun UvSightApp(vm: SightViewModel) {
     }
 
     photoFile?.let { f -> PhotoScoringScreen(vm, f, onClose = { photoFile = null }) }
+    celebration?.let { c -> Celebration(c) { celebration = null } }
 
     // ---- dialogs driven by the controller ----
     state.confirm?.let { c ->

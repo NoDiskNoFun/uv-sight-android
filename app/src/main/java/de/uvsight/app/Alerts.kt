@@ -35,6 +35,7 @@ class Alerts(private val context: Context, private val controller: SightControll
                         tr("{ends} {endsWord}, {scored} arrows, average {avg}, {x} X, {min} min. No shot for a while.", "ends" to e.ends, "endsWord" to (if (e.ends == 1) tr("end") else tr("ends")), "scored" to e.scored, "avg" to fmt(e.avg, 2), "x" to e.x, "min" to e.min), "history")
                     is CoreEvent.LowBattery -> if (p.lowBat) show(ID_LOW_BAT, tr("Sight battery low"), tr("{pct} % left. The UV light switches off when the battery is empty.", "pct" to e.pct), "status")
                     CoreEvent.ChargeFull -> if (p.chargeFull) show(ID_CHARGED, tr("Sight fully charged"), tr("You can unplug the USB cable."), "status")
+                    is CoreEvent.Celebrate -> {}                       // shown in the app, never as a notification
                 }
             }
         }

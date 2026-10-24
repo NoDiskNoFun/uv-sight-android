@@ -255,4 +255,6 @@ sealed class CoreEvent {
     data class SessionAutoEnded(val ends: Int, val scored: Int, val avg: Double, val x: Int, val min: Int) : CoreEvent()
     data class LowBattery(val pct: Int) : CoreEvent()
     object ChargeFull : CoreEvent()
+    /** Play mode: a personal best or a new badge; title and the value (or emoji) to show. */
+    data class Celebrate(val title: String, val value: String) : CoreEvent()
 }

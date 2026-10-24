@@ -79,6 +79,7 @@ data class AppState(
     val hints: HintPrefs = HintPrefs(),
     val language: String = "",            // "" = the phone's language, else a pack code such as "de"
     val group: GroupPrefs = GroupPrefs(), // single / user / trainer, name, password, this app's id
+    val game: GamePrefs = GamePrefs(),    // play mode: bests, streaks, badges, goals
     val role: String = "none",            // this link on the connected sight: none / open / locked / user / trainer
     val rolePending: Boolean = false,     // trainer access requested, waiting for approval
     val primary: Boolean = true,          // false: another archer is connected, this app only reads
@@ -143,6 +144,7 @@ class SightController(
         const val LANG_KEY = "uvsight.lang"
         const val PHOTO_KEY = "uvsight.photo"
         const val GROUP_KEY = "uvsight.group"
+        const val GAME_KEY = "uvsight.game"
         const val VISIT_TIMEOUT_MS = 15_000L
         const val LOW_BAT_PCT = 15
     }
@@ -220,6 +222,8 @@ class SightController(
         var group = store.get(GROUP_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(GroupPrefs.serializer(), it) }.getOrNull() } ?: GroupPrefs()
         if (group.id.length != 16) { group = group.copy(id = newAppId()); store.put(GROUP_KEY, kotlinx.serialization.json.Json.encodeToString(GroupPrefs.serializer(), group)) }
         set { copy(group = group) }
+        val game = store.get(GAME_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(GamePrefs.serializer(), it) }.getOrNull() } ?: GamePrefs()
+        set { copy(game = game) }
         set { copy(distM = store.get(DIST_KEY)?.toIntOrNull() ?: 0, showHidden = store.get(SHOW_HIDDEN_KEY) == "1",
             autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif, photo = photo,
             photoOnly = store.get(MODE_KEY) == "photo", sights = archive.sights(), preferredSightId = store.get(PREFER_SIGHT_KEY)?.takeIf { it.isNotEmpty() }, hints = hints) }
@@ -796,9 +800,22 @@ class SightController(
 
     private fun recordEnd(m: EndMsg) {
         val key = s.currentSessionKey ?: run { lastSentScores = null; lastSentHits = null; lastSentMatch = null; lastSentMatchSrc = null; return }
+        val before = gameSnapshot()
         archive.recordEnd(key, m, lastSentScores, lastSentHits, lastSentMatch, lastSentMatchSrc)
         lastSentScores = null; lastSentHits = null; lastSentMatch = null; lastSentMatchSrc = null
         refreshHistory()
+        celebrate(before)
+    }
+
+    // ---- play mode ----
+    fun setGamePrefs(p: GamePrefs) { store.put(GAME_KEY, kotlinx.serialization.json.Json.encodeToString(GamePrefs.serializer(), p)); set { copy(game = p) } }
+    private fun tzOffsetMs(): Long = tzOffsetMinutes() * 60_000L
+    private fun gameSnapshot(): GameSnapshot? = if (s.game.enabled) Game.snapshot(archive.sessions(), archive.ends(), tzOffsetMs()) else null
+    /** A new personal best or badge since the snapshot: tell the UI (confetti). */
+    private fun celebrate(before: GameSnapshot?) {
+        if (before == null || !s.game.enabled) return
+        val sessions = archive.sessions(); val ends = archive.ends()
+        for ((title, value) in Game.celebrations(before, Game.snapshot(sessions, ends, tzOffsetMs()), Game.badges(sessions, ends, tzOffsetMs()))) _events.tryEmit(CoreEvent.Celebrate(title, value))
     }
 
     // ---- shot matching ----
@@ -877,6 +894,7 @@ class SightController(
     private fun handleLiveSlot(sl: SlotMsg) {
         val ls = liveSlot
         val stored = ls == null || ls.stored
+        val before = gameSnapshot()
         archive.archiveSlot(sl.epoch, sl, false, s.sight?.id)
         archive.markOnSight(setOf("${sl.epoch}-${sl.id}"), stored)
         if (stored) toast(tr("Session saved: {scored} arrows, average {avg}, {x} X", "scored" to sl.scored, "avg" to (fmt(sl.avg, 2)), "x" to sl.x))
@@ -885,6 +903,7 @@ class SightController(
         if (ls != null && !ls.manual) _events.tryEmit(CoreEvent.SessionAutoEnded(sl.ends, sl.scored, sl.avg, sl.x, sl.min))
         liveSlot = null
         refreshHistory()
+        celebrate(before)
     }
 
     private fun onLogEnd(m: Msg) {

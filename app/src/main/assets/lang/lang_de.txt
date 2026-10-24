@@ -178,6 +178,20 @@ Face = Auflage
 Use scores = Wertung übernehmen
 Could not keep the photo: {message} = Das Foto konnte nicht behalten werden: {message}
 
+# --- app/src/main/java/de/uvsight/app/ui/PlayScreen.kt
+You = Du
+🔥 {n} {days} in a row = 🔥 {n} {days} in Folge
+day = Tag
+days = Tage
+Shoot today to start a streak = Schieß heute, um eine Serie zu starten
+Today: {done} of {goal} ends above your average = Heute: {done} von {goal} Passen über deinem Schnitt
+Steady hand, last end: {v} = Ruhige Hand, letzte Passe: {v}
+best end = beste Passe
+best average = bester Schnitt
+most X = meiste X
+steadiest = ruhigste Hand
+Badges = Abzeichen
+
 # --- app/src/main/java/de/uvsight/app/ui/SettingsScreen.kt
 off = aus
 auto = auto
@@ -275,8 +289,8 @@ Remove password = Passwort entfernen
 Request trainer access = Trainerzugang anfragen
 Setting the first password makes this app the sight's trainer. = Mit dem ersten Passwort wird diese App Trainer des Visiers.
 Trainers of this sight = Trainer dieses Visiers
- (waiting for approval) = 
- (you) = 
+ (waiting for approval) =  (wartet auf Freigabe)
+ (you) =  (du)
 Approve = Freigeben
 Remove = Entfernen
 The last trainer can only be removed over the USB console (group clear). = Der letzte Trainer lässt sich nur über die USB-Konsole entfernen (group clear).
@@ -393,6 +407,14 @@ Keeps every scored photo with its marks on this phone, so the recognition models
 Export = Export
 Delete the training data? = Trainingsdaten löschen?
 All {v} photos and their marks on this phone are deleted. Export them first if you want to keep them. = Alle {v} Fotos und ihre Marken auf diesem Telefon werden gelöscht. Exportiere sie vorher, wenn du sie behalten willst.
+Play mode = Spielmodus
+Personal bests with confetti, training streaks, the steady-hand score, badges and a daily goal. All against your own earlier results, never against others. = Bestwerte mit Konfetti, Trainingsserien, die Ruhige-Hand-Wertung, Abzeichen und ein Tagesziel. Alles gegen deine eigenen früheren Ergebnisse, nie gegen andere.
+Avatar = Avatar
+A colour and, if you like, an emoji; your initial otherwise. = Eine Farbe und, wenn du magst, ein Emoji; sonst dein Anfangsbuchstabe.
+Daily goal = Tagesziel
+Ends per training day that beat your own average. = Passen pro Trainingstag, die deinen eigenen Schnitt schlagen.
+Group goal = Gruppenziel
+Points of all sights on the board together, per evening. = Punkte aller Visiere auf der Tafel zusammen, pro Abend.
 Hints = Hinweise
 Hints after each end = Hinweise nach jeder Passe
 Under the last end and in the session details: where the group sits, how steady the hold was, cant, release, rhythm. Always compared with your own earlier ends. = Unter der letzten Passe und in den Sitzungsdetails: wo die Gruppe sitzt, wie ruhig der Halt war, Verkantung, Release, Rhythmus. Immer verglichen mit deinen eigenen früheren Passen.
@@ -495,6 +517,7 @@ Every sight in range, read from its radio beacon without connecting. Tap a sight
 Set up all = Alle einrichten
 Collect all = Alle einsammeln
 Set up all gives every new sight the group's password and makes you its trainer; Collect all fetches the sessions of every sight. = Alle einrichten gibt jedem neuen Visier das Gruppenpasswort und macht dich zu seinem Trainer; Alle einsammeln holt die Sitzungen aller Visiere.
+Group goal: {points} of {goal} points together = Gruppenziel: {points} von {goal} Punkten zusammen
 No sight in range. A sight sends its beacon while the bow moves. = Kein Visier in Reichweite. Ein Visier sendet sein Signal, solange sich der Bogen bewegt.
 linked = verbunden
 session without an archer's app = Sitzung ohne App eines Schützen
@@ -557,6 +580,32 @@ held steady {v} s = {v} s ruhig gehalten
 hold ±{v}° = Halten ±{v}°
 sank {v}° before the release = vor dem Lösen {v}° abgesunken
 turned {v}°/s at release = beim Lösen {v}°/s gedreht
+
+# --- core/src/main/kotlin/de/uvsight/core/Game.kt
+First X = Erstes X
+An arrow in the inner ten. = Ein Pfeil in der inneren Zehn.
+100 arrows = 100 Pfeile
+100 arrows scored with the app. = 100 Pfeile mit der App gewertet.
+1000 arrows = 1000 Pfeile
+1000 arrows scored with the app. = 1000 Pfeile mit der App gewertet.
+10 training days = 10 Trainingstage
+Shot on ten different days. = An zehn verschiedenen Tagen geschossen.
+3 days in a row = 3 Tage in Folge
+Three training days without a gap. = Drei Trainingstage ohne Lücke.
+Golden end = Goldene Passe
+An end with nothing below a 9. = Eine Passe ohne etwas unter der 9.
+Clean session = Saubere Sitzung
+Five ends or more without a miss. = Fünf Passen oder mehr ohne Fehlschuss.
+Steady hand = Ruhige Hand
+An end with a steady-hand score of 80 or more. = Eine Passe mit einer Ruhige-Hand-Wertung von 80 oder mehr.
+30 X = 30 X
+Thirty inner tens in all. = Dreißig innere Zehnen insgesamt.
+50 sessions = 50 Sitzungen
+Fifty sessions in the history. = Fünfzig Sitzungen in der Historie.
+New best end = Neue beste Passe
+New best average = Neuer bester Schnitt
+Most X in a session = Meiste X in einer Sitzung
+Steadiest hand yet = Ruhigste Hand bisher
 
 # --- core/src/main/kotlin/de/uvsight/core/Insights.kt
 {cm} cm {side} = {cm} cm {side}

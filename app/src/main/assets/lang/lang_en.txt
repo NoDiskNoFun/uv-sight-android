@@ -181,6 +181,20 @@ Face = Face
 Use scores = Use scores
 Could not keep the photo: {message} = Could not keep the photo: {message}
 
+# --- app/src/main/java/de/uvsight/app/ui/PlayScreen.kt
+You = You
+🔥 {n} {days} in a row = 🔥 {n} {days} in a row
+day = day
+days = days
+Shoot today to start a streak = Shoot today to start a streak
+Today: {done} of {goal} ends above your average = Today: {done} of {goal} ends above your average
+Steady hand, last end: {v} = Steady hand, last end: {v}
+best end = best end
+best average = best average
+most X = most X
+steadiest = steadiest
+Badges = Badges
+
 # --- app/src/main/java/de/uvsight/app/ui/SettingsScreen.kt
 off = off
 auto = auto
@@ -396,6 +410,14 @@ Keeps every scored photo with its marks on this phone, so the recognition models
 Export = Export
 Delete the training data? = Delete the training data?
 All {v} photos and their marks on this phone are deleted. Export them first if you want to keep them. = All {v} photos and their marks on this phone are deleted. Export them first if you want to keep them.
+Play mode = Play mode
+Personal bests with confetti, training streaks, the steady-hand score, badges and a daily goal. All against your own earlier results, never against others. = Personal bests with confetti, training streaks, the steady-hand score, badges and a daily goal. All against your own earlier results, never against others.
+Avatar = Avatar
+A colour and, if you like, an emoji; your initial otherwise. = A colour and, if you like, an emoji; your initial otherwise.
+Daily goal = Daily goal
+Ends per training day that beat your own average. = Ends per training day that beat your own average.
+Group goal = Group goal
+Points of all sights on the board together, per evening. = Points of all sights on the board together, per evening.
 Hints = Hints
 Hints after each end = Hints after each end
 Under the last end and in the session details: where the group sits, how steady the hold was, cant, release, rhythm. Always compared with your own earlier ends. = Under the last end and in the session details: where the group sits, how steady the hold was, cant, release, rhythm. Always compared with your own earlier ends.
@@ -498,6 +520,7 @@ Every sight in range, read from its radio beacon without connecting. Tap a sight
 Set up all = Set up all
 Collect all = Collect all
 Set up all gives every new sight the group's password and makes you its trainer; Collect all fetches the sessions of every sight. = Set up all gives every new sight the group's password and makes you its trainer; Collect all fetches the sessions of every sight.
+Group goal: {points} of {goal} points together = Group goal: {points} of {goal} points together
 No sight in range. A sight sends its beacon while the bow moves. = No sight in range. A sight sends its beacon while the bow moves.
 linked = linked
 session without an archer's app = session without an archer's app
@@ -560,6 +583,32 @@ held steady {v} s = held steady {v} s
 hold ±{v}° = hold ±{v}°
 sank {v}° before the release = sank {v}° before the release
 turned {v}°/s at release = turned {v}°/s at release
+
+# --- core/src/main/kotlin/de/uvsight/core/Game.kt
+First X = First X
+An arrow in the inner ten. = An arrow in the inner ten.
+100 arrows = 100 arrows
+100 arrows scored with the app. = 100 arrows scored with the app.
+1000 arrows = 1000 arrows
+1000 arrows scored with the app. = 1000 arrows scored with the app.
+10 training days = 10 training days
+Shot on ten different days. = Shot on ten different days.
+3 days in a row = 3 days in a row
+Three training days without a gap. = Three training days without a gap.
+Golden end = Golden end
+An end with nothing below a 9. = An end with nothing below a 9.
+Clean session = Clean session
+Five ends or more without a miss. = Five ends or more without a miss.
+Steady hand = Steady hand
+An end with a steady-hand score of 80 or more. = An end with a steady-hand score of 80 or more.
+30 X = 30 X
+Thirty inner tens in all. = Thirty inner tens in all.
+50 sessions = 50 sessions
+Fifty sessions in the history. = Fifty sessions in the history.
+New best end = New best end
+New best average = New best average
+Most X in a session = Most X in a session
+Steadiest hand yet = Steadiest hand yet
 
 # --- core/src/main/kotlin/de/uvsight/core/Insights.kt
 {cm} cm {side} = {cm} cm {side}

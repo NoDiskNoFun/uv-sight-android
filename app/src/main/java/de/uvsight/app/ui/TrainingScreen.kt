@@ -94,6 +94,7 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
         }
         if (!connected) { Spacer(Modifier.height(10.dp)); Text(tr("Not connected. Keep scoring: the app reconnects when you tap Save."), color = uv.muted, fontSize = 14.sp) }
     }
+    if (state.game.enabled) { Spacer(Modifier.height(12.dp)); PlayCard(state, ctl) }
 
     // Distance
     Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {

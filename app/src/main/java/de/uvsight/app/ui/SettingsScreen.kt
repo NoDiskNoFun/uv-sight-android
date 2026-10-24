@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -550,6 +551,53 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
             Spacer(Modifier.height(14.dp))
 
+            // Play mode (phone-side)
+            if (!state.photoOnly) UvCard {
+                val gp = state.game
+                Text(tr("Play mode"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                SwitchRow(tr("Play mode"), tr("Personal bests with confetti, training streaks, the steady-hand score, badges and a daily goal. All against your own earlier results, never against others."), gp.enabled, first = true) { ctl.setGamePrefs(gp.copy(enabled = it)) }
+                if (gp.enabled) {
+                    HorizontalDivider(color = uv.line)
+                    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(state.group.name.ifEmpty { tr("You") }, sightColors[Math.floorMod(gp.color, sightColors.size)], gp.emoji)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(tr("Avatar"), color = uv.ink)
+                            Text(tr("A colour and, if you like, an emoji; your initial otherwise."), color = uv.muted, fontSize = 13.sp)
+                        }
+                        var emojiText by remember(gp.emoji) { mutableStateOf(gp.emoji) }
+                        OutlinedTextField(value = emojiText, onValueChange = { v -> emojiText = v.take(4); ctl.setGamePrefs(gp.copy(emoji = emojiText.trim())) }, singleLine = true, modifier = Modifier.width(72.dp), placeholder = { Text("🦊") })
+                    }
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
+                        sightColors.forEachIndexed { i, c ->
+                            Box(Modifier.padding(end = 8.dp).size(if (gp.color == i) 32.dp else 26.dp).background(c, CircleShape).clickable { ctl.setGamePrefs(gp.copy(color = i)) })
+                        }
+                    }
+                    HorizontalDivider(color = uv.line)
+                    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(tr("Daily goal"), color = uv.ink)
+                            Text(tr("Ends per training day that beat your own average."), color = uv.muted, fontSize = 13.sp)
+                        }
+                        SecondaryButton("−", enabled = gp.dailyGoal > 1) { ctl.setGamePrefs(gp.copy(dailyGoal = gp.dailyGoal - 1)) }
+                        Text("${gp.dailyGoal}", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp))
+                        SecondaryButton("+", enabled = gp.dailyGoal < 20) { ctl.setGamePrefs(gp.copy(dailyGoal = gp.dailyGoal + 1)) }
+                    }
+                    if (state.group.role == "trainer") {
+                        HorizontalDivider(color = uv.line)
+                        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(tr("Group goal"), color = uv.ink)
+                                Text(tr("Points of all sights on the board together, per evening."), color = uv.muted, fontSize = 13.sp)
+                            }
+                            SecondaryButton("−", enabled = gp.groupGoal > 50) { ctl.setGamePrefs(gp.copy(groupGoal = gp.groupGoal - 50)) }
+                            Text("${gp.groupGoal}", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp))
+                            SecondaryButton("+", enabled = gp.groupGoal < 5000) { ctl.setGamePrefs(gp.copy(groupGoal = gp.groupGoal + 50)) }
+                        }
+                    }
+                }
+            }
+            if (!state.photoOnly) Spacer(Modifier.height(14.dp))
             // Hints after an end (phone-side settings)
             if (!state.photoOnly) UvCard {
                 val hp = state.hints

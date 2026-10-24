@@ -105,6 +105,7 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             if (state.copyProgress.isNotEmpty()) Text(state.copyProgress, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
             if (list.isNotEmpty()) AverageChart(list.filter { !it.hidden }, state.ends)
             if (list.isNotEmpty()) TrendsCard(list.filter { !it.hidden }, state.ends)
+            if (state.game.enabled) { BadgesCard(state); Spacer(Modifier.height(12.dp)) }
         }
         if (list.isEmpty()) item { EmptyBox(tr("No sessions yet. Finished sessions appear here once the app has been connected to the sight.")) }
         else item {

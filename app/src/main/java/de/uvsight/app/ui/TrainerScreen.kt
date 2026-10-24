@@ -56,6 +56,16 @@ fun TrainerScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
         }
         Text(tr("Set up all gives every new sight the group's password and makes you its trainer; Collect all fetches the sessions of every sight."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         if (state.visiting.isNotEmpty()) Text(state.visiting, color = uv.ink, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+        if (state.game.enabled) {
+            // the evening's group goal: the points of every running session on the board together
+            val points = state.board.filter { it.session }.sumOf { it.points }
+            val goal = state.game.groupGoal
+            Spacer(Modifier.height(10.dp))
+            Text(tr("Group goal: {points} of {goal} points together", "points" to points, "goal" to goal) + if (points >= goal) " 🎉" else "", color = uv.ink, fontSize = 14.sp)
+            Box(Modifier.fillMaxWidth().padding(top = 4.dp).height(8.dp).background(uv.line, CircleShape)) {
+                Box(Modifier.fillMaxWidth((points.toFloat() / goal).coerceIn(0f, 1f)).height(8.dp).background(uv.gold, CircleShape))
+            }
+        }
     }
     Spacer(Modifier.height(12.dp))
     if (state.board.isEmpty()) EmptyBox(tr("No sight in range. A sight sends its beacon while the bow moves."))
@@ -74,7 +84,8 @@ fun TrainerScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
 private fun BoardTile(e: BoardEntry, onClick: () -> Unit) {
     val uv = LocalUv.current
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(12.dp).background(if (e.session) uv.gold else uv.line, CircleShape))
+        if (e.session && e.ownerName.isNotEmpty()) Avatar(e.ownerName, colorForName(e.ownerName), "", size = 36)
+        else Box(Modifier.size(36.dp).background(if (e.session) uv.gold.copy(alpha = 0.5f) else uv.line, CircleShape))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
