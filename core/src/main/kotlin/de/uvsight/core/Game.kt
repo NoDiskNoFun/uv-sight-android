@@ -17,9 +17,8 @@ data class GamePrefs(
 )
 
 data class Bests(val endSum: Int? = null, val endArrows: Int? = null, val sessionAvg: Double? = null, val sessionX: Int? = null, val steady: Int? = null)
-data class Badge(val id: String, val emoji: String, val title: String, val desc: String, val earned: Boolean)
 /** What may be celebrated after an end or a session: compared before and after the archive changed. */
-data class GameSnapshot(val bests: Bests, val badges: Set<String>)
+data class GameSnapshot(val bests: Bests, val levels: Map<String, Int>)
 
 object Game {
     const val HOLD_TOL_DEG = 0.6       // the sight's hold tolerance: within it the aim counts as steady
@@ -102,40 +101,18 @@ object Game {
         return done to goal
     }
 
-    fun badges(sessions: List<ArchiveSession>, ends: Map<String, List<EndDetail>>, tzOffsetMs: Long): List<Badge> {
-        val shown = sessions.filter { !it.hidden }
-        val ve = validEnds(ends, sessions)
-        val arrows = shown.sumOf { it.scored }
-        val xs = shown.sumOf { it.x }
-        val golden = ve.any { (_, e) -> e.arrows >= 3 && e.scores?.let { sc -> sc.size >= e.arrows && sc.all { it == "X" || it == "10" || it == "9" } } == true }
-        val clean = shown.any { r -> val l = (ends[r.key] ?: emptyList()).filter { it.valid }; l.size >= 5 && l.all { e -> e.scores?.none { it == "M" } == true } }
-        val steady80 = ve.any { (_, e) -> (steadyHand(e) ?: 0) >= 80 }
-        return listOf(
-            Badge("first_x", "⭐", tr("First X"), tr("An arrow in the inner ten."), xs >= 1 || ve.any { (_, e) -> e.scores?.contains("X") == true }),
-            Badge("arrows_100", "🏹", tr("100 arrows"), tr("100 arrows scored with the app."), arrows >= 100),
-            Badge("arrows_1000", "🎯", tr("1000 arrows"), tr("1000 arrows scored with the app."), arrows >= 1000),
-            Badge("days_10", "📅", tr("10 training days"), tr("Shot on ten different days."), trainingDays(shown, tzOffsetMs).size >= 10),
-            Badge("streak_3", "🔥", tr("3 days in a row"), tr("Three training days without a gap."), longestStreak(shown, tzOffsetMs) >= 3),
-            Badge("golden_end", "🥇", tr("Golden end"), tr("An end with nothing below a 9."), golden),
-            Badge("clean", "🧹", tr("Clean session"), tr("Five ends or more without a miss."), clean),
-            Badge("steady_80", "🖐️", tr("Steady hand"), tr("An end with a steady-hand score of 80 or more."), steady80),
-            Badge("x_30", "✨", tr("30 X"), tr("Thirty inner tens in all."), xs >= 30),
-            Badge("sessions_50", "🏆", tr("50 sessions"), tr("Fifty sessions in the history."), shown.size >= 50),
-        )
-    }
-
-    fun snapshot(sessions: List<ArchiveSession>, ends: Map<String, List<EndDetail>>, tzOffsetMs: Long) =
-        GameSnapshot(bests(sessions, ends), badges(sessions, ends, tzOffsetMs).filter { it.earned }.map { it.id }.toSet())
+    fun snapshot(defs: List<BadgeDef>, sessions: List<ArchiveSession>, ends: Map<String, List<EndDetail>>, tzOffsetMs: Long, now: Long) =
+        GameSnapshot(bests(sessions, ends), Badges.levels(defs, sessions, ends, tzOffsetMs, now))
 
     /** What changed for the better between two snapshots: titles and values to celebrate. */
-    fun celebrations(before: GameSnapshot, after: GameSnapshot, badgeTitles: List<Badge>): List<Pair<String, String>> {
+    fun celebrations(before: GameSnapshot, after: GameSnapshot, defs: List<BadgeDef>): List<Pair<String, String>> {
         val out = ArrayList<Pair<String, String>>()
         val b = before.bests; val a = after.bests
         if (b.endSum != null && a.endSum != null && a.endSum > b.endSum) out.add(tr("New best end") to "${a.endSum}")
         if (b.sessionAvg != null && a.sessionAvg != null && a.sessionAvg > b.sessionAvg + 1e-9) out.add(tr("New best average") to fmt(a.sessionAvg, 2))
         if (b.sessionX != null && a.sessionX != null && a.sessionX > b.sessionX) out.add(tr("Most X in a session") to "${a.sessionX}")
         if (b.steady != null && a.steady != null && a.steady > b.steady) out.add(tr("Steadiest hand yet") to "${a.steady}")
-        for (id in after.badges - before.badges) badgeTitles.firstOrNull { it.id == id }?.let { out.add(it.title to it.emoji) }
+        for ((id, lvl) in after.levels) if (lvl > (before.levels[id] ?: 0)) defs.firstOrNull { it.id == id }?.let { out.add(it.title + " · " + Badges.levelName(lvl) to Badges.medal(lvl) + " " + it.emoji) }
         return out
     }
 }

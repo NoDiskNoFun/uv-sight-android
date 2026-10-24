@@ -80,6 +80,9 @@ data class AppState(
     val language: String = "",            // "" = the phone's language, else a pack code such as "de"
     val group: GroupPrefs = GroupPrefs(), // single / user / trainer, name, password, this app's id
     val game: GamePrefs = GamePrefs(),    // play mode: bests, streaks, badges, goals
+    val badgeDefs: List<BadgeDef> = emptyList(),              // the archer's (or trainer's) own badge rules
+    val sightBadges: Map<String, List<BadgeDef>> = emptyMap(), // rules fetched from sights, by sight id
+    val earned: List<EarnedBadge> = emptyList(),              // what this archer earned; stays even when a rule goes
     val role: String = "none",            // this link on the connected sight: none / open / locked / user / trainer
     val rolePending: Boolean = false,     // trainer access requested, waiting for approval
     val primary: Boolean = true,          // false: another archer is connected, this app only reads
@@ -145,6 +148,10 @@ class SightController(
         const val PHOTO_KEY = "uvsight.photo"
         const val GROUP_KEY = "uvsight.group"
         const val GAME_KEY = "uvsight.game"
+        const val BADGES_KEY = "uvsight.badges.defs"
+        const val EARNED_KEY = "uvsight.badges.earned"
+        const val BADGES_SEEDED_KEY = "uvsight.badges.seeded"
+        const val SIGHT_BADGES_PREFIX = "uvsight.badges.sight."
         const val VISIT_TIMEOUT_MS = 15_000L
         const val LOW_BAT_PCT = 15
     }
@@ -165,6 +172,8 @@ class SightController(
     private var logEndWait: CompletableDeferred<Boolean>? = null
     private var groupAckWait: CompletableDeferred<Boolean>? = null
     private var trainerBuf: ArrayList<TrainerInfo>? = null
+    private var badgeBuf: ArrayList<BadgeDef>? = null
+    private val badgeJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
     private var pollJob: Job? = null
     private var awaitJob: Job? = null
     private var cfgBuf: MutableList<CfgItem>? = null
@@ -224,6 +233,7 @@ class SightController(
         set { copy(group = group) }
         val game = store.get(GAME_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(GamePrefs.serializer(), it) }.getOrNull() } ?: GamePrefs()
         set { copy(game = game) }
+        loadBadges()
         set { copy(distM = store.get(DIST_KEY)?.toIntOrNull() ?: 0, showHidden = store.get(SHOW_HIDDEN_KEY) == "1",
             autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif, photo = photo,
             photoOnly = store.get(MODE_KEY) == "photo", sights = archive.sights(), preferredSightId = store.get(PREFER_SIGHT_KEY)?.takeIf { it.isNotEmpty() }, hints = hints) }
@@ -404,6 +414,17 @@ class SightController(
             "trainersStart" -> trainerBuf = ArrayList()
             "trainer" -> trainerBuf?.add(m.toTrainer())
             "trainersEnd" -> { trainerBuf?.let { set { copy(trainers = it.toList()) } }; trainerBuf = null }
+            "badgesStart" -> badgeBuf = ArrayList()
+            "badgeItem" -> badgeBuf?.add(m.toBadgeDef())
+            "badgesEnd" -> {
+                val list = badgeBuf?.toList(); badgeBuf = null
+                val sightId = s.sight?.id
+                if (list != null && sightId != null) {
+                    store.put(SIGHT_BADGES_PREFIX + sightId, badgeJson.encodeToString(badgeListSer, list))
+                    set { copy(sightBadges = sightBadges + (sightId to list)) }
+                    if (s.group.role == "trainer" && s.role == "trainer") pushBadgesToSight() else updateEarned(null)
+                }
+            }
             "status" -> {
                 val st = m.toStatus()
                 set { copy(status = st) }
@@ -532,9 +553,10 @@ class SightController(
     }
     private fun finish() {}
 
-    /** The link may talk now (no password, or it was accepted): sync, and a trainer-to-be asks for access. */
+    /** The link may talk now (no password, or it was accepted): sync, the sight's badges, and a trainer-to-be asks for access. */
     private fun afterUnlocked() {
         scope.launch { delay(1500); autoSync() }
+        if (s.game.enabled || s.group.role == "trainer") send("badge list")
         val g = s.group
         if (g.role == "trainer" && s.role == "user" && !s.rolePending) send("group request")
     }
@@ -593,6 +615,8 @@ class SightController(
                         send("group set $pw")
                         if (withTimeoutOrNull(4000) { w.await() } == true) done++ else failed++
                     }
+                    // the badge set follows once the sight listed its own (badgesEnd pushes the differences)
+                    if (s.role == "trainer" && s.badgeDefs.isNotEmpty()) { send("badge list"); delay(2500) }
                 }
                 if (!ok) failed++
             }
@@ -646,6 +670,7 @@ class SightController(
                 }
                 send("group")
             }
+            "badge" -> {}                                          // the sight sends its list after every change
         }
     }
 
@@ -808,14 +833,86 @@ class SightController(
     }
 
     // ---- play mode ----
-    fun setGamePrefs(p: GamePrefs) { store.put(GAME_KEY, kotlinx.serialization.json.Json.encodeToString(GamePrefs.serializer(), p)); set { copy(game = p) } }
+    fun setGamePrefs(p: GamePrefs) {
+        store.put(GAME_KEY, kotlinx.serialization.json.Json.encodeToString(GamePrefs.serializer(), p)); set { copy(game = p) }
+        if (p.enabled) { seedBadges(); updateEarned(null) }
+    }
     private fun tzOffsetMs(): Long = tzOffsetMinutes() * 60_000L
-    private fun gameSnapshot(): GameSnapshot? = if (s.game.enabled) Game.snapshot(archive.sessions(), archive.ends(), tzOffsetMs()) else null
-    /** A new personal best or badge since the snapshot: tell the UI (confetti). */
+    private fun gameSnapshot(): GameSnapshot? = if (s.game.enabled) Game.snapshot(allBadgeDefs(), archive.sessions(), archive.ends(), tzOffsetMs(), clock.now()) else null
+    /** A new personal best or badge level since the snapshot: tell the UI (confetti) and record what was earned. */
     private fun celebrate(before: GameSnapshot?) {
-        if (before == null || !s.game.enabled) return
-        val sessions = archive.sessions(); val ends = archive.ends()
-        for ((title, value) in Game.celebrations(before, Game.snapshot(sessions, ends, tzOffsetMs()), Game.badges(sessions, ends, tzOffsetMs()))) _events.tryEmit(CoreEvent.Celebrate(title, value))
+        if (!s.game.enabled) return
+        updateEarned(before)
+    }
+
+    // ---- badges: own rules, rules from sights, what was earned ----
+    private val badgeListSer = kotlinx.serialization.builtins.ListSerializer(BadgeDef.serializer())
+    private val earnedSer = kotlinx.serialization.builtins.ListSerializer(EarnedBadge.serializer())
+    private fun loadBadges() {
+        val defs = store.get(BADGES_KEY)?.let { runCatching { badgeJson.decodeFromString(badgeListSer, it) }.getOrNull() } ?: emptyList()
+        val earned = store.get(EARNED_KEY)?.let { runCatching { badgeJson.decodeFromString(earnedSer, it) }.getOrNull() } ?: emptyList()
+        val sightDefs = archive.sights().associate { si -> si.id to (store.get(SIGHT_BADGES_PREFIX + si.id)?.let { runCatching { badgeJson.decodeFromString(badgeListSer, it) }.getOrNull() } ?: emptyList()) }.filterValues { it.isNotEmpty() }
+        set { copy(badgeDefs = defs, earned = earned, sightBadges = sightDefs) }
+        if (s.game.enabled) seedBadges()
+    }
+    /** The first time play mode is on, an archer starts with the templates as own badges; a trainer picks from them. */
+    private fun seedBadges() {
+        if (store.get(BADGES_SEEDED_KEY) == "1") return
+        if (s.group.role != "trainer" && s.badgeDefs.isEmpty()) saveBadgeDefs(Badges.templates())
+        store.put(BADGES_SEEDED_KEY, "1")
+    }
+    private fun saveBadgeDefs(defs: List<BadgeDef>) { store.put(BADGES_KEY, badgeJson.encodeToString(badgeListSer, defs)); set { copy(badgeDefs = defs) } }
+    private fun saveEarned(list: List<EarnedBadge>) { store.put(EARNED_KEY, badgeJson.encodeToString(earnedSer, list)); set { copy(earned = list) } }
+    /** Every rule in force for this archer: own ones and those of the sights met, by id (own wins). */
+    fun allBadgeDefs(): List<BadgeDef> {
+        val out = LinkedHashMap<String, BadgeDef>()
+        for (d in s.badgeDefs) out[d.id] = d
+        for (l in s.sightBadges.values) for (d in l) out[d.id] = d
+        return out.values.toList()
+    }
+    /** Re-check every rule; a higher level is recorded (and celebrated when a snapshot says it is new); rules gone are kept as retired. */
+    private fun updateEarned(before: GameSnapshot?) {
+        val defs = allBadgeDefs()
+        val sessions = archive.sessions(); val ends = archive.ends(); val now = clock.now()
+        val after = Game.snapshot(defs, sessions, ends, tzOffsetMs(), now)
+        val list = s.earned.toMutableList()
+        var changed = false
+        for (d in defs) {
+            val lvl = after.levels[d.id] ?: 0
+            val i = list.indexOfFirst { it.id == d.id }
+            if (lvl == 0) { if (i >= 0 && list[i].retired) { list[i] = list[i].copy(retired = false); changed = true }; continue }
+            if (i < 0) { list.add(EarnedBadge(d.id, lvl, now, d)); changed = true }
+            else if (lvl > list[i].level || list[i].retired) { list[i] = list[i].copy(level = max(lvl, list[i].level), at = if (lvl > list[i].level) now else list[i].at, def = d, retired = false); changed = true }
+        }
+        val ids = defs.map { it.id }.toSet()
+        for (i in list.indices) if (list[i].id !in ids && !list[i].retired) { list[i] = list[i].copy(retired = true); changed = true }
+        if (changed) saveEarned(list)
+        if (before != null) for ((title, value) in Game.celebrations(before, after, defs)) _events.tryEmit(CoreEvent.Celebrate(title, value))
+    }
+    fun saveBadge(d: BadgeDef) {
+        val defs = s.badgeDefs.toMutableList()
+        val i = defs.indexOfFirst { it.id == d.id }
+        if (i >= 0) defs[i] = d else defs.add(d)
+        saveBadgeDefs(defs); updateEarned(null); pushBadgesToSight()
+    }
+    fun deleteBadge(id: String) { saveBadgeDefs(s.badgeDefs.filter { it.id != id }); updateEarned(null); pushBadgesToSight() }
+    fun exportBadges(): String = Badges.encode(s.badgeDefs)
+    /** Rules from a shared file: new ones are added, a rule already present (same measure and thresholds) is skipped. */
+    fun importBadges(text: String): Int? {
+        val list = Badges.decode(text) ?: return null
+        val defs = s.badgeDefs.toMutableList()
+        var added = 0
+        for (d in list) if (defs.none { it.id == d.id || it.sameRule(d) }) { defs.add(d.copy(template = false)); added++ }
+        if (added > 0) { saveBadgeDefs(defs); updateEarned(null); pushBadgesToSight() }
+        return added
+    }
+    /** Trainer: the connected sight gets exactly the trainer's set (after its list arrived, so only differences are sent). */
+    private fun pushBadgesToSight() {
+        if (s.group.role != "trainer" || s.role != "trainer" || s.conn != ConnState.CONNECTED) return
+        val sightId = s.sight?.id ?: return
+        val onSight = s.sightBadges[sightId] ?: emptyList()
+        for (d in s.badgeDefs) if (onSight.none { it.id == d.id && it.sameRule(d) && it.title == d.title.take(18) && it.emoji == d.emoji }) send(Badges.sightCommand(d))
+        for (d in onSight) if (s.badgeDefs.none { it.id == d.id }) send("badge del ${d.id}")
     }
 
     // ---- shot matching ----
@@ -1171,6 +1268,7 @@ class SightController(
         if (changed) { archive.saveSights(list); set { copy(sights = list) } }
     }
     fun importText(name: String, text: String): ImportResult? {
+        if (text.contains("uv-sight-badges")) { val n = importBadges(text); if (n != null) { toast(tr("{n} badges added", "n" to n)); return ImportResult(n, 0, 0, "badges") } }
         val result = try {
             if (name.lowercase().endsWith(".json") || text.trim().startsWith("{")) {
                 val b = BackupFormat.decode(text) ?: throw IllegalArgumentException("not a UV-Sight backup")

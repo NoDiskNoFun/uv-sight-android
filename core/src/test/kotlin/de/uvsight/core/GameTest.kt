@@ -31,9 +31,9 @@ class GameTest {
         val b = Game.bests(sessions, ends)
         assertEquals(29, b.endSum); assertEquals(9.0, b.sessionAvg); assertEquals(4, b.sessionX); assertTrue((b.steady ?: 0) >= 85)
         assertEquals(4, Game.endsWithoutMiss(sessions, ends))      // newest four ends are clean, then the M
-        val badges = Game.badges(sessions, ends, 0).associate { it.id to it.earned }
-        assertEquals(true, badges["first_x"]); assertEquals(true, badges["golden_end"]); assertEquals(true, badges["streak_3"]); assertEquals(true, badges["steady_80"])
-        assertEquals(false, badges["arrows_100"]); assertEquals(false, badges["clean"])
+        val lv = Badges.levels(Badges.templates(), sessions, ends, 0, now)
+        assertEquals(1, lv["t_firstx"]); assertEquals(3, lv["t_golden"]); assertEquals(1, lv["t_streak"]); assertEquals(3, lv["t_steady"])
+        assertEquals(0, lv["t_arrows"]); assertEquals(0, lv["t_clean"])
         val (done, goal) = Game.dailyGoal(sessions, ends, 2, now, 0)
         assertEquals(2, goal); assertEquals(2, done)                 // both ends today beat the overall per-arrow average
     }
@@ -41,13 +41,14 @@ class GameTest {
     @Test fun celebratesOnlyImprovements() {
         val now = 50 * day
         val s1 = listOf(session("1-1", now, avg = 8.0, x = 1)); val e1 = mapOf("1-1" to listOf(end(1, listOf("9", "8", "7"))))
-        val before = Game.snapshot(s1, e1, 0)
-        val same = Game.celebrations(before, Game.snapshot(s1, e1, 0), Game.badges(s1, e1, 0))
+        val defs = Badges.templates()
+        val before = Game.snapshot(defs, s1, e1, 0, now)
+        val same = Game.celebrations(before, Game.snapshot(defs, s1, e1, 0, now), defs)
         assertEquals(0, same.size)
         val e2 = mapOf("1-1" to listOf(end(1, listOf("9", "8", "7")), end(2, listOf("X", "10", "9"))))
-        val after = Game.snapshot(s1, e2, 0)
-        val c = Game.celebrations(before, after, Game.badges(s1, e2, 0))
+        val after = Game.snapshot(defs, s1, e2, 0, now)
+        val c = Game.celebrations(before, after, defs)
         assertTrue(c.any { it.second == "29" }, "best end: $c")
-        assertTrue(c.any { it.first == tr("Golden end") }, "badge: $c")
+        assertTrue(c.any { it.first.startsWith(tr("Golden end")) && it.second.startsWith("🥇") }, "gold badge: $c")
     }
 }
