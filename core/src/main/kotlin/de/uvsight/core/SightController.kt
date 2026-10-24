@@ -78,6 +78,15 @@ data class AppState(
     val trace: AimTrace? = null,          // the aim trace asked for with "shot trace"
     val hints: HintPrefs = HintPrefs(),
     val language: String = "",            // "" = the phone's language, else a pack code such as "de"
+    val group: GroupPrefs = GroupPrefs(), // single / user / trainer, name, password, this app's id
+    val role: String = "none",            // this link on the connected sight: none / open / locked / user / trainer
+    val rolePending: Boolean = false,     // trainer access requested, waiting for approval
+    val primary: Boolean = true,          // false: another archer is connected, this app only reads
+    val needsPassword: Boolean = false,   // the sight is locked and the app has no (or a wrong) password
+    val groupInfo: GroupInfo? = null,
+    val trainers: List<TrainerInfo> = emptyList(),
+    val board: List<BoardEntry> = emptyList(),   // trainer: the sights in range, from their advertisements
+    val visiting: String = "",            // trainer: progress of "set up all" / "collect all"
     val languages: List<Pair<String, String>> = emptyList(),   // available packs: code to name
 ) {
     val hasData get() = status != null
@@ -133,6 +142,8 @@ class SightController(
         const val HINTS_KEY = "uvsight.hints"
         const val LANG_KEY = "uvsight.lang"
         const val PHOTO_KEY = "uvsight.photo"
+        const val GROUP_KEY = "uvsight.group"
+        const val VISIT_TIMEOUT_MS = 15_000L
         const val LOW_BAT_PCT = 15
     }
 
@@ -148,6 +159,10 @@ class SightController(
 
     // ---- private state mirroring the web app ----
     private var helloWait: CompletableDeferred<Boolean>? = null
+    private var authWait: CompletableDeferred<Boolean>? = null
+    private var logEndWait: CompletableDeferred<Boolean>? = null
+    private var groupAckWait: CompletableDeferred<Boolean>? = null
+    private var trainerBuf: ArrayList<TrainerInfo>? = null
     private var pollJob: Job? = null
     private var awaitJob: Job? = null
     private var cfgBuf: MutableList<CfgItem>? = null
@@ -202,6 +217,9 @@ class SightController(
         val notif = store.get(NOTIF_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(NotifPrefs.serializer(), it) }.getOrNull() } ?: NotifPrefs()
         val photo = store.get(PHOTO_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(PhotoPrefs.serializer(), it) }.getOrNull() } ?: PhotoPrefs()
         val hints = store.get(HINTS_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(HintPrefs.serializer(), it) }.getOrNull() } ?: HintPrefs()
+        var group = store.get(GROUP_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(GroupPrefs.serializer(), it) }.getOrNull() } ?: GroupPrefs()
+        if (group.id.length != 16) { group = group.copy(id = newAppId()); store.put(GROUP_KEY, kotlinx.serialization.json.Json.encodeToString(GroupPrefs.serializer(), group)) }
+        set { copy(group = group) }
         set { copy(distM = store.get(DIST_KEY)?.toIntOrNull() ?: 0, showHidden = store.get(SHOW_HIDDEN_KEY) == "1",
             autoCopy = store.get(AUTOCOPY_KEY) != "off", consoleEnabled = store.get(CONSOLE_KEY) == "1", notif = notif, photo = photo,
             photoOnly = store.get(MODE_KEY) == "photo", sights = archive.sights(), preferredSightId = store.get(PREFER_SIGHT_KEY)?.takeIf { it.isNotEmpty() }, hints = hints) }
@@ -216,7 +234,28 @@ class SightController(
 
     fun send(cmd: String) {
         logConsole("> $cmd", "in")
+        rememberSetting(cmd)
         transport.send(cmd)
+    }
+
+    /** A random 16-digit hex id for this app (a signed APK will derive a stable one later). */
+    private fun newAppId(): String = (1..16).map { "0123456789ABCDEF"[kotlin.random.Random.nextInt(16)] }.joinToString("")
+
+    // ---- shared sight: the setting commands this app sent are kept per sight and replayed on connect ----
+    private fun rememberSetting(cmd: String) {
+        if (s.group.role == "single" || s.sight == null || s.conn != ConnState.CONNECTED) return
+        val l = cmd.trim().lowercase()
+        if (l.contains("cal")) return
+        val isSetting = l.startsWith("mode ") || l.startsWith("level ") || l.startsWith("angle ") || l.startsWith("range signal ") || l.startsWith("set ") || l.startsWith("shot on") || l.startsWith("shot off")
+        if (!isSetting) return
+        val toks = l.split(' ')
+        val key = if (toks.size > 1) toks.dropLast(1).joinToString(" ") else l
+        updateSight { it.copy(settings = it.settings + (key to cmd.trim())) }
+    }
+    private fun replaySettings() {
+        val si = s.sight ?: return
+        if (s.group.role == "single" || !s.primary) return
+        for (c in si.settings.values) { logConsole("> $c", "in"); transport.send(c) }
     }
 
     private fun toast(text: String, error: Boolean = false) = ui.toast(text, error)
@@ -230,14 +269,28 @@ class SightController(
             set { copy(conn = ConnState.CONNECTING) }
             val wait = CompletableDeferred<Boolean>()
             helloWait = wait
-            send("app on")
+            val g = s.group
+            send(if (g.role == "single") "app on" else "app on ${g.id} ${g.name.ifEmpty { "Archer" }.take(12)}")
             withTimeoutOrNull(4000) { wait.await() }
             if (helloWait === wait) helloWait = null
+            if (!transport.connected) return@launch
+            // a locked sight: give the password; without one the link stays up but only the greeting works
+            if (s.hello?.role == "locked") {
+                if (g.password.isNotEmpty()) {
+                    val aw = CompletableDeferred<Boolean>()
+                    authWait = aw
+                    send("auth ${g.password}")
+                    withTimeoutOrNull(4000) { aw.await() }
+                    if (authWait === aw) authWait = null
+                }
+                if (s.role == "locked") { set { copy(needsPassword = true) }; toast(tr("This sight has a password. Enter it under Settings → Group."), true) }
+            }
             if (!transport.connected) return@launch
             setConn(ConnState.CONNECTED)
             send("time ${clock.now() / 1000} ${tzOffsetMinutes()}")
             val st = s
             if (st.distM > 0 && !st.distAuto && st.session?.active == true) send("dist ${st.distM}")
+            if (st.role != "locked") replaySettings()
             startPolling()
         }
     }
@@ -250,7 +303,7 @@ class SightController(
         stopAutoCopy()
         fullScan = false; syncSeen = null; syncEpoch = null; inLogAnswer = false; syncRetries = 0
         lowBatWarned = false
-        set { copy(rangeLive = RangeLive()) }
+        set { copy(rangeLive = RangeLive(), role = "none", rolePending = false, primary = true, groupInfo = null, trainers = emptyList()) }
         val wasConnected = s.conn == ConnState.CONNECTED
         setConn(ConnState.OFF)
         if (wasConnected && !s.sightAsleep) startAutoReconnect()
@@ -332,10 +385,21 @@ class SightController(
                     h.proto < PROTO_EXPECTED -> "The sight's firmware is older than this app. Please update the firmware on the sight."
                     else -> "This app is older than the sight's firmware. Please update the app."
                 }) }
+                set { copy(role = h.role, rolePending = h.pending, primary = h.primary, needsPassword = h.role == "locked" && s.group.password.isEmpty()) }
                 helloWait?.complete(true); helloWait = null
                 h.id?.let { onSightIdentified(it, h.sightName) }
-                scope.launch { delay(1500); autoSync() }
+                if (h.role != "locked") afterUnlocked()
             }
+            "auth" -> {
+                val a = m.toAuth()
+                set { copy(role = a.role, rolePending = a.pending, needsPassword = !a.ok) }
+                authWait?.complete(a.ok); authWait = null
+                if (a.ok) afterUnlocked() else toast(tr("The sight refused the password."), true)
+            }
+            "group" -> set { copy(groupInfo = m.toGroup(), role = m.str("role") ?: role, rolePending = m.bool("pending") ?: rolePending) }
+            "trainersStart" -> trainerBuf = ArrayList()
+            "trainer" -> trainerBuf?.add(m.toTrainer())
+            "trainersEnd" -> { trainerBuf?.let { set { copy(trainers = it.toList()) } }; trainerBuf = null }
             "status" -> {
                 val st = m.toStatus()
                 set { copy(status = st) }
@@ -411,7 +475,7 @@ class SightController(
                 refreshHistory()
             }
             "endrec" -> { val e = m.toEndRec(); if (inLogAnswer) syncGot++; endsSeen?.add("${e.epoch}-${e.id}"); archive.mergeEndRec(e); refreshHistory() }
-            "logEnd" -> onLogEnd(m)
+            "logEnd" -> { onLogEnd(m); logEndWait?.complete(true); logEndWait = null }
             "loginfo" -> set { copy(loginfo = m.toLogInfo()) }
             "range" -> set { copy(range = m.toRange()) }
             "shotsStart" -> { shotsBuf = m.toShotsStart(); shotItems = ArrayList() }
@@ -456,11 +520,102 @@ class SightController(
             "err" -> {
                 if (copyState?.phase == "put") copyOnAck("error", null, null)
                 if (s.awaitingEnd) setAwaiting(false)
+                if (m.str("code") == "auth") set { copy(needsPassword = true, role = "locked") }
+                groupAckWait?.complete(false); groupAckWait = null
                 toast(m.str("text") ?: tr("Error"), true)
             }
         }
     }
     private fun finish() {}
+
+    /** The link may talk now (no password, or it was accepted): sync, and a trainer-to-be asks for access. */
+    private fun afterUnlocked() {
+        scope.launch { delay(1500); autoSync() }
+        val g = s.group
+        if (g.role == "trainer" && s.role == "user" && !s.rolePending) send("group request")
+    }
+
+    // ------------------------------------------------------------------ shared sight
+    fun setGroup(p: GroupPrefs) {
+        val g = p.copy(id = if (p.id.length == 16) p.id else s.group.id, name = p.name.trim().take(12), password = p.password.trim())
+        store.put(GROUP_KEY, kotlinx.serialization.json.Json.encodeToString(GroupPrefs.serializer(), g))
+        set { copy(group = g) }
+    }
+    /** Set (or with "-" remove) the password on the connected sight; the first password makes this app its trainer. */
+    fun groupSetPassword(pw: String) { if (s.conn != ConnState.CONNECTED) { toast(tr("Connect to the sight first."), true); return }; send("group set ${pw.trim().ifEmpty { "-" }}") }
+    fun groupRequest() { send("group request") }
+    fun groupApprove(id: String) { send("group approve $id") }
+    fun groupRemove(id: String) { send("group remove $id") }
+    fun requestTrainers() { send("group trainers") }
+    fun requestGroup() { send("group") }
+    fun endSessionOnSight() { send("shots stop") }
+    fun setBoard(list: List<BoardEntry>) = set { copy(board = list) }
+    /** Leave the sight a trainer visited; no automatic reconnect afterwards. */
+    fun leaveSight() { stopAutoReconnect(); transport.disconnect() }
+
+    /** A trainer's short visit of one sight: connect, do the thing once the role is known, disconnect. */
+    suspend fun visit(address: String, action: suspend () -> Unit): Boolean {
+        stopAutoReconnect()
+        if (s.conn != ConnState.OFF) { transport.disconnect(); delay(500) }
+        val ok = try { transport.connectTo(address, VISIT_TIMEOUT_MS) } catch (e: Exception) { false }
+        if (!ok) return false
+        val t0 = clock.now()
+        while (s.conn != ConnState.CONNECTED && clock.now() - t0 < VISIT_TIMEOUT_MS) delay(100)
+        if (s.conn != ConnState.CONNECTED) { transport.disconnect(); return false }
+        try { action() } finally { delay(300); transport.disconnect() }
+        return true
+    }
+    /** Trainer: visit this sight and stay (the board's detail view); the caller disconnects with leaveSight(). */
+    fun connectBoardEntry(address: String) {
+        scope.launch {
+            stopAutoReconnect()
+            if (s.conn != ConnState.OFF) { transport.disconnect(); delay(500) }
+            val ok = try { transport.connectTo(address, VISIT_TIMEOUT_MS) } catch (e: Exception) { false }
+            if (!ok) toast(tr("Sight not reachable. Move the bow to wake it, then try again."), true)
+        }
+    }
+    /** Trainer: give every sight in range the group's password (new sights only) and become its trainer. */
+    fun setupAllSights(entries: List<BoardEntry>) {
+        val pw = s.group.password
+        if (pw.length < 4) { toast(tr("Set a password of at least 4 characters under Settings → Group first."), true); return }
+        scope.launch {
+            var done = 0; var skipped = 0; var failed = 0
+            for ((i, e) in entries.withIndex()) {
+                set { copy(visiting = tr("Setting up {i} of {n}: {name}", "i" to i + 1, "n" to entries.size, "name" to e.label)) }
+                val ok = visit(e.address) {
+                    if (s.hello?.pw == true) { if (s.role == "trainer") skipped++ else { if (s.role == "user" && !s.rolePending) send("group request"); skipped++ } }
+                    else {
+                        val w = CompletableDeferred<Boolean>(); groupAckWait = w
+                        send("group set $pw")
+                        if (withTimeoutOrNull(4000) { w.await() } == true) done++ else failed++
+                    }
+                }
+                if (!ok) failed++
+            }
+            set { copy(visiting = "") }
+            toast(tr("Set up {done}, already done {skipped}, not reachable {failed}", "done" to done, "skipped" to skipped, "failed" to failed))
+        }
+    }
+    /** Trainer: fetch the sessions of every sight in range. */
+    fun collectAllSights(entries: List<BoardEntry>) {
+        scope.launch {
+            var got = 0; var failed = 0
+            for ((i, e) in entries.withIndex()) {
+                set { copy(visiting = tr("Collecting {i} of {n}: {name}", "i" to i + 1, "n" to entries.size, "name" to e.label)) }
+                val before = archive.sessions().size
+                val ok = visit(e.address) {
+                    if (s.role == "locked") return@visit
+                    val w = CompletableDeferred<Boolean>(); logEndWait = w
+                    fullScan = false; send("log since 0")
+                    withTimeoutOrNull(20_000) { w.await() }
+                }
+                if (ok) got += archive.sessions().size - before else failed++
+            }
+            set { copy(visiting = "") }
+            refreshHistory()
+            toast(tr("{got} new sessions collected, {failed} sights not reachable", "got" to got, "failed" to failed))
+        }
+    }
     private var setupBuf: SetupsInfo? = null
 
     fun chargeLabel(c: String) = when (c) { "charging" -> "Charging"; "full" -> "Charged, cable connected"; "no USB" -> "On battery"; else -> c }
@@ -477,6 +632,16 @@ class SightController(
             "clear" -> { send("log info"); if (m.bool("ok") != true) toast(tr("Could not delete the sessions on the sight."), true) else afterClear(m.int("count") ?: 0) }
             "dfu" -> toast(tr("The sight now shows up as a drive on your computer. Copy the new firmware onto it."))
             "name" -> { val n = m.str("name") ?: ""; if (s.sight != null) { updateSight { it.copy(name = n) }; toast(if (n.isEmpty()) tr("Name removed from the sight") else tr("Sight named {n}", "n" to n)) } }
+            "group" -> {
+                groupAckWait?.complete(true); groupAckWait = null
+                when (m.str("what")) {
+                    "set" -> toast(if (m.bool("pw") == true) tr("Password set on the sight.") else tr("Password removed from the sight."))
+                    "request" -> toast(if (m.bool("pending") == true) tr("Trainer access requested. A trainer has to approve it.") else tr("You are a trainer on this sight."))
+                    "approve" -> toast(tr("Trainer approved."))
+                    "remove" -> toast(tr("Removed."))
+                }
+                send("group")
+            }
         }
     }
 
@@ -801,7 +966,8 @@ class SightController(
     private fun putLine(r: ArchiveSession): String {
         val start = r.startedAt?.let { (it / 1000.0).roundToInt() } ?: 0
         val flags = (if (r.mismatch) 2 else 0) or (if (r.manual) 4 else 0)
-        return "log put ${r.epoch} ${r.id} $start ${r.ends} ${r.shots} ${r.scored} ${(r.avg * 100).roundToInt()} ${r.x} ${r.min} ${r.invalidEnds} ${r.invalidArrows} $flags"
+        val owner = r.owner?.takeIf { it.length == 16 }?.let { " $it ${(r.ownerName ?: "").take(12)}" } ?: ""
+        return "log put ${r.epoch} ${r.id} $start ${r.ends} ${r.shots} ${r.scored} ${(r.avg * 100).roundToInt()} ${r.x} ${r.min} ${r.invalidEnds} ${r.invalidArrows} $flags$owner"
     }
     private fun autoCopyOnAck(m: Msg): Boolean {
         val c = autoCopyState ?: return false

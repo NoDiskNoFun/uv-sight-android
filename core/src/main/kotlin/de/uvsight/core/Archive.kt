@@ -108,7 +108,7 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
         val idx = list.indexOfFirst { it.key == key }
         if (idx >= 0) {
             val found = list[idx]
-            val upd = found.copy(endedAt = found.endedAt ?: endedAt, sightId = found.sightId ?: sightId)
+            val upd = found.copy(endedAt = found.endedAt ?: endedAt, sightId = found.sightId ?: sightId, owner = found.owner ?: sl.owner, ownerName = found.ownerName ?: sl.ownerName)
             if (upd != found) { list[idx] = upd; saveSessions(list) }
             return false
         }
@@ -120,7 +120,7 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
     private fun fromSlot(key: String, epoch: Long?, sl: SlotMsg, endedAt: Long?, now: Long) = ArchiveSession(
         key = key, epoch = epoch, id = sl.id, endedAt = endedAt, importedAt = now, ends = sl.ends, shots = sl.shots,
         scored = sl.scored, avg = sl.avg, x = sl.x, min = sl.min, invalidEnds = sl.invalidEnds,
-        invalidArrows = sl.invalidArrows, mismatch = sl.mismatch, manual = sl.manual,
+        invalidArrows = sl.invalidArrows, mismatch = sl.mismatch, manual = sl.manual, owner = sl.owner, ownerName = sl.ownerName,
     )
 
     fun markOnSight(keys: Set<String>, value: Boolean) {

@@ -144,6 +144,15 @@ fun Seg(current: String, modes: List<String>, enabled: Boolean = true, onPick: (
     }
 }
 
+/** Shared sight: the link is locked, or another archer holds the sight. */
+@Composable
+fun GroupBanner(state: de.uvsight.core.AppState) {
+    if (state.conn != de.uvsight.core.ConnState.CONNECTED) return
+    if (state.role == "locked") Banner(tr("This sight has a password. Enter the group's password under Settings → Group."))
+    else if (!state.primary) Banner(tr("Another archer is connected to this sight; this app only reads until they leave."), info = true)
+    else if (state.rolePending) Banner(tr("Trainer access requested; a trainer of this sight has to approve it."), info = true)
+}
+
 @Composable
 fun GroupTitle(text: String) { Text(text, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)) }
 

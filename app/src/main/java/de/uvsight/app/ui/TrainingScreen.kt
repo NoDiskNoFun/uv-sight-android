@@ -61,6 +61,7 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
     var askStop by remember { mutableStateOf(false) }
 
     if (state.photoOnly) { PhotoOnlyScreen(state, ctl, vm, onPhoto); return }
+    GroupBanner(state)
     if (off) { EmptyBox(tr("The shot counter is off.")) { PrimaryButton(tr("Turn shot counter on")) { ctl.counterOn() } }; return }
     if (idle) { EmptyBox(tr("No session running. The first shot starts one automatically.")) { SecondaryButton(tr("Start session now")) { ctl.startSession() } }; return }
     if (!run) { EmptyBox(tr("Connect to the sight on the Status tab first.")); return }

@@ -15,6 +15,9 @@ class SightViewModel(app: Application) : AndroidViewModel(app) {
     /** The gallery picture behind the photo being scored (null when it came from the camera) and whether its scores were used. */
     var galleryUri: android.net.Uri? get() = rt.galleryUri; set(v) { rt.galleryUri = v }
     var galleryScored: Boolean get() = rt.galleryScored; set(v) { rt.galleryScored = v }
+    /** The trainer's board scans while its screen is shown. */
+    fun startBoardScan() = ble.startBoardScan()
+    fun stopBoardScan() = ble.stopBoardScan()
     /** Switch the language pack ("" = phone language); the state change re-renders everything. */
     fun setLanguage(code: String) { Language.apply(getApplication(), code); controller.setLanguage(code) }
 }

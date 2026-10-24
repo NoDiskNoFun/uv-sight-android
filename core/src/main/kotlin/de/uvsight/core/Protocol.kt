@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 
-const val PROTO_EXPECTED = 22
+const val PROTO_EXPECTED = 23
 const val NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 const val NUS_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"   // app -> device (write)
 const val NUS_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"   // device -> app (notify)
@@ -43,7 +43,11 @@ class Msg(val t: String, val obj: JsonObject) {
 }
 
 fun Msg.toHello() = HelloInfo(int("proto") ?: 0, str("fw") ?: "?", str("name") ?: "", bool("imu") ?: false, bool("log") ?: false,
-    id = str("id")?.takeIf { it.isNotEmpty() }, sightName = str("sname")?.takeIf { it.isNotEmpty() }, led = bool("led") ?: true)
+    id = str("id")?.takeIf { it.isNotEmpty() }, sightName = str("sname")?.takeIf { it.isNotEmpty() }, led = bool("led") ?: true,
+    pw = bool("pw") ?: false, role = str("role") ?: "none", pending = bool("pending") ?: false, primary = bool("primary") ?: true)
+fun Msg.toAuth() = AuthInfo(bool("ok") ?: false, str("role") ?: "none", bool("pending") ?: false)
+fun Msg.toGroup() = GroupInfo(bool("pw") ?: false, int("trainers") ?: 0, int("waiting") ?: 0, str("role") ?: "none", bool("pending") ?: false)
+fun Msg.toTrainer() = TrainerInfo(str("id") ?: "", str("name") ?: "", bool("pending") ?: false)
 
 fun Msg.toStatus() = StatusInfo(
     light = int("light") ?: 0, dark = bool("dark") ?: false, vbat = dbl("vbat") ?: 0.0, pct = int("pct") ?: 0,
@@ -61,6 +65,7 @@ fun Msg.toSession() = SessionInfo(
     dist = int("dist"), distSrc = str("distSrc"), end = int("end") ?: 1, endShots = int("endShots") ?: 0,
     ends = int("ends") ?: 0, invalidEnds = int("invalidEnds") ?: 0, shots = int("shots") ?: 0, scored = int("scored") ?: 0,
     sum = int("sum") ?: 0, x = int("x") ?: 0, avg = dbl("avg") ?: 0.0, min = int("min") ?: 0, pending = bool("pending") ?: false,
+    owner = str("owner"), ownerName = str("ownerName"),
 )
 
 fun Msg.toLevel() = LevelInfo(str("mode") ?: "off", str("style") ?: "normal", bool("cal") ?: false,
@@ -71,7 +76,7 @@ fun Msg.toRange() = RangeInfo(int("setup") ?: 0, str("name") ?: "", str("state")
     str("distSrc") ?: "none", bool("estimated") ?: false, bool("signal") ?: true, str("warn") ?: "", bool("ok") ?: false)
 
 fun Msg.toSetupItem() = SetupItem(int("id") ?: 0, str("name") ?: "", bool("deleted") ?: false, str("state") ?: "learning",
-    int("ends") ?: 0, int("kmh"), int("min"), int("max"))
+    int("ends") ?: 0, int("kmh"), int("min"), int("max"), str("owner"))
 
 fun Msg.toLogInfo() = LogInfo(bool("ok") ?: false, str("jedec") ?: "", int("count") ?: 0, int("capacity") ?: 0,
     long("last") ?: 0, bool("clock") ?: false, int("migrated") ?: 0, str("error") ?: "")
@@ -95,7 +100,7 @@ fun Msg.toConfirm() = ConfirmMsg(int("end") ?: 0, int("counted") ?: 0, int("ente
 
 fun Msg.toSlot() = SlotMsg(long("seq"), long("epoch"), long("id") ?: 0, long("start"), int("ago"), int("ends") ?: 0,
     int("shots") ?: 0, int("scored") ?: 0, dbl("avg") ?: 0.0, int("x") ?: 0, int("min") ?: 0, int("invalidEnds") ?: 0,
-    int("invalidArrows") ?: 0, bool("mismatch") ?: false, bool("manual") ?: false)
+    int("invalidArrows") ?: 0, bool("mismatch") ?: false, bool("manual") ?: false, str("owner"), str("ownerName"))
 
 fun Msg.toEndRec() = EndRecMsg(long("seq"), long("epoch") ?: 0, long("id") ?: 0, int("n") ?: 0, bool("valid") ?: false,
     int("arrows") ?: 0, bool("skipped") ?: false, int("sum"), int("x"), int("dist"), bool("auto") ?: false, int("setup"),

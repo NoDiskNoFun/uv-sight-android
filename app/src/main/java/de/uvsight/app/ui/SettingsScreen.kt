@@ -46,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,7 +66,8 @@ import de.uvsight.core.tr
 /** Keys of the segment labels and face names, which Seg() and the photo screen translate on display. */
 @Suppress("unused")
 private val SEG_KEYS = listOf(tr("off"), tr("auto"), tr("on"), tr("normal"), tr("inverted"), tr("fixed"), tr("light"), tr("medium"), tr("strong"),
-    tr("Camera"), tr("Gallery"), tr("With sight"), tr("Photos only"), tr("Spot 40 cm"), tr("end"), tr("ends"), tr("shot"), tr("shots"), tr("arrow"), tr("arrows"))
+    tr("Camera"), tr("Gallery"), tr("With sight"), tr("Photos only"), tr("Spot 40 cm"), tr("end"), tr("ends"), tr("shot"), tr("shots"), tr("arrow"), tr("arrows"),
+    tr("Single"), tr("User"), tr("Trainer"))
 
 private data class Group(val title: String, val keys: List<String>, val light: Boolean = false, val cal: Boolean = false, val led: Boolean = false)
 /** Settings that only matter with the UV LED stage fitted. */
@@ -141,6 +144,80 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     else tr("With the UV sight: connection, sessions, settings and history."), if (state.photoOnly) "Photos only" else "With sight", listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
             }
             Spacer(Modifier.height(14.dp))
+            // Shared sight: alone as before, one archer of several, or the trainer; name and the group's password
+            if (!state.photoOnly) {
+                UvCard {
+                    Text(tr("Group"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                    val g = state.group
+                    SegRow(tr("Use the sight as"), when (g.role) {
+                        "user" -> tr("One archer of several: your sessions carry your name, a shared sight shows you only yours, and your settings go to the sight when you connect.")
+                        "trainer" -> tr("Trainer: the Training tab becomes the board of all sights in range, you see every session and approve other trainers.")
+                        else -> tr("Alone, as before: no name, no password.")
+                    }, when (g.role) { "user" -> "User"; "trainer" -> "Trainer"; else -> "Single" }, listOf("Single", "User", "Trainer"), first = true) {
+                        ctl.setGroup(g.copy(role = when (it) { "User" -> "user"; "Trainer" -> "trainer"; else -> "single" }))
+                    }
+                    if (g.role != "single") {
+                        var nameText by remember(g.name) { mutableStateOf(g.name) }
+                        var pwText by remember(g.password) { mutableStateOf(g.password) }
+                        val save = { ctl.setGroup(g.copy(name = nameText, password = pwText)) }
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(tr("Your name"), color = uv.ink)
+                                Text(tr("On your sessions and on the trainer's board. Up to 12 characters, chosen by you."), color = uv.muted, fontSize = 13.sp)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedTextField(value = nameText, onValueChange = { nameText = it.take(12) }, singleLine = true, modifier = Modifier.width(130.dp),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { save() }))
+                        }
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(tr("Group password"), color = uv.ink)
+                                Text(tr("The trainer hands it out; it unlocks every sight of the group."), color = uv.muted, fontSize = 13.sp)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedTextField(value = pwText, onValueChange = { pwText = it.take(32) }, singleLine = true, modifier = Modifier.width(130.dp), visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { save() }))
+                        }
+                        if (nameText.trim() != g.name || pwText.trim() != g.password) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { SecondaryButton(tr("Save")) { save() } }
+                        if (g.name.isEmpty()) Text(tr("Enter your name; without it the sight calls you Archer."), color = uv.red, fontSize = 12.sp)
+                        Text(tr("This app's id: {id}", "id" to g.id), color = uv.muted, fontSize = 12.sp)
+                        val h = state.hello
+                        if (connected && h != null) {
+                            HorizontalDivider(color = uv.line)
+                            Text(tr("On this sight"), color = uv.ink, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                            Text((if (h.pw) tr("Password set.") else tr("No password yet.")) + " " + when (state.role) {
+                                "trainer" -> tr("You are a trainer here.")
+                                "locked" -> tr("Locked: your password does not fit.")
+                                "user" -> if (state.rolePending) tr("You are an archer here; trainer access requested.") else tr("You are an archer here.")
+                                "open" -> tr("You are an archer here.")
+                                else -> ""
+                            }, color = uv.muted, fontSize = 13.sp)
+                            Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (!h.pw) SecondaryButton(tr("Set password on this sight"), Modifier.weight(1f), enabled = g.password.length >= 4) { ctl.groupSetPassword(g.password) }
+                                if (state.role == "trainer" && h.pw) SecondaryButton(tr("Remove password"), Modifier.weight(1f), danger = true) { ctl.groupSetPassword("-") }
+                                if (g.role == "trainer" && state.role == "user" && !state.rolePending) SecondaryButton(tr("Request trainer access"), Modifier.weight(1f)) { ctl.groupRequest() }
+                            }
+                            if (!h.pw) Text(tr("Setting the first password makes this app the sight's trainer."), color = uv.muted, fontSize = 12.sp)
+                            if (state.role == "trainer") {
+                                LaunchedEffect(state.sight?.id) { ctl.requestTrainers() }
+                                Text(tr("Trainers of this sight"), color = uv.ink, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                                for (t in state.trainers) {
+                                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(t.name.ifEmpty { "?" } + (if (t.pending) tr(" (waiting for approval)") else "") + (if (t.id == g.id) tr(" (you)") else ""), color = uv.ink)
+                                            Text(t.id, color = uv.muted, fontSize = 11.sp)
+                                        }
+                                        if (t.pending) SecondaryButton(tr("Approve")) { ctl.groupApprove(t.id) }
+                                        if (t.id != g.id) { Spacer(Modifier.width(6.dp)); SecondaryButton(tr("Remove"), danger = true) { ctl.groupRemove(t.id) } }
+                                    }
+                                }
+                                Text(tr("The last trainer can only be removed over the USB console (group clear)."), color = uv.muted, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
             // The sights this phone knows: name the connected one, pick which to connect to, forget old ones
             if (!state.photoOnly && (connected && state.sight != null || state.sights.isNotEmpty())) {
                 UvCard {

@@ -24,6 +24,8 @@ interface Transport {
      * device chooser the first time. Returns true when connected.
      */
     suspend fun ensureConnected(timeoutMs: Long): Boolean
+    /** Connect to this one sight (Bluetooth address), whatever is preferred or remembered; for a trainer's visit. */
+    suspend fun connectTo(address: String, timeoutMs: Long): Boolean = false
     /** Drop the link on purpose (e.g. after the sight announced it sleeps). */
     fun disconnect()
 }

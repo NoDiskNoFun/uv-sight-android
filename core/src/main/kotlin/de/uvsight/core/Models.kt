@@ -25,6 +25,8 @@ data class ArchiveSession(
     val sightId: String? = null,              // the sight this session came from (chip id), null = not known yet
     /** null = not known yet whether the sight has it. */
     val onSight: Boolean? = null,
+    val owner: String? = null,                // the archer's app id on a shared sight, null = no owner
+    val ownerName: String? = null,
 ) {
     val sortTime: Long get() = endedAt ?: importedAt
     val startedAt: Long? get() = endedAt?.let { it - min * 60_000L }
@@ -73,7 +75,35 @@ data class CfgItem(
 
 data class HelloInfo(val proto: Int, val fw: String, val name: String, val imu: Boolean, val log: Boolean,
                      val id: String? = null, val sightName: String? = null,
-                     val led: Boolean = true)        // false: built without the UV LED stage (hunting bow), light options hidden
+                     val led: Boolean = true,        // false: built without the UV LED stage (hunting bow), light options hidden
+                     val pw: Boolean = false,        // shared sight: a password is set
+                     val role: String = "none",      // this link: none / open / locked / user / trainer
+                     val pending: Boolean = false,   // trainer access requested, not approved yet
+                     val primary: Boolean = true)    // this link is the archer's (false: another archer is connected)
+
+/** Answer to "auth" and the group state of a shared sight. */
+data class AuthInfo(val ok: Boolean, val role: String, val pending: Boolean)
+data class GroupInfo(val pw: Boolean, val trainers: Int, val waiting: Int, val role: String, val pending: Boolean)
+data class TrainerInfo(val id: String, val name: String, val pending: Boolean)
+
+/** How this app meets a sight: alone as before, as one archer of several, or as a trainer. */
+@Serializable
+data class GroupPrefs(
+    val role: String = "single",           // "single" / "user" / "trainer"
+    val name: String = "",                 // the archer's or trainer's name, chosen by them
+    val password: String = "",             // the group's password (one per sight; the trainer hands it out)
+    val id: String = "",                   // this app's id (16 hex digits), random until the APK is signed
+)
+
+/** One sight on the trainer's board, read from its advertisement (no connection). */
+data class BoardEntry(
+    val address: String, val bleName: String, val chip: String,
+    val session: Boolean, val pw: Boolean, val hasOwner: Boolean, val counterOn: Boolean, val linked: Boolean,
+    val battery: Int, val end: Int, val endShots: Int, val points: Int, val scored: Int, val x: Int,
+    val ownerName: String, val seen: Long,
+) {
+    val label: String get() = bleName.removePrefix("UV-Sight").trim().ifEmpty { "Sight " + chip.takeLast(4) }
+}
 
 /**
  * A sight this phone has met: its chip id, the name the owner gave it, the Bluetooth address,
@@ -91,6 +121,7 @@ data class SightInfo(
     val distM: Int? = null,
     val face: String? = null,
     val arrowMm: Double? = null,
+    val settings: Map<String, String> = emptyMap(),   // shared sight: the setting commands this app sent last, replayed on connect
 ) {
     val label: String get() = name.ifEmpty { "Sight " + id.takeLast(4) }
 }
@@ -112,6 +143,7 @@ data class SessionInfo(
     val end: Int = 1, val endShots: Int = 0, val ends: Int = 0, val invalidEnds: Int = 0,
     val shots: Int = 0, val scored: Int = 0, val sum: Int = 0, val x: Int = 0, val avg: Double = 0.0,
     val min: Int = 0, val pending: Boolean = false,
+    val owner: String? = null, val ownerName: String? = null,
 ) {
     val key: String? get() = if (active && epoch != null && nextId != null) "$epoch-$nextId" else null
 }
@@ -125,7 +157,7 @@ data class RangeInfo(val setup: Int, val name: String, val state: String, val en
                      val warn: String, val ok: Boolean)
 
 data class SetupItem(val id: Int, val name: String, val deleted: Boolean, val state: String, val ends: Int,
-                     val kmh: Int?, val min: Int?, val max: Int?)
+                     val kmh: Int?, val min: Int?, val max: Int?, val owner: String? = null)
 
 data class SetupsInfo(val active: Int, val list: List<SetupItem>)
 
@@ -159,7 +191,8 @@ data class ConfirmMsg(val end: Int, val counted: Int, val entered: Int, val spli
 
 data class SlotMsg(val seq: Long?, val epoch: Long?, val id: Long, val start: Long?, val ago: Int?, val ends: Int,
                    val shots: Int, val scored: Int, val avg: Double, val x: Int, val min: Int, val invalidEnds: Int,
-                   val invalidArrows: Int, val mismatch: Boolean, val manual: Boolean)
+                   val invalidArrows: Int, val mismatch: Boolean, val manual: Boolean,
+                   val owner: String? = null, val ownerName: String? = null)
 
 data class EndRecMsg(val seq: Long?, val epoch: Long, val id: Long, val n: Int, val valid: Boolean, val arrows: Int,
                      val skipped: Boolean, val sum: Int?, val x: Int?, val dist: Int?, val auto: Boolean,

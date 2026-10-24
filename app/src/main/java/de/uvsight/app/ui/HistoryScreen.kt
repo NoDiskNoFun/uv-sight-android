@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -63,7 +65,10 @@ fun fmtDate(r: ArchiveSession): String = r.startedAt?.let { fmtStamp(it) } ?: tr
 fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     val uv = LocalUv.current
     val context = LocalContext.current
-    val list = state.sessions.filter { !it.hidden || state.showHidden }.sortedWith(compareByDescending<ArchiveSession> { it.sortTime }.thenByDescending { it.id ?: 0 })
+    var archer by remember { mutableStateOf<String?>(null) }     // trainer: only this archer's sessions (null = all)
+    val archers = remember(state.sessions) { state.sessions.mapNotNull { it.ownerName?.takeIf { n -> n.isNotEmpty() } }.distinct().sorted() }
+    val list = state.sessions.filter { !it.hidden || state.showHidden }.filter { archer == null || it.ownerName == archer }
+        .sortedWith(compareByDescending<ArchiveSession> { it.sortTime }.thenByDescending { it.id ?: 0 })
     var shown by remember { mutableStateOf<ArchiveSession?>(null) }
     var removing by remember { mutableStateOf<ArchiveSession?>(null) }
     val today = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date())
@@ -92,6 +97,10 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 SecondaryButton(tr("Backup"), Modifier.weight(1f)) { backupLauncher.launch("uv-sight-backup-$today.json") }
                 SecondaryButton(tr("Import"), Modifier.weight(1f)) { importLauncher.launch(arrayOf("application/json", "text/csv", "text/comma-separated-values", "text/plain", "*/*")) }
             }
+            if (archers.isNotEmpty() && (state.group.role == "trainer" || archers.size > 1)) Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 10.dp)) {
+                FilterChip(selected = archer == null, onClick = { archer = null }, label = { Text(tr("All archers")) }, modifier = Modifier.padding(end = 6.dp))
+                for (a in archers) FilterChip(selected = archer == a, onClick = { archer = if (archer == a) null else a }, label = { Text(a) }, modifier = Modifier.padding(end = 6.dp))
+            }
             if (state.syncLine.isNotEmpty()) Text(state.syncLine, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
             if (state.copyProgress.isNotEmpty()) Text(state.copyProgress, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
             if (list.isNotEmpty()) AverageChart(list.filter { !it.hidden }, state.ends)
@@ -107,7 +116,7 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     if (sightOf != null || state.sights.size > 1) Box(Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 8.dp)) { SightBadge(sightOf, unknown = sightOf == null) }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(fmtDate(r), fontWeight = FontWeight.SemiBold, color = if (r.hidden) uv.muted else uv.ink)
+                            Text(fmtDate(r) + (r.ownerName?.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""), fontWeight = FontWeight.SemiBold, color = if (r.hidden) uv.muted else uv.ink)
                             Text(tr("{ends} {ends2}, {scored} arrows, {x} X, {r} min", "ends" to r.ends, "ends2" to (if (r.ends == 1) tr("end") else tr("ends")), "scored" to r.scored, "x" to r.x, "r" to r.min), color = uv.muted, fontSize = 14.sp)
                             val flags = ArrayList<String>()
                             if (r.invalidEnds > 0) flags.add(tr("{invalidEnds} invalid {invalidEnds2} ({invalidArrows} arrows)", "invalidEnds" to r.invalidEnds, "invalidEnds2" to (if (r.invalidEnds == 1) tr("end") else tr("ends")), "invalidArrows" to r.invalidArrows))

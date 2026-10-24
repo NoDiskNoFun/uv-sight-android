@@ -33,7 +33,7 @@ class EventsTest {
                 withContext(dispatcher) { ctl.onLinkUp() }
                 delay(100)
                 withContext(dispatcher) {
-                    ctl.onLine("""{"t":"hello","proto":22,"fw":"6.4","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Hoyt"}""")
+                    ctl.onLine("""{"t":"hello","proto":23,"fw":"7.0","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Hoyt"}""")
                     // three parts of a 7-sample trace; a stale part of another shot in between is dropped
                     ctl.onLine("""{"t":"trace","end":3,"i":1,"n":7,"k":0,"ms":[1891,1861,1831],"pitch":[120,118,117],"cant":[-30,-28,-25]}""")
                     assertEquals(null, ctl.state.value.trace)
@@ -53,6 +53,37 @@ class EventsTest {
         } finally { scope.cancel(); dispatcher.close() }
     }
 
+    @Test fun lockedSightTakesThePassword() {
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val store = MemoryStore()
+        val transport = FakeTransport()
+        val ctl = SightController(scope, store, transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
+        try {
+            runBlocking {
+                withContext(dispatcher) { ctl.setGroup(GroupPrefs(role = "user", name = "Lena", password = "geheim42")) }
+                assertEquals(16, ctl.state.value.group.id.length)
+                withContext(dispatcher) { ctl.onLinkUp() }
+                delay(100)
+                assertTrue(transport.sent.last().startsWith("app on ${ctl.state.value.group.id} Lena"), "names itself: ${transport.sent.last()}")
+                withContext(dispatcher) { ctl.onLine("""{"t":"hello","proto":23,"fw":"7.0","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Club 3","led":true,"pw":true,"role":"locked","pending":false,"primary":true}""") }
+                delay(200)
+                assertEquals("auth geheim42", transport.sent.last())
+                assertEquals("locked", ctl.state.value.role)
+                withContext(dispatcher) { ctl.onLine("""{"t":"auth","ok":true,"role":"user","pending":false}""") }
+                delay(300)
+                assertEquals(ConnState.CONNECTED, ctl.state.value.conn)
+                assertEquals("user", ctl.state.value.role)
+                assertEquals(false, ctl.state.value.needsPassword)
+                // a session of this archer, as the sight lists it
+                withContext(dispatcher) { ctl.onLine("""{"t":"slot","seq":5,"epoch":7,"id":3,"start":null,"ago":1,"ends":2,"shots":6,"scored":6,"avg":8.5,"x":1,"min":10,"invalidEnds":0,"invalidArrows":0,"mismatch":false,"manual":false,"owner":"${ctl.state.value.group.id}","ownerName":"Lena"}""") }
+                delay(100)
+                val r = ctl.state.value.sessions.first { it.key == "7-3" }
+                assertEquals("Lena", r.ownerName)
+            }
+        } finally { scope.cancel(); dispatcher.close() }
+    }
+
     @Test fun rangeEventAndAlerts() {
         val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -65,7 +96,7 @@ class EventsTest {
             runBlocking {
                 withContext(dispatcher) { ctl.onLinkUp() }
                 delay(100)                                   // "app on" goes out, the controller now waits for hello
-                withContext(dispatcher) { ctl.onLine("""{"t":"hello","proto":22,"fw":"6.4","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Hoyt"}""") }
+                withContext(dispatcher) { ctl.onLine("""{"t":"hello","proto":23,"fw":"7.0","name":"UV-Sight","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Hoyt"}""") }
                 delay(200)
                 assertEquals(ConnState.CONNECTED, ctl.state.value.conn)
                 withContext(dispatcher) {

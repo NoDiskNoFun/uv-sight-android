@@ -88,7 +88,7 @@ fun UvSightApp(vm: SightViewModel) {
             NavigationBar(containerColor = uv.surface) {
                 val tabs = buildList {
                     if (!state.photoOnly) add(Triple(View.STATUS, tr("Status"), Icons.Outlined.Speed))
-                    add(Triple(View.TRAINING, if (state.photoOnly) tr("Scoring") else tr("Training"), Icons.Outlined.GpsFixed))
+                    add(Triple(View.TRAINING, if (state.photoOnly) tr("Scoring") else if (state.group.role == "trainer") tr("Board") else tr("Training"), Icons.Outlined.GpsFixed))
                     if (!state.photoOnly) add(Triple(View.HISTORY, tr("History"), Icons.Filled.History))
                     add(Triple(View.SETTINGS, tr("Settings"), Icons.Filled.Settings))
                     if (state.consoleEnabled && !state.photoOnly) add(Triple(View.CONSOLE, tr("Console"), Icons.Filled.Terminal))
@@ -111,7 +111,9 @@ fun UvSightApp(vm: SightViewModel) {
             val view = if (state.photoOnly && state.view != View.SETTINGS) View.TRAINING else state.view
             when (view) {
                 View.STATUS -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) { StatusScreen(state, ctl, connect) }
-                View.TRAINING -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) { TrainingScreen(state, ctl, vm, onPhoto = { photoFile = it }) }
+                View.TRAINING -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
+                    if (state.group.role == "trainer" && !state.photoOnly) TrainerScreen(state, ctl, vm) else TrainingScreen(state, ctl, vm, onPhoto = { photoFile = it })
+                }
                 View.HISTORY -> HistoryScreen(state, ctl, vm)
                 View.SETTINGS -> SettingsScreen(state, ctl, vm)
                 View.CONSOLE -> ConsoleScreen(state, ctl)

@@ -38,6 +38,7 @@ import de.uvsight.core.tr
 fun StatusScreen(state: AppState, ctl: SightController, connect: () -> Unit) {
     val uv = LocalUv.current
     state.protoWarning?.let { Banner(it) }
+    GroupBanner(state)
     if (!state.hasData) {
         EmptyBox(if (state.conn == ConnState.CONNECTED) tr("Connected. Waiting for data from the sight…") else tr("Move the bow so the sight wakes up, then connect.")) {
             if (state.conn != ConnState.CONNECTED && state.sights.size > 1) {
