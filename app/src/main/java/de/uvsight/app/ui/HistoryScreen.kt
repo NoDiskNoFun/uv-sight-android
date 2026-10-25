@@ -161,6 +161,127 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     }
 }
 
+@Composable
+private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightController, sightOf: de.uvsight.core.SightInfo?, onClose: () -> Unit, onRemove: () -> Unit) {
+    val uv = LocalUv.current
+    WideDialog(onDismiss = onClose,
+        title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(fmtDate(r), Modifier.weight(1f)); SightBadge(sightOf) } },
+        buttons = {
+            if (r.hidden) TextButton(onClick = { onClose(); ctl.unhideSession(r) }) { Text(tr("Show again")) }
+            TextButton(onClick = onRemove) { Text(tr("Remove…")) }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onClose) { Text(tr("Close")) }
+        }) {
+            Column {
+                val lines = ArrayList<String>()
+                lines.add(tr("{ends} ends, {scored} arrows scored, average {avg}, {x} X, {r} min.", "ends" to r.ends, "scored" to r.scored, "avg" to (fmt(r.avg, 2)), "x" to r.x, "r" to r.min))
+                if (r.invalidEnds > 0) lines.add(tr("{invalidEnds} invalid ends with {invalidArrows} arrows.", "invalidEnds" to r.invalidEnds, "invalidArrows" to r.invalidArrows))
+                if (r.mismatch) lines.add(tr("Counts corrected by hand."))
+                lines.add(if (r.manual) tr("Ended by hand.") else tr("Ended automatically."))
+                Text(lines.joinToString(" "), color = uv.muted, fontSize = 14.sp)
+                val sessionHints = remember(r.key, ends.size) { ctl.sessionHints(r.key) }
+                for (h in sessionHints) Text("• $h", color = uv.ink, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                if (ends.isEmpty()) Note(tr("No end details: this session was not scored in this app."))
+                else {
+                    GroupTitle(tr("Points per end"))
+                    EndsBars(ends)
+                    Note(tr("Bar height is the average per arrow, the number above is the end's total. Dashed: invalid end."))
+                    if (ends.any { it.dist != null || it.ang != null || it.cant != null }) {
+                        GroupTitle(tr("Ends"))
+                        Row(Modifier.fillMaxWidth()) { listOf(tr("End"), tr("Distance"), tr("Points"), tr("Angle"), tr("Cant")).forEach { Text(it, Modifier.weight(1f), color = uv.muted, fontSize = 12.sp) } }
+                        for (e in ends) {
+                            HorizontalDivider(color = uv.line)
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Text(e.n.toString(), Modifier.weight(1f), fontSize = 13.sp)
+                                Text(e.dist?.let { "$it m" } ?: "–", Modifier.weight(1f), fontSize = 13.sp)
+                                Text(if (e.valid) e.sum.toString() else tr("invalid"), Modifier.weight(1f), fontSize = 13.sp)
+                                Text(e.ang?.let { fmt(it, 2) + "° ±" + fmt(e.angSd ?: 0.0, 2) } ?: "–", Modifier.weight(1f), fontSize = 13.sp)
+                                Text(e.cant?.let { fmt(abs(it), 1) + "°" + (if ((e.canted ?: 0) > 0) tr(" {canted} over", "canted" to e.canted) else "") } ?: "–", Modifier.weight(1f), fontSize = 13.sp)
+                            }
+                            val eh = remember(e) { ctl.endHints(e) }
+                            if (eh.isNotEmpty()) Text(eh.joinToString(" "), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
+                        }
+                        Note(tr("Cant: average at release; \"over\" counts arrows outside your cant tolerance."))
+                    }
+                    if (ends.any { !it.hits.isNullOrEmpty() }) {
+                        GroupTitle(tr("Hits (from photos)"))
+                        FacePlot(ends.flatMap { e -> (e.hits ?: emptyList()).mapIndexed { i, h ->
+                            val shot = e.shotOf?.getOrNull(i)?.let { s -> "·" + (s + 1) + (if (e.shotSrc?.getOrNull(i) == "coin") "?" else "") } ?: ""
+                            h to "${e.n}$shot" } })
+                        Note(tr("One dot per arrow at its position on the face: end·shot. A \"?\" marks a shot the matching could not tell apart."))
+                    }
+                    val count = HashMap<String, Int>(); var total = 0
+                    for (e in ends) for (v in e.scores ?: emptyList()) { count[v] = (count[v] ?: 0) + 1; total++ }
+                    if (total > 0) {
+                        GroupTitle(tr("Arrows by score ({total} arrows)", "total" to total))
+                        val mx = count.values.max()
+                        for (v in listOf("X", "10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "M")) {
+                            val c = count[v] ?: 0
+                            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(v, Modifier.width(34.dp), fontSize = 13.sp)
+                                Box(Modifier.weight(1f)) {
+                                    Box(Modifier.fillMaxWidth(max(0.02f, c.toFloat() / mx)).height(12.dp).background(if (v == "M") uv.line else Ring.colorFor(v).let { if (it == Ring.black) Color(0xFF555555) else if (it == Ring.white) Color(0xFFBFC5BD) else it }, androidx.compose.foundation.shape.RoundedCornerShape(6.dp)))
+                                }
+                                Text(c.toString(), Modifier.width(30.dp), color = uv.muted, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+}
+
+/** All hits of a session on a 10-ring face, x right / y up in mm, scaled to the widest hit. */
+@Composable
+private fun FacePlot(hits: List<Pair<de.uvsight.core.Hit, String>>) {
+    val uv = LocalUv.current
+    val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val maxMm = max(60.0, hits.maxOf { hypot(it.first.mmX, it.first.mmY) } * 1.15)
+    Canvas(Modifier.fillMaxWidth().height(220.dp)) {
+        val r = min(size.width, size.height) / 2 * 0.95f
+        val c = Offset(size.width / 2, size.height / 2)
+        val ringMm = maxMm / 10.0   // draw 10 rings scaled so the widest hit still shows
+        val colors = listOf(Ring.gold, Ring.gold, Ring.red, Ring.red, Ring.blue, Ring.blue, Color(0xFF555555), Color(0xFF555555), Color(0xFFBFC5BD), Color(0xFFBFC5BD))
+        for (k in 10 downTo 1) drawCircle(colors[10 - k].copy(alpha = 0.35f), (r * k / 10), c)
+        for (k in 1..10) drawCircle(uv.line, r * k / 10, c, style = Stroke(1f))
+        val small = androidx.compose.ui.text.TextStyle(fontSize = 9.sp, color = uv.ink)
+        for ((h, n) in hits) {
+            val p = Offset(c.x + (h.mmX / maxMm * r).toFloat(), c.y - (h.mmY / maxMm * r).toFloat())
+            drawCircle(uv.ink, 5.dp.toPx(), p); drawCircle(Color.White, 3.dp.toPx(), p)
+            val tl = textMeasurer.measure(n, small); drawText(tl, topLeft = p + Offset(6.dp.toPx(), -tl.size.height / 2f))
+        }
+        drawCircle(uv.ink, 2f, c)
+        val note = textMeasurer.measure("outer ring = ${fmt(ringMm * 10 / 10, 0)} mm", androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = uv.muted))
+        drawText(note, topLeft = Offset(0f, size.height - note.size.height))
+    }
+}
+
+@Composable
+private fun EndsBars(ends: List<EndDetail>) {
+    val uv = LocalUv.current
+    val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+    Canvas(Modifier.fillMaxWidth().height(170.dp)) {
+        val l = 26.dp.toPx(); val rgt = 6.dp.toPx(); val t = 14.dp.toPx(); val b = 22.dp.toPx()
+        val n = ends.size; val slot = (size.width - l - rgt) / n; val bw = min(28.dp.toPx(), slot * 0.7f)
+        val y = { v: Double -> (t + (1 - v / 10) * (size.height - t - b)).toFloat() }
+        for (v in listOf(0.0, 5.0, 10.0)) drawLine(uv.line, Offset(l, y(v)), Offset(size.width - rgt, y(v)), 1f)
+        val small = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = uv.muted)
+        ends.forEachIndexed { i, e ->
+            val cx = l + slot * (i + 0.5f)
+            val sum = e.sum
+            if (e.valid && e.arrows > 0 && sum != null) {
+                val avg = sum.toDouble() / e.arrows
+                drawRect(Ring.forAvg(avg), Offset(cx - bw / 2, y(avg)), Size(bw, y(0.0) - y(avg)))
+                val tl = textMeasurer.measure(sum.toString(), small)
+                drawText(tl, topLeft = Offset(cx - tl.size.width / 2, y(avg) - tl.size.height - 2))
+            } else {
+                drawRect(uv.line, Offset(cx - bw / 2, y(10.0)), Size(bw, y(0.0) - y(10.0)), style = Stroke(1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))))
+            }
+            if (n <= 16 || i % 2 == 0) { val tl = textMeasurer.measure(e.n.toString(), small); drawText(tl, topLeft = Offset(cx - tl.size.width / 2, size.height - tl.size.height)) }
+        }
+    }
+}
+
 /** Trends over the last sessions: group size, hold steadiness, cant consistency (one line each, newest right). */
 @Composable
 private fun TrendsCard(list: List<ArchiveSession>, endsStore: Map<String, List<EndDetail>>) {
