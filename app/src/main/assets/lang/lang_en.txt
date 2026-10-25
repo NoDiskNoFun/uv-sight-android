@@ -84,6 +84,16 @@ Trainer access requested; a trainer of this sight has to approve it. = Trainer a
 Command, e.g. help = Command, e.g. help
 Send = Send
 
+# --- app/src/main/java/de/uvsight/app/ui/Emoji.kt
+Pick an emoji = Pick an emoji
+Archery = Archery
+Animals = Animals
+Faces = Faces
+Nature = Nature
+Things = Things
+Other = Other
+Use = Use
+
 # --- app/src/main/java/de/uvsight/app/ui/HistoryScreen.kt
 Before {time} = Before {time}
 Export failed: {message} = Export failed: {message}
@@ -188,7 +198,7 @@ You = You
 day = day
 days = days
 Shoot today to start a streak = Shoot today to start a streak
-Today: {done} of {goal} ends above your average = Today: {done} of {goal} ends above your average
+New goal = New goal
 Steady hand, last end: {v} = Steady hand, last end: {v}
 best end = best end
 best average = best average
@@ -208,13 +218,13 @@ Templates = Templates
 Share = Share
 Share badges = Share badges
 Your set goes to every sight you connect to as trainer; the archers fetch it from there. Share writes the set as a file others can import. = Your set goes to every sight you connect to as trainer; the archers fetch it from there. Share writes the set as a file others can import.
-Templates and your own badges; share them as a file. Badges a trainer put on a sight appear here when you connect. = Templates and your own badges; share them as a file. Badges a trainer put on a sight appear here when you connect.
+The badges of your group come from the sight, the trainer manages them. They stay here when you are not connected, and what you earned stays for good. = The badges of your group come from the sight, the trainer manages them. They stay here when you are not connected, and what you earned stays for good.
+Your own badges, kept on this phone; share them as a file or import others. = Your own badges, kept on this phone; share them as a file or import others.
 Added = Added
 Add = Add
 Edit badge = Edit badge
 New badge = New badge
 Save = Save
-Emoji = Emoji
 Title = Title
 What = What
 Where = Where
@@ -225,6 +235,10 @@ Thresholds: bronze, silver, gold (silver and gold may stay empty) = Thresholds: 
 you would have {level} = you would have {level}
 not reached yet = not reached yet
 No value for this yet. = No value for this yet.
+Edit goal = Edit goal
+Period = Period
+Target = Target
+Right now: {text} = Right now: {text}
 
 # --- app/src/main/java/de/uvsight/app/ui/SettingsScreen.kt
 off = off
@@ -306,7 +320,9 @@ Trainer: the Training tab becomes the board of all sights in range, you see ever
 Alone, as before: no name, no password. = Alone, as before: no name, no password.
 Your name = Your name
 On your sessions and on the trainer's board. Up to 12 characters, chosen by you. = On your sessions and on the trainer's board. Up to 12 characters, chosen by you.
+Sight password = Sight password
 Group password = Group password
+Optional: locks your sight so nobody else reads it. The app gives it when connecting. = Optional: locks your sight so nobody else reads it. The app gives it when connecting.
 The trainer hands it out; it unlocks every sight of the group. = The trainer hands it out; it unlocks every sight of the group.
 Enter your name; without it the sight calls you Archer. = Enter your name; without it the sight calls you Archer.
 This app's id: {id} = This app's id: {id}
@@ -318,8 +334,10 @@ Locked: your password does not fit. = Locked: your password does not fit.
 You are an archer here; trainer access requested. = You are an archer here; trainer access requested.
 You are an archer here. = You are an archer here.
 Set password on this sight = Set password on this sight
+Change password = Change password
 Remove password = Remove password
 Request trainer access = Request trainer access
+The sight then answers only after this password. = The sight then answers only after this password.
 Setting the first password makes this app the sight's trainer. = Setting the first password makes this app the sight's trainer.
 Trainers of this sight = Trainers of this sight
  (waiting for approval) =  (waiting for approval)
@@ -379,7 +397,6 @@ Still learning: shoot a few ends at two or more distances with the distance set 
 Brightness mode = Brightness mode
 Auto: fades in from Bright above and reaches full brightness at Dark below. = Auto: fades in from Bright above and reaches full brightness at Dark below.
 Fixed: one brightness, switched at Dark below / Bright above. = Fixed: one brightness, switched at Dark below / Bright above.
-Other = Other
 Restore defaults = Restore defaults
 Setups = Setups
 One per arrow set or bow setting. Each learns its own arrow speed, so switching back needs no new learning. = One per arrow set or bow setting. Each learns its own arrow speed, so switching back needs no new learning.
@@ -444,8 +461,7 @@ Play mode = Play mode
 Personal bests with confetti, training streaks, the steady-hand score, badges and a daily goal. All against your own earlier results, never against others. = Personal bests with confetti, training streaks, the steady-hand score, badges and a daily goal. All against your own earlier results, never against others.
 Avatar = Avatar
 A colour and, if you like, an emoji; your initial otherwise. = A colour and, if you like, an emoji; your initial otherwise.
-Daily goal = Daily goal
-Ends per training day that beat your own average. = Ends per training day that beat your own average.
+Goals are set on the play card of the Training tab: tap a goal to change it, New goal adds one. = Goals are set on the play card of the Training tab: tap a goal to change it, New goal adds one.
 Group goal = Group goal
 Points of all sights on the board together, per evening. = Points of all sights on the board together, per evening.
 Hints = Hints
@@ -646,6 +662,15 @@ New best end = New best end
 New best average = New best average
 Most X in a session = Most X in a session
 Steadiest hand yet = Steadiest hand yet
+
+# --- core/src/main/kotlin/de/uvsight/core/Goals.kt
+Ends above your average = Ends above your average
+Arrows above your average = Arrows above your average
+today = today
+this week = this week
+this session = this session
+all time = all time
+Ends above average = Ends above average
 
 # --- core/src/main/kotlin/de/uvsight/core/Insights.kt
 {cm} cm {side} = {cm} cm {side}

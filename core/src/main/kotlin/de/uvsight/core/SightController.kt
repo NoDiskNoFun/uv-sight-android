@@ -83,6 +83,7 @@ data class AppState(
     val badgeDefs: List<BadgeDef> = emptyList(),              // the archer's (or trainer's) own badge rules
     val sightBadges: Map<String, List<BadgeDef>> = emptyMap(), // rules fetched from sights, by sight id
     val earned: List<EarnedBadge> = emptyList(),              // what this archer earned; stays even when a rule goes
+    val goals: List<GoalDef> = emptyList(),                   // the archer's own goals, shown on the Training tab
     val role: String = "none",            // this link on the connected sight: none / open / locked / user / trainer
     val rolePending: Boolean = false,     // trainer access requested, waiting for approval
     val primary: Boolean = true,          // false: another archer is connected, this app only reads
@@ -152,6 +153,8 @@ class SightController(
         const val EARNED_KEY = "uvsight.badges.earned"
         const val BADGES_SEEDED_KEY = "uvsight.badges.seeded"
         const val SIGHT_BADGES_PREFIX = "uvsight.badges.sight."
+        const val GOALS_KEY = "uvsight.goals"
+        const val GOALS_SEEDED_KEY = "uvsight.goals.seeded"
         const val VISIT_TIMEOUT_MS = 15_000L
         const val LOW_BAT_PCT = 15
     }
@@ -556,7 +559,7 @@ class SightController(
     /** The link may talk now (no password, or it was accepted): sync, the sight's badges, and a trainer-to-be asks for access. */
     private fun afterUnlocked() {
         scope.launch { delay(1500); autoSync() }
-        if (s.game.enabled || s.group.role == "trainer") send("badge list")
+        if (s.group.role != "single" && (s.game.enabled || s.group.role == "trainer")) send("badge list")
         val g = s.group
         if (g.role == "trainer" && s.role == "user" && !s.rolePending) send("group request")
     }
@@ -835,7 +838,7 @@ class SightController(
     // ---- play mode ----
     fun setGamePrefs(p: GamePrefs) {
         store.put(GAME_KEY, kotlinx.serialization.json.Json.encodeToString(GamePrefs.serializer(), p)); set { copy(game = p) }
-        if (p.enabled) { seedBadges(); updateEarned(null) }
+        if (p.enabled) { seedBadges(); seedGoals(); updateEarned(null) }
     }
     private fun tzOffsetMs(): Long = tzOffsetMinutes() * 60_000L
     private fun gameSnapshot(): GameSnapshot? = if (s.game.enabled) Game.snapshot(allBadgeDefs(), archive.sessions(), archive.ends(), tzOffsetMs(), clock.now()) else null
@@ -853,20 +856,35 @@ class SightController(
         val earned = store.get(EARNED_KEY)?.let { runCatching { badgeJson.decodeFromString(earnedSer, it) }.getOrNull() } ?: emptyList()
         val sightDefs = archive.sights().associate { si -> si.id to (store.get(SIGHT_BADGES_PREFIX + si.id)?.let { runCatching { badgeJson.decodeFromString(badgeListSer, it) }.getOrNull() } ?: emptyList()) }.filterValues { it.isNotEmpty() }
         set { copy(badgeDefs = defs, earned = earned, sightBadges = sightDefs) }
-        if (s.game.enabled) seedBadges()
+        val goals = store.get(GOALS_KEY)?.let { runCatching { badgeJson.decodeFromString(goalListSer, it) }.getOrNull() } ?: emptyList()
+        set { copy(goals = goals) }
+        if (s.game.enabled) { seedBadges(); seedGoals() }
     }
-    /** The first time play mode is on, an archer starts with the templates as own badges; a trainer picks from them. */
+    /** The first time play mode is on in single mode, the archer starts with the templates as own badges; users get theirs from the sight, trainers pick. */
     private fun seedBadges() {
         if (store.get(BADGES_SEEDED_KEY) == "1") return
-        if (s.group.role != "trainer" && s.badgeDefs.isEmpty()) saveBadgeDefs(Badges.templates())
+        if (s.group.role == "single" && s.badgeDefs.isEmpty()) saveBadgeDefs(Badges.templates())
         store.put(BADGES_SEEDED_KEY, "1")
     }
+    private val goalListSer = kotlinx.serialization.builtins.ListSerializer(GoalDef.serializer())
+    private fun seedGoals() {
+        if (store.get(GOALS_SEEDED_KEY) == "1") return
+        if (s.goals.isEmpty()) saveGoals(listOf(Goals.defaultGoal().copy(target = s.game.dailyGoal.toDouble())))
+        store.put(GOALS_SEEDED_KEY, "1")
+    }
+    private fun saveGoals(list: List<GoalDef>) { store.put(GOALS_KEY, badgeJson.encodeToString(goalListSer, list)); set { copy(goals = list) } }
+    fun saveGoal(g: GoalDef) { val l = s.goals.toMutableList(); val i = l.indexOfFirst { it.id == g.id }; if (i >= 0) l[i] = g else l.add(g); saveGoals(l) }
+    fun deleteGoal(id: String) = saveGoals(s.goals.filter { it.id != id })
     private fun saveBadgeDefs(defs: List<BadgeDef>) { store.put(BADGES_KEY, badgeJson.encodeToString(badgeListSer, defs)); set { copy(badgeDefs = defs) } }
     private fun saveEarned(list: List<EarnedBadge>) { store.put(EARNED_KEY, badgeJson.encodeToString(earnedSer, list)); set { copy(earned = list) } }
-    /** Every rule in force for this archer: own ones and those of the sights met, by id (own wins). */
+    /**
+     * Every rule in force for this archer. Single mode: the app's own set, the sight plays no part.
+     * User: what the sights handed out (kept on the phone, replaced by the sight's list on connecting: the sight
+     * is the truth). Trainer: the trainer's own set, which goes to the sights.
+     */
     fun allBadgeDefs(): List<BadgeDef> {
+        if (s.group.role != "user") return s.badgeDefs
         val out = LinkedHashMap<String, BadgeDef>()
-        for (d in s.badgeDefs) out[d.id] = d
         for (l in s.sightBadges.values) for (d in l) out[d.id] = d
         return out.values.toList()
     }

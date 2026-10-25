@@ -81,6 +81,16 @@ Trainer access requested; a trainer of this sight has to approve it. = Trainerzu
 Command, e.g. help = Befehl, z. B. help
 Send = Senden
 
+# --- app/src/main/java/de/uvsight/app/ui/Emoji.kt
+Pick an emoji = Emoji wählen
+Archery = Bogensport
+Animals = Tiere
+Faces = Gesichter
+Nature = Natur
+Things = Dinge
+Other = Sonstiges
+Use = Verwenden
+
 # --- app/src/main/java/de/uvsight/app/ui/HistoryScreen.kt
 Before {time} = Vor {time}
 Export failed: {message} = Export fehlgeschlagen: {message}
@@ -185,7 +195,7 @@ You = Du
 day = Tag
 days = Tage
 Shoot today to start a streak = Schieß heute, um eine Serie zu starten
-Today: {done} of {goal} ends above your average = Heute: {done} von {goal} Passen über deinem Schnitt
+New goal = Neues Ziel
 Steady hand, last end: {v} = Ruhige Hand, letzte Passe: {v}
 best end = beste Passe
 best average = bester Schnitt
@@ -205,13 +215,13 @@ Templates = Vorlagen
 Share = Teilen
 Share badges = Abzeichen teilen
 Your set goes to every sight you connect to as trainer; the archers fetch it from there. Share writes the set as a file others can import. = Dein Satz geht auf jedes Visier, mit dem du dich als Trainer verbindest; die Schützen holen ihn dort ab. Teilen schreibt den Satz als Datei, die andere importieren können.
-Templates and your own badges; share them as a file. Badges a trainer put on a sight appear here when you connect. = Vorlagen und deine eigenen Abzeichen; teile sie als Datei. Abzeichen, die ein Trainer auf ein Visier gelegt hat, erscheinen hier beim Verbinden.
+The badges of your group come from the sight, the trainer manages them. They stay here when you are not connected, and what you earned stays for good. = Die Abzeichen deiner Gruppe kommen vom Visier, der Trainer verwaltet sie. Sie bleiben hier, auch wenn du nicht verbunden bist, und Verdientes bleibt für immer.
+Your own badges, kept on this phone; share them as a file or import others. = Deine eigenen Abzeichen, auf diesem Handy; teile sie als Datei oder importiere andere.
 Added = Hinzugefügt
 Add = Hinzufügen
 Edit badge = Abzeichen bearbeiten
 New badge = Neues Abzeichen
 Save = Speichern
-Emoji = Emoji
 Title = Titel
 What = Was
 Where = Wo
@@ -222,6 +232,10 @@ Thresholds: bronze, silver, gold (silver and gold may stay empty) = Schwellen: B
 you would have {level} = du hättest {level}
 not reached yet = noch nicht erreicht
 No value for this yet. = Dafür noch kein Wert.
+Edit goal = Ziel bearbeiten
+Period = Zeitraum
+Target = Zielwert
+Right now: {text} = Aktuell: {text}
 
 # --- app/src/main/java/de/uvsight/app/ui/SettingsScreen.kt
 off = aus
@@ -303,7 +317,9 @@ Trainer: the Training tab becomes the board of all sights in range, you see ever
 Alone, as before: no name, no password. = Allein, wie bisher: kein Name, kein Passwort.
 Your name = Dein Name
 On your sessions and on the trainer's board. Up to 12 characters, chosen by you. = Auf deinen Sitzungen und auf der Tafel des Trainers. Bis zu 12 Zeichen, von dir gewählt.
+Sight password = Visier-Passwort
 Group password = Gruppenpasswort
+Optional: locks your sight so nobody else reads it. The app gives it when connecting. = Optional: sperrt dein Visier, damit niemand sonst es ausliest. Die App gibt es beim Verbinden.
 The trainer hands it out; it unlocks every sight of the group. = Der Trainer gibt es aus; es schließt jedes Visier der Gruppe auf.
 Enter your name; without it the sight calls you Archer. = Gib deinen Namen ein; ohne ihn nennt dich das Visier Archer.
 This app's id: {id} = Kennung dieser App: {id}
@@ -315,8 +331,10 @@ Locked: your password does not fit. = Gesperrt: dein Passwort passt nicht.
 You are an archer here; trainer access requested. = Du bist hier Schütze; Trainerzugang angefragt.
 You are an archer here. = Du bist hier Schütze.
 Set password on this sight = Passwort auf diesem Visier setzen
+Change password = Passwort ändern
 Remove password = Passwort entfernen
 Request trainer access = Trainerzugang anfragen
+The sight then answers only after this password. = Das Visier antwortet dann nur noch nach diesem Passwort.
 Setting the first password makes this app the sight's trainer. = Mit dem ersten Passwort wird diese App Trainer des Visiers.
 Trainers of this sight = Trainer dieses Visiers
  (waiting for approval) = (wartet auf Freigabe)
@@ -376,7 +394,6 @@ Still learning: shoot a few ends at two or more distances with the distance set 
 Brightness mode = Helligkeitsmodus
 Auto: fades in from Bright above and reaches full brightness at Dark below. = Auto: blendet ab „Hell über“ ein und erreicht bei „Dunkel unter“ volle Helligkeit.
 Fixed: one brightness, switched at Dark below / Bright above. = Fest: eine Helligkeit, geschaltet bei „Dunkel unter“ / „Hell über“.
-Other = Sonstiges
 Restore defaults = Standard wiederherstellen
 Setups = Setups
 One per arrow set or bow setting. Each learns its own arrow speed, so switching back needs no new learning. = Eins je Pfeilsatz oder Bogeneinstellung. Jedes lernt seine eigene Pfeilgeschwindigkeit, ein Wechsel zurück braucht kein neues Lernen.
@@ -441,8 +458,7 @@ Play mode = Spielmodus
 Personal bests with confetti, training streaks, the steady-hand score, badges and a daily goal. All against your own earlier results, never against others. = Bestwerte mit Konfetti, Trainingsserien, die Ruhige-Hand-Wertung, Abzeichen und ein Tagesziel. Alles gegen deine eigenen früheren Ergebnisse, nie gegen andere.
 Avatar = Avatar
 A colour and, if you like, an emoji; your initial otherwise. = Eine Farbe und, wenn du magst, ein Emoji; sonst dein Anfangsbuchstabe.
-Daily goal = Tagesziel
-Ends per training day that beat your own average. = Passen pro Trainingstag, die deinen eigenen Schnitt schlagen.
+Goals are set on the play card of the Training tab: tap a goal to change it, New goal adds one. = Ziele legst du auf der Spielkarte im Trainingstab fest: Ziel antippen zum Ändern, Neues Ziel fügt eines hinzu.
 Group goal = Gruppenziel
 Points of all sights on the board together, per evening. = Punkte aller Visiere auf der Tafel zusammen, pro Abend.
 Hints = Hinweise
@@ -643,6 +659,15 @@ New best end = Neue beste Passe
 New best average = Neuer bester Schnitt
 Most X in a session = Meiste X in einer Sitzung
 Steadiest hand yet = Ruhigste Hand bisher
+
+# --- core/src/main/kotlin/de/uvsight/core/Goals.kt
+Ends above your average = Passen über deinem Schnitt
+Arrows above your average = Pfeile über deinem Schnitt
+today = heute
+this week = diese Woche
+this session = diese Sitzung
+all time = insgesamt
+Ends above average = Passen über Schnitt
 
 # --- core/src/main/kotlin/de/uvsight/core/Insights.kt
 {cm} cm {side} = {cm} cm {side}

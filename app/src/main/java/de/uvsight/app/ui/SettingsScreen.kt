@@ -157,11 +157,11 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     }, when (g.role) { "user" -> "User"; "trainer" -> "Trainer"; else -> "Single" }, listOf("Single", "User", "Trainer"), first = true) {
                         ctl.setGroup(g.copy(role = when (it) { "User" -> "user"; "Trainer" -> "trainer"; else -> "single" }))
                     }
-                    if (g.role != "single") {
+                    run {
                         var nameText by remember(g.name) { mutableStateOf(g.name) }
                         var pwText by remember(g.password) { mutableStateOf(g.password) }
                         val save = { ctl.setGroup(g.copy(name = nameText, password = pwText)) }
-                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (g.role != "single") Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(tr("Your name"), color = uv.ink)
                                 Text(tr("On your sessions and on the trainer's board. Up to 12 characters, chosen by you."), color = uv.muted, fontSize = 13.sp)
@@ -172,16 +172,16 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         }
                         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(tr("Group password"), color = uv.ink)
-                                Text(tr("The trainer hands it out; it unlocks every sight of the group."), color = uv.muted, fontSize = 13.sp)
+                                Text(if (g.role == "single") tr("Sight password") else tr("Group password"), color = uv.ink)
+                                Text(if (g.role == "single") tr("Optional: locks your sight so nobody else reads it. The app gives it when connecting.") else tr("The trainer hands it out; it unlocks every sight of the group."), color = uv.muted, fontSize = 13.sp)
                             }
                             Spacer(Modifier.width(8.dp))
                             OutlinedTextField(value = pwText, onValueChange = { pwText = it.take(32) }, singleLine = true, modifier = Modifier.width(130.dp), visualTransformation = PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { save() }))
                         }
                         if (nameText.trim() != g.name || pwText.trim() != g.password) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { SecondaryButton(tr("Save")) { save() } }
-                        if (g.name.isEmpty()) Text(tr("Enter your name; without it the sight calls you Archer."), color = uv.red, fontSize = 12.sp)
-                        Text(tr("This app's id: {id}", "id" to g.id), color = uv.muted, fontSize = 12.sp)
+                        if (g.role != "single" && g.name.isEmpty()) Text(tr("Enter your name; without it the sight calls you Archer."), color = uv.red, fontSize = 12.sp)
+                        if (g.role != "single") Text(tr("This app's id: {id}", "id" to g.id), color = uv.muted, fontSize = 12.sp)
                         val h = state.hello
                         if (connected && h != null) {
                             HorizontalDivider(color = uv.line)
@@ -195,10 +195,13 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             }, color = uv.muted, fontSize = 13.sp)
                             Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (!h.pw) SecondaryButton(tr("Set password on this sight"), Modifier.weight(1f), enabled = g.password.length >= 4) { ctl.groupSetPassword(g.password) }
-                                if (state.role == "trainer" && h.pw) SecondaryButton(tr("Remove password"), Modifier.weight(1f), danger = true) { ctl.groupSetPassword("-") }
+                                if (h.pw && (state.role == "trainer" || (g.role == "single" && state.role != "locked" && (state.groupInfo?.trainers ?: 0) == 0))) {
+                                    SecondaryButton(tr("Change password"), Modifier.weight(1f), enabled = g.password.length >= 4) { ctl.groupSetPassword(g.password) }
+                                    SecondaryButton(tr("Remove password"), Modifier.weight(1f), danger = true) { ctl.groupSetPassword("-") }
+                                }
                                 if (g.role == "trainer" && state.role == "user" && !state.rolePending) SecondaryButton(tr("Request trainer access"), Modifier.weight(1f)) { ctl.groupRequest() }
                             }
-                            if (!h.pw) Text(tr("Setting the first password makes this app the sight's trainer."), color = uv.muted, fontSize = 12.sp)
+                            if (!h.pw) Text(if (g.role == "single") tr("The sight then answers only after this password.") else tr("Setting the first password makes this app the sight's trainer."), color = uv.muted, fontSize = 12.sp)
                             if (state.role == "trainer") {
                                 LaunchedEffect(state.sight?.id) { ctl.requestTrainers() }
                                 Text(tr("Trainers of this sight"), color = uv.ink, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
@@ -565,8 +568,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             Text(tr("Avatar"), color = uv.ink)
                             Text(tr("A colour and, if you like, an emoji; your initial otherwise."), color = uv.muted, fontSize = 13.sp)
                         }
-                        var emojiText by remember(gp.emoji) { mutableStateOf(gp.emoji) }
-                        OutlinedTextField(value = emojiText, onValueChange = { v -> emojiText = v.take(4); ctl.setGamePrefs(gp.copy(emoji = emojiText.trim())) }, singleLine = true, modifier = Modifier.width(72.dp), placeholder = { Text("🦊") })
+                        EmojiField(gp.emoji, onChange = { ctl.setGamePrefs(gp.copy(emoji = it)) })
                     }
                     Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
                         sightColors.forEachIndexed { i, c ->
@@ -574,15 +576,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         }
                     }
                     HorizontalDivider(color = uv.line)
-                    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("Daily goal"), color = uv.ink)
-                            Text(tr("Ends per training day that beat your own average."), color = uv.muted, fontSize = 13.sp)
-                        }
-                        SecondaryButton("−", enabled = gp.dailyGoal > 1) { ctl.setGamePrefs(gp.copy(dailyGoal = gp.dailyGoal - 1)) }
-                        Text("${gp.dailyGoal}", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp))
-                        SecondaryButton("+", enabled = gp.dailyGoal < 20) { ctl.setGamePrefs(gp.copy(dailyGoal = gp.dailyGoal + 1)) }
-                    }
+                    Text(tr("Goals are set on the play card of the Training tab: tap a goal to change it, New goal adds one."), color = uv.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 10.dp))
                     if (state.group.role == "trainer") {
                         HorizontalDivider(color = uv.line)
                         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -50,6 +50,11 @@ import de.uvsight.core.BadgeDef
 import de.uvsight.core.Badges
 import de.uvsight.core.CoreEvent
 import de.uvsight.core.EarnedBadge
+import de.uvsight.core.GoalDef
+import de.uvsight.core.Goals
+import de.uvsight.core.Metric
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import de.uvsight.core.Game
 import de.uvsight.core.SightController
 import de.uvsight.core.fmt
@@ -82,7 +87,6 @@ fun PlayCard(state: AppState, ctl: SightController) {
     val sessions = state.sessions; val ends = state.ends
     val streak = remember(sessions) { Game.streakDays(sessions, now, tz) }
     val bests = remember(sessions, ends) { Game.bests(sessions, ends) }
-    val (done, goal) = remember(sessions, ends, g.dailyGoal) { Game.dailyGoal(sessions, ends, g.dailyGoal, now, tz) }
     val noMiss = remember(sessions, ends) { Game.endsWithoutMiss(sessions, ends) }
     val lastEnd = state.currentSessionKey?.let { k -> ends[k]?.maxByOrNull { it.n } }
     val steady = lastEnd?.let { Game.steadyHand(it) }
@@ -98,12 +102,21 @@ fun PlayCard(state: AppState, ctl: SightController) {
             if (noMiss >= 3) Text("🧹 $noMiss", color = uv.ink, fontSize = 14.sp)
         }
         Spacer(Modifier.height(12.dp))
-        // today's goal: ends above the archer's own average
-        val frac by animateFloatAsState(if (goal == 0) 0f else (done.toFloat() / goal).coerceIn(0f, 1f), tween(600), label = "goal")
-        Text(tr("Today: {done} of {goal} ends above your average", "done" to done, "goal" to goal) + if (done >= goal && goal > 0) " ✅" else "", color = uv.ink, fontSize = 14.sp)
-        Box(Modifier.fillMaxWidth().padding(top = 4.dp).height(8.dp).background(uv.line, CircleShape)) {
-            Box(Modifier.fillMaxWidth(frac).height(8.dp).background(uv.gold, CircleShape))
+        // the archer's goals, each with its period
+        var editGoal by remember { mutableStateOf<GoalDef?>(null) }
+        for (goal in state.goals) {
+            val p = remember(goal, sessions, ends, state.currentSessionKey) { Goals.progress(goal, sessions, ends, now, tz, state.currentSessionKey) }
+            val frac by animateFloatAsState(p.fraction, tween(600), label = "goal")
+            Row(Modifier.fillMaxWidth().clickable { editGoal = goal }, verticalAlignment = Alignment.CenterVertically) {
+                Text((goal.emoji.ifEmpty { "🎯" }) + " " + goal.title + " · " + Goals.periodLabel(goal.period), color = uv.ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text(p.text + if (p.reached) " ✅" else "", color = if (p.reached) uv.ok else uv.muted, fontSize = 13.sp)
+            }
+            Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp).height(8.dp).background(uv.line, CircleShape)) {
+                Box(Modifier.fillMaxWidth(frac).height(8.dp).background(if (p.reached) uv.ok else uv.gold, CircleShape))
+            }
         }
+        Row { SecondaryButton(tr("New goal")) { editGoal = GoalDef(Goals.newId(), "🎯", "", "endsAboveAvg", "total", "min", 2.0, "day") } }
+        editGoal?.let { gd -> GoalEditor(gd, state, ctl, onClose = { editGoal = null }) }
         if (steady != null) {
             Spacer(Modifier.height(10.dp))
             val sf by animateFloatAsState(steady / 100f, tween(800), label = "steady")
@@ -183,13 +196,13 @@ fun BadgesCard(state: AppState, ctl: SightController, vm: SightViewModel) {
                 (v.earned?.let { " · " + tr("{level} earned on {date}", "level" to Badges.levelName(it.level), "date" to fmtStamp(it.at)) } ?: "") +
                 (if (v.retired) " · " + tr("no longer awarded, but earned is earned") else "") +
                 (if (!v.own && !v.retired) " · " + tr("from the sight") else ""), color = uv.muted, fontSize = 12.sp)
-            if (v.own) Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (v.own && state.group.role != "user") Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SecondaryButton(tr("Edit")) { editing = b }
                 SecondaryButton(tr("Delete"), danger = true) { ctl.deleteBadge(b.id); open = null }
             }
         }
         Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.group.role != "user") Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SecondaryButton(tr("New"), Modifier.weight(1f)) { editing = BadgeDef(Badges.newId(), "🏅", "", "steady", "end", "min", listOf(60.0, 70.0, 80.0)) }
             SecondaryButton(tr("Templates"), Modifier.weight(1f)) { templates = true }
             SecondaryButton(tr("Share"), Modifier.weight(1f), enabled = state.badgeDefs.isNotEmpty()) {
@@ -198,8 +211,11 @@ fun BadgesCard(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
             SecondaryButton(tr("Import"), Modifier.weight(1f)) { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }
         }
-        Text(if (state.group.role == "trainer") tr("Your set goes to every sight you connect to as trainer; the archers fetch it from there. Share writes the set as a file others can import.")
-             else tr("Templates and your own badges; share them as a file. Badges a trainer put on a sight appear here when you connect."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        Text(when (state.group.role) {
+            "trainer" -> tr("Your set goes to every sight you connect to as trainer; the archers fetch it from there. Share writes the set as a file others can import.")
+            "user" -> tr("The badges of your group come from the sight, the trainer manages them. They stay here when you are not connected, and what you earned stays for good.")
+            else -> tr("Your own badges, kept on this phone; share them as a file or import others.")
+        }, color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
     }
     editing?.let { d -> BadgeEditor(d, state, ctl, onClose = { editing = null }) }
     if (templates) WideDialog(onDismiss = { templates = false }, title = { Text(tr("Templates")) }, buttons = { TextButton(onClick = { templates = false }) { Text(tr("Close")) } }) {
@@ -235,14 +251,12 @@ private fun BadgeEditor(initial: BadgeDef, state: AppState, ctl: SightController
         TextButton(onClick = { ctl.saveBadge(def); onClose() }, enabled = valid) { Text(tr("Save")) }
     }) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(value = emoji, onValueChange = { emoji = it.take(4) }, singleLine = true, modifier = Modifier.width(72.dp), label = { Text(tr("Emoji")) })
+            EmojiField(emoji, onChange = { emoji = it })
             Spacer(Modifier.width(8.dp))
             OutlinedTextField(value = title, onValueChange = { title = it.take(18) }, singleLine = true, modifier = Modifier.weight(1f), label = { Text(tr("Title")) })
         }
         Text(tr("What"), color = uv.ink, modifier = Modifier.padding(top = 10.dp))
-        Row(Modifier.horizontalScroll(rememberScrollState())) {
-            for (mm in Badges.METRICS) FilterChip(selected = metric == mm.id, onClick = { metric = mm.id; op = mm.defaultOp; if (scope !in mm.scopes) scope = mm.scopes.first() }, label = { Text(mm.label) }, modifier = Modifier.padding(end = 6.dp))
-        }
+        MetricDropdown(Badges.METRICS, metric, { Badges.metricLabel(it) }) { mm -> metric = mm.id; op = mm.defaultOp; if (scope !in mm.scopes) scope = mm.scopes.first() }
         Text(tr("Where"), color = uv.ink, modifier = Modifier.padding(top = 6.dp))
         Row { for (sc in (m?.scopes ?: Badges.SCOPES)) FilterChip(selected = scope == sc, onClick = { scope = sc }, label = { Text(Badges.scopeLabel(sc)) }, modifier = Modifier.padding(end = 6.dp)) }
         Text(tr("Direction"), color = uv.ink, modifier = Modifier.padding(top = 6.dp))
@@ -306,6 +320,69 @@ fun Celebration(e: CoreEvent.Celebrate, onDone: () -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.background(uv.paper.copy(alpha = 0.92f), SmallShape).padding(28.dp)) {
             Text(e.title, color = uv.muted, fontSize = 16.sp)
             Text(e.value, color = uv.ink, fontSize = (64 * pop).sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+/** "What" as a drop-down: the list is long, chips would run off the screen. */
+@Composable
+fun MetricDropdown(metrics: List<Metric>, current: String, label: (String) -> String, onPick: (Metric) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        SecondaryButton(label(current) + "  ▾", Modifier.fillMaxWidth()) { expanded = true }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            for (m in metrics) DropdownMenuItem(text = { Text(label(m.id)) }, onClick = { onPick(m); expanded = false })
+        }
+    }
+}
+
+/** Create or change a goal: emoji, title, what, where, direction, target and the period. */
+@Composable
+private fun GoalEditor(initial: GoalDef, state: AppState, ctl: SightController, onClose: () -> Unit) {
+    val uv = LocalUv.current
+    val tz = remember { tzOffsetMs() }
+    val now = System.currentTimeMillis()
+    var emoji by remember { mutableStateOf(initial.emoji) }
+    var title by remember { mutableStateOf(initial.title) }
+    var metric by remember { mutableStateOf(initial.metric) }
+    var scope by remember { mutableStateOf(initial.scope) }
+    var op by remember { mutableStateOf(initial.op) }
+    var period by remember { mutableStateOf(initial.period) }
+    var target by remember { mutableStateOf(Goals.fmtValue(initial, initial.target).trimEnd('°', 'm', 's')) }
+    val m = Goals.metric(metric)
+    val t = target.replace(',', '.').toDoubleOrNull()
+    val def = GoalDef(initial.id, emoji, title.trim().ifEmpty { Goals.metricLabel(metric) }, metric, scope, op, t ?: 0.0, period)
+    val existing = state.goals.any { it.id == initial.id }
+    WideDialog(onDismiss = onClose, title = { Text(if (existing) tr("Edit goal") else tr("New goal")) }, buttons = {
+        if (existing) TextButton(onClick = { ctl.deleteGoal(initial.id); onClose() }) { Text(tr("Delete"), color = uv.red) }
+        TextButton(onClick = onClose) { Text(tr("Cancel")) }
+        TextButton(onClick = { ctl.saveGoal(def); onClose() }, enabled = t != null && t > 0 && m != null) { Text(tr("Save")) }
+    }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            EmojiField(emoji, onChange = { emoji = it })
+            Spacer(Modifier.width(8.dp))
+            OutlinedTextField(value = title, onValueChange = { title = it.take(24) }, singleLine = true, modifier = Modifier.weight(1f), label = { Text(tr("Title")) }, placeholder = { Text(Goals.metricLabel(metric)) })
+        }
+        Text(tr("What"), color = uv.ink, modifier = Modifier.padding(top = 10.dp))
+        MetricDropdown(Goals.METRICS, metric, { Goals.metricLabel(it) }) { mm -> metric = mm.id; op = mm.defaultOp; if (scope !in mm.scopes) scope = mm.scopes.first() }
+        if ((m?.scopes?.size ?: 0) > 1) {
+            Text(tr("Where"), color = uv.ink, modifier = Modifier.padding(top = 6.dp))
+            Row { for (sc in m!!.scopes) FilterChip(selected = scope == sc, onClick = { scope = sc }, label = { Text(Badges.scopeLabel(sc)) }, modifier = Modifier.padding(end = 6.dp)) }
+        }
+        Text(tr("Direction"), color = uv.ink, modifier = Modifier.padding(top = 6.dp))
+        Row {
+            FilterChip(selected = op == "min", onClick = { op = "min" }, label = { Text(tr("at least")) }, modifier = Modifier.padding(end = 6.dp))
+            FilterChip(selected = op == "max", onClick = { op = "max" }, label = { Text(tr("at most")) })
+        }
+        Text(tr("Period"), color = uv.ink, modifier = Modifier.padding(top = 6.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState())) { for (pp in Goals.PERIODS) FilterChip(selected = period == pp, onClick = { period = pp }, label = { Text(Goals.periodLabel(pp)) }, modifier = Modifier.padding(end = 6.dp)) }
+        OutlinedTextField(value = target, onValueChange = { target = it.take(7) }, singleLine = true, modifier = Modifier.width(140.dp).padding(top = 6.dp), label = { Text(tr("Target")) },
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+        if (t != null && m != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(Goals.describe(def), color = uv.muted, fontSize = 13.sp)
+            val pr = Goals.progress(def, state.sessions, state.ends, now, tz, state.currentSessionKey)
+            Text(tr("Right now: {text}", "text" to pr.text) + if (pr.reached) " ✅" else "", color = uv.muted, fontSize = 13.sp)
         }
     }
 }
