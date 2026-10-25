@@ -664,6 +664,7 @@ class SightController(
             "del" -> delOnAck(m)
             "clear" -> { send("log info"); if (m.bool("ok") != true) toast(tr("Could not delete the sessions on the sight."), true) else afterClear(m.int("count") ?: 0) }
             "dfu" -> toast(tr("The sight now shows up as a drive on your computer. Copy the new firmware onto it."))
+            "factory" -> if (m.bool("ok") == true) afterFactory()
             "name" -> { val n = m.str("name") ?: ""; if (s.sight != null) { updateSight { it.copy(name = n) }; toast(if (n.isEmpty()) tr("Name removed from the sight") else tr("Sight named {n}", "n" to n)) } }
             "group" -> {
                 groupAckWait?.complete(true); groupAckWait = null
@@ -1395,6 +1396,15 @@ class SightController(
     fun setupDelete(id: Int) = send("setup del $id")
 
     fun dfu() = send("dfu")
+
+    /** Factory reset of the sight: it erases everything it stored and restarts (the firmware asks for the confirm). */
+    fun factoryReset() { scope.launch { if (withConnection {}) { send("factory"); send("factory confirm") } } }
+    /** The sight is empty now: forget what this app kept about it, and ask about copying the sessions back as after "log clear". */
+    private fun afterFactory() {
+        s.sight?.let { si -> store.remove(SIGHT_BADGES_PREFIX + si.id); updateSight { it.copy(name = "", settings = emptyMap()) } }
+        toast(tr("Everything on the sight is erased. It restarts without name, password and settings."))
+        afterClear(s.loginfo?.count ?: 0)
+    }
 
     fun setNotifPrefs(p: NotifPrefs) {
         store.put(NOTIF_KEY, kotlinx.serialization.json.Json.encodeToString(NotifPrefs.serializer(), p))

@@ -174,4 +174,38 @@ class EventsTest {
             }
         } finally { scope.cancel(); dispatcher.close() }
     }
+
+    @Test fun factoryResetForgetsWhatCameFromTheSight() {
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val store = MemoryStore(); val transport = FakeTransport()
+        val ctl = SightController(scope, store, transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
+        try {
+            runBlocking {
+                withContext(dispatcher) { ctl.onLinkUp() }
+                delay(100)
+                withContext(dispatcher) {
+                    ctl.onLine("""{"t":"hello","proto":24,"fw":"7.4","name":"Anchored","imu":true,"log":true,"id":"ABCDEF0123456789","sname":"Horst"}""")
+                    ctl.onLine("""{"t":"loginfo","ok":true,"jedec":"856015","count":3,"capacity":32640,"last":12,"clock":true,"migrated":0,"error":""}""")
+                }
+                delay(100)
+                assertEquals("Horst", ctl.state.value.sight?.name)
+                store.put(SightController.SIGHT_BADGES_PREFIX + "ABCDEF0123456789", "[]")
+                withContext(dispatcher) {
+                    transport.sent.clear(); ctl.factoryReset()
+                }
+                delay(200)
+                assertEquals(listOf("factory", "factory confirm"), transport.sent)
+                withContext(dispatcher) {
+                    ctl.onLine("""{"t":"ack","cmd":"factory","armed":true}""")
+                    assertEquals(null, ctl.state.value.afterClearCount)
+                    ctl.onLine("""{"t":"ack","cmd":"factory","ok":true}""")
+                }
+                delay(100)
+                assertEquals("", ctl.state.value.sight?.name)
+                assertEquals(null, store.get(SightController.SIGHT_BADGES_PREFIX + "ABCDEF0123456789"))
+                assertEquals(3, ctl.state.value.afterClearCount)   // the copy-back question, as after "log clear"
+            }
+        } finally { scope.cancel(); dispatcher.close() }
+    }
 }

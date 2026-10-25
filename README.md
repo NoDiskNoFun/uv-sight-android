@@ -110,6 +110,10 @@ With the models installed, *Score from photo* works the same way, only the marki
 
 Each model has its own switch on the card (*Use the arrow detector*, *Use the face finder*), so one part can stay manual. *Collect training data* keeps working with the models installed, but only what you marked by hand trains a model: with the face finder on, a photo trains the arrow detector; with the arrow detector on, the face finder; with both on, neither, unless you corrected a proposal: a face point you dragged, or an arrow you added, moved, re-ringed or deleted, makes that part hand-marked again (the record carries `trainArrows` / `trainFace` and notes whether the face came from you, from the last photo, from the model or from the model and your correction). A proposal accepted untouched never feeds back into the training of its own model. The app checks a model by loading it once and refuses files of the wrong shape; it takes the image either as `[1, N, N, 3]` or channels-first `[1, 3, N, N]`, float or int8, and the pose output as `[1, 5+3K, N]` or `[1, N, 5+3K]` with K = 1 (arrows) or 5 (face).
 
+## Resetting the sight
+
+*Settings → Advanced settings* has two resets. *Restore defaults* loads the default settings into the sight; tap *Save* to keep them, *Discard* to go back. *Factory reset* (firmware 7.4 and newer) erases everything the sight stored: settings, calibration, setups and learned arrow speeds, all sessions, the name, password and trainers, badges and the battery statistics. The sight restarts as if freshly built, only its chip id stays; on a shared sight only a trainer may do it. Everything on the phone is kept, and the app asks whether to copy the sessions back, as after deleting the sessions on the sight.
+
 ## Notifications and vibration
 
 All of these are switched on by default and can be changed under *Settings → Hints and notifications*.

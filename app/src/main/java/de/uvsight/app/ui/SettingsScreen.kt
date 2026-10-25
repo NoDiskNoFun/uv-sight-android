@@ -121,6 +121,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     val context = LocalContext.current
     val connected = state.conn == ConnState.CONNECTED
     var askDefaults by remember { mutableStateOf(false) }
+    var askFactory by remember { mutableStateOf(false) }
     var askDfu by remember { mutableStateOf(false) }
     var askClear by remember { mutableStateOf(false) }
     var newSetup by remember { mutableStateOf(false) }
@@ -334,7 +335,10 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     val rest = cfg.filter { it.k !in PLACED_KEYS }
                     if (rest.isNotEmpty()) { GroupTitle(tr("Other")); rest.forEachIndexed { i, it -> SettingRow(it, first = i == 0) { v -> ctl.sendSet(it.k, v) } } }
                     Spacer(Modifier.height(8.dp))
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { SecondaryButton(tr("Restore defaults")) { askDefaults = true } }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SecondaryButton(tr("Restore defaults"), Modifier.weight(1f)) { askDefaults = true }
+                        SecondaryButton(tr("Factory reset"), Modifier.weight(1f), danger = true) { askFactory = true }
+                    }
                 }
                 Spacer(Modifier.height(14.dp))
             }
@@ -678,6 +682,10 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
         text = { Text(tr("All settings go back to their defaults. Tap Save afterwards to keep them.")) },
         confirmButton = { TextButton(onClick = { askDefaults = false; ctl.restoreDefaults() }) { Text(tr("Restore"), color = uv.red) } },
         dismissButton = { TextButton(onClick = { askDefaults = false }) { Text(tr("Cancel")) } })
+    if (askFactory) AlertDialog(onDismissRequest = { askFactory = false }, title = { Text(tr("Reset the sight to factory state?")) },
+        text = { Text(tr("Erases everything on the sight: settings, calibration, setups and learned arrow speeds, all sessions, the name, password and trainers, badges and the battery statistics. The sight then restarts as if freshly built. Everything on this phone is kept.")) },
+        confirmButton = { TextButton(onClick = { askFactory = false; ctl.factoryReset() }) { Text(tr("Erase"), color = uv.red) } },
+        dismissButton = { TextButton(onClick = { askFactory = false }) { Text(tr("Cancel")) } })
     if (askDfu) AlertDialog(onDismissRequest = { askDfu = false }, title = { Text(tr("Prepare a firmware update?")) },
         text = { Text(tr("Connect the sight to your computer with the USB cable first. It then shows up there as a drive; copy the new firmware onto it. Until then the sight does nothing else, and the app disconnects.")) },
         confirmButton = { TextButton(onClick = { askDfu = false; ctl.dfu() }) { Text(tr("Start"), color = uv.red) } },
