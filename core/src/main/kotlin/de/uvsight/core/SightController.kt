@@ -1399,11 +1399,11 @@ class SightController(
 
     /** Factory reset of the sight: it erases everything it stored and restarts (the firmware asks for the confirm). */
     fun factoryReset() { scope.launch { if (withConnection {}) { send("factory"); send("factory confirm") } } }
-    /** The sight is empty now: forget what this app kept about it, and ask about copying the sessions back as after "log clear". */
+    /** The sight is empty and comes back with a new id (firmware 7.5): a new sight to this app, so nothing of the old one
+     *  flows back. The old entry keeps its sessions in the history; a preference for it is dropped so the new one connects. */
     private fun afterFactory() {
-        s.sight?.let { si -> store.remove(SIGHT_BADGES_PREFIX + si.id); updateSight { it.copy(name = "", settings = emptyMap()) } }
-        toast(tr("Everything on the sight is erased. It restarts without name, password and settings."))
-        afterClear(s.loginfo?.count ?: 0)
+        s.sight?.let { si -> store.remove(SIGHT_BADGES_PREFIX + si.id); updateSight { it.copy(settings = emptyMap()) }; if (s.preferredSightId == si.id) preferSight(null) }
+        toast(tr("Everything on the sight is erased. It restarts as a new sight, without name, password and settings."))
     }
 
     fun setNotifPrefs(p: NotifPrefs) {

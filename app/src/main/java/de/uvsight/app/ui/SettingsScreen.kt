@@ -683,7 +683,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
         confirmButton = { TextButton(onClick = { askDefaults = false; ctl.restoreDefaults() }) { Text(tr("Restore"), color = uv.red) } },
         dismissButton = { TextButton(onClick = { askDefaults = false }) { Text(tr("Cancel")) } })
     if (askFactory) AlertDialog(onDismissRequest = { askFactory = false }, title = { Text(tr("Reset the sight to factory state?")) },
-        text = { Text(tr("Erases everything on the sight: settings, calibration, setups and learned arrow speeds, all sessions, the name, password and trainers, badges and the battery statistics. The sight then restarts as if freshly built. Everything on this phone is kept.")) },
+        text = { Text(tr("Erases everything on the sight: settings, calibration, setups and learned arrow speeds, all sessions, the name, password and trainers, badges and the battery statistics. The sight then restarts as a new sight with a new id, as if freshly built. Everything on this phone is kept; the old sight stays in the history with its sessions.")) },
         confirmButton = { TextButton(onClick = { askFactory = false; ctl.factoryReset() }) { Text(tr("Erase"), color = uv.red) } },
         dismissButton = { TextButton(onClick = { askFactory = false }) { Text(tr("Cancel")) } })
     if (askDfu) AlertDialog(onDismissRequest = { askDfu = false }, title = { Text(tr("Prepare a firmware update?")) },

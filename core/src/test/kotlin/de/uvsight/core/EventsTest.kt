@@ -175,7 +175,7 @@ class EventsTest {
         } finally { scope.cancel(); dispatcher.close() }
     }
 
-    @Test fun factoryResetForgetsWhatCameFromTheSight() {
+    @Test fun factoryResetMakesTheSightANewOne() {
         val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val store = MemoryStore(); val transport = FakeTransport()
@@ -199,12 +199,14 @@ class EventsTest {
                 withContext(dispatcher) {
                     ctl.onLine("""{"t":"ack","cmd":"factory","armed":true}""")
                     assertEquals(null, ctl.state.value.afterClearCount)
-                    ctl.onLine("""{"t":"ack","cmd":"factory","ok":true}""")
+                    ctl.preferSight("ABCDEF0123456789")
+                    ctl.onLine("""{"t":"ack","cmd":"factory","ok":true,"id":"0011223344556677","newId":true}""")
                 }
                 delay(100)
-                assertEquals("", ctl.state.value.sight?.name)
+                assertEquals("Horst", ctl.state.value.sight?.name)             // the old entry keeps its name for the history
                 assertEquals(null, store.get(SightController.SIGHT_BADGES_PREFIX + "ABCDEF0123456789"))
-                assertEquals(3, ctl.state.value.afterClearCount)   // the copy-back question, as after "log clear"
+                assertEquals(null, ctl.state.value.afterClearCount)           // no copy-back question: the sight comes back as a new one
+                assertEquals(null, ctl.state.value.preferredSightId)          // a preference for the old one would keep the new one out
             }
         } finally { scope.cancel(); dispatcher.close() }
     }
