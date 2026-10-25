@@ -198,7 +198,7 @@ private fun Header(state: AppState) {
         else -> uv.line
     }
     Row(Modifier.fillMaxWidth().background(uv.paper).statusBarsPadding().padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(tr("UV-Sight"), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = uv.ink, modifier = Modifier.weight(1f))
+        Text(tr("Nocked"), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = uv.ink, modifier = Modifier.weight(1f))
         Box(Modifier.size(10.dp).background(dot, CircleShape))
         Spacer(Modifier.width(8.dp))
         Text(text, color = uv.muted, fontSize = 14.sp)

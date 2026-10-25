@@ -107,7 +107,7 @@ data class AppState(
 }
 
 /**
- * The application logic of the UV-Sight app, independent of Android: talks to the sight
+ * The application logic of the Nocked app, independent of Android: talks to the sight
  * through [Transport], keeps the archive in [KeyValueStore] and publishes [AppState].
  * All methods must be called on the dispatcher of [scope] (the main thread on Android).
  */
@@ -117,6 +117,7 @@ class SightController(
     private val transport: Transport,
     private val ui: UiSink,
     private val clock: Clock = SystemClock,
+    private val stableId: String? = null,   // this app's id from the phone (16 hex digits); random when the app gives none
 ) {
     companion object {
         const val STATUS_POLL_MS = 5000L
@@ -232,7 +233,7 @@ class SightController(
         val photo = store.get(PHOTO_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(PhotoPrefs.serializer(), it) }.getOrNull() } ?: PhotoPrefs()
         val hints = store.get(HINTS_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(HintPrefs.serializer(), it) }.getOrNull() } ?: HintPrefs()
         var group = store.get(GROUP_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(GroupPrefs.serializer(), it) }.getOrNull() } ?: GroupPrefs()
-        if (group.id.length != 16) { group = group.copy(id = newAppId()); store.put(GROUP_KEY, kotlinx.serialization.json.Json.encodeToString(GroupPrefs.serializer(), group)) }
+        if (group.id.length != 16) { group = group.copy(id = stableId?.takeIf { it.length == 16 } ?: newAppId()); store.put(GROUP_KEY, kotlinx.serialization.json.Json.encodeToString(GroupPrefs.serializer(), group)) }
         set { copy(group = group) }
         val game = store.get(GAME_KEY)?.let { runCatching { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(GamePrefs.serializer(), it) }.getOrNull() } ?: GamePrefs()
         set { copy(game = game) }
@@ -313,7 +314,7 @@ class SightController(
     }
 
     fun onLinkDown() {
-        cfgBuf = null; cfgRetries = 0; cfgRetryJob?.cancel()
+        cfgBuf = null; cfgRetries = 0; cfgRetryJob?.cancel(); savedCfg = null
         setAwaiting(false)
         set { copy(confirm = null) }
         stopPolling()
@@ -441,7 +442,8 @@ class SightController(
                 if (buf != null && buf.size == cfgN) {
                     set { copy(cfg = buf.toList(), cfgGaveUp = false) }
                     cfgRetries = 0; cfgRetryJob?.cancel()
-                    if (expectDefaults) { set { copy(cfgDirty = true) }; expectDefaults = false }
+                    if (expectDefaults) { expectDefaults = false; set { copy(cfgDirty = cfgDiffers(buf)) } }
+                    else if (!s.cfgDirty) savedCfg = buf.associate { it.k to it.v }
                 } else if (s.cfg == null) requestCfg()
                 cfgBuf = null
             }
@@ -653,8 +655,8 @@ class SightController(
 
     private fun onAck(m: Msg) {
         when (m.str("cmd")) {
-            "set" -> { val k = m.str("k"); val v = m.dbl("v"); set { copy(cfg = cfg?.map { if (it.k == k && v != null) it.copy(v = v) else it }, cfgDirty = true) } }
-            "save" -> { set { copy(cfgDirty = false) }; toast(tr("Settings saved on the sight")) }
+            "set" -> { val k = m.str("k"); val v = m.dbl("v"); set { val c = cfg?.map { if (it.k == k && v != null) it.copy(v = v) else it }; copy(cfg = c, cfgDirty = c == null || cfgDiffers(c)) } }
+            "save" -> { savedCfg = s.cfg?.associate { it.k to it.v }; set { copy(cfgDirty = false) }; toast(tr("Settings saved on the sight")) }
             "mode" -> set { copy(status = status?.copy(mode = m.str("mode") ?: "auto")) }
             "setup" -> if (m.bool("ok") == true && m.has("id") && pendingUseNew) { pendingUseNew = false; send("setup use ${m.int("id")}") }
             "put" -> if (!autoCopyOnAck(m)) copyOnAck(m.str("result"), m.long("epoch"), m.long("id"))
@@ -1289,7 +1291,7 @@ class SightController(
         if (text.contains("uv-sight-badges")) { val n = importBadges(text); if (n != null) { toast(tr("{n} badges added", "n" to n)); return ImportResult(n, 0, 0, "badges") } }
         val result = try {
             if (name.lowercase().endsWith(".json") || text.trim().startsWith("{")) {
-                val b = BackupFormat.decode(text) ?: throw IllegalArgumentException("not a UV-Sight backup")
+                val b = BackupFormat.decode(text) ?: throw IllegalArgumentException("not a Nocked backup")
                 registerSights(b.sights.associate { it.id to it.name })
                 archive.importSessions(b.sessions, b.ends, "backup")
             } else {
@@ -1331,6 +1333,16 @@ class SightController(
     }
     fun saveSettings() = send("save")
     fun restoreDefaults() { expectDefaults = true; send("defaults") }
+
+    /** The settings as last saved on the sight (k -> v), taken from the first read after connecting and after every save. */
+    private var savedCfg: Map<String, Double>? = null
+    private fun cfgDiffers(c: List<CfgItem>): Boolean = savedCfg?.let { sv -> c.any { sv[it.k]?.let { v -> v != it.v } ?: false } } ?: true
+    /** Discard the unsaved changes: every setting goes back to its saved value, on the sight as well. */
+    fun discardSettings() {
+        if (s.confirm != null || s.awaitingEnd) { toast(tr("Finish the open end first."), true); return }
+        val saved = savedCfg ?: return
+        for (item in s.cfg ?: return) { val v = saved[item.k]; if (v != null && v != item.v) send("set ${item.k} ${fmtSetting(item.k, v)}") }
+    }
 
     /** Change a cant / aiming-range setting: show it at once, then ask the sight again. */
     fun setLevel(cmd: String, patch: (LevelInfo) -> LevelInfo) {

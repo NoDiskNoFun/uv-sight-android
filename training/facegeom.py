@@ -1,4 +1,4 @@
-"""Face geometry of the UV-Sight app, ported 1:1 from core/Face.kt (no numpy needed).
+"""Face geometry of the Nocked app, ported 1:1 from core/Face.kt (no numpy needed).
 
 fit(center, edge)      -> FaceGeometry or None   (image pixels -> unit face, blue edge radius = 1)
 ring(u, diameter_mm, min_ring, arrow_mm) -> 11 = X, 10..1, 0 = miss

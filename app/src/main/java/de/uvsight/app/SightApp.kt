@@ -33,7 +33,7 @@ class SightRuntime private constructor(private val app: Application) {
     val ble = SightBle(app, scope, prefs)
     val controller = SightController(scope, prefs, ble, object : UiSink {
         override fun toast(text: String, error: Boolean) { toasts.tryEmit(Toast(text, error)) }
-    })
+    }, stableId = stableAppId(app))
     val haptics = Haptics(app, controller, scope)
     /** The gallery picture of the photo being scored; deleted once the end is done when the setting says so. */
     var galleryUri: android.net.Uri? = null
@@ -64,4 +64,12 @@ class SightRuntime private constructor(private val app: Application) {
             instance ?: SightRuntime(context.applicationContext as Application).also { instance = it }
         }
     }
+}
+
+/** This app's id for the sight (16 hex digits) from the phone's Android id, so it survives a reinstall; null when the phone gives none. */
+private fun stableAppId(app: Application): String? {
+    val aid = runCatching { android.provider.Settings.Secure.getString(app.contentResolver, android.provider.Settings.Secure.ANDROID_ID) }.getOrNull()
+        ?.takeIf { it.isNotEmpty() && it != "9774d56d682e549c" } ?: return null   // the one id some old emulators share
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(aid.toByteArray(Charsets.UTF_8))
+    return digest.take(8).joinToString("") { "%02X".format(it) }
 }

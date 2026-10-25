@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn a UV-Sight training export (ZIP or unpacked folder) into a YOLO pose dataset.
+"""Turn a Nocked training export (ZIP or unpacked folder) into a YOLO pose dataset.
 
 Each arrow becomes one object of class "arrow" with a single keypoint: the entry point.
 With --faces the dataset marks the target face instead: a box around the blue edge with five

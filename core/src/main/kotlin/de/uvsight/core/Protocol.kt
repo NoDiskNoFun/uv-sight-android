@@ -16,7 +16,8 @@ const val PROTO_EXPECTED = 24
 const val NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 const val NUS_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"   // app -> device (write)
 const val NUS_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"   // device -> app (notify)
-const val DEVICE_NAME_PREFIX = "UV-Sight"
+const val DEVICE_NAME_PREFIX = "Anchored"          // the sight's Bluetooth name (firmware 7.3 and newer)
+val DEVICE_NAME_PREFIXES = listOf("Anchored", "UV-Sight")   // what a sight may be called, newest first
 
 /** One JSON line from the sight, with typed accessors. */
 class Msg(val t: String, val obj: JsonObject) {

@@ -217,7 +217,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(tr("Name of this sight"), color = uv.ink)
-                                Text(tr("Shown in the app and behind \"UV-Sight\" in the Bluetooth name. Id {id}.", "id" to cur.id), color = uv.muted, fontSize = 13.sp)
+                                Text(tr("Shown in the app and behind \"Anchored\" in the Bluetooth name. Id {id}.", "id" to cur.id), color = uv.muted, fontSize = 13.sp)
                             }
                             Spacer(Modifier.width(8.dp))
                             OutlinedTextField(value = nameText, onValueChange = { nameText = it.take(16) }, singleLine = true, modifier = Modifier.width(130.dp), placeholder = { Text(tr("e.g. Hoyt")) },
@@ -270,10 +270,10 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         GroupTitle(tr("Light sensor"))
                         state.status?.let { Note(tr("Current reading: {light} ({dark}). Lower means darker.", "light" to it.light, "dark" to (if (it.dark) tr("dark") else tr("bright")))) }
                         row("dark_on", true, true); row("dark_off", true, false); row("confirm", true, false)
-                        GroupTitle(tr("Cant blinking"))
+                        GroupTitle(tr("Show cant"))
                         val blinkOn = lv.cal && lv.mode != "off"
                         if (!blinkOn) Note(if (!lv.cal) tr("Needs the calibration under Cant and aiming range.") else tr("Needs the cant measuring under Cant and aiming range."))
-                        SwitchRow(tr("Blink when canted"), tr("Off: the cant is still measured and stored, the LED just stays calm."), lv.cantSignal, enabled = blinkOn, first = true) { ctl.setCantSignal(it) }
+                        SwitchRow(tr("Blinking on"), tr("The LED blinks while the bow is canted. Off: the cant is still measured and stored, the LED just stays calm."), lv.cantSignal, enabled = blinkOn, first = true) { ctl.setCantSignal(it) }
                         SegRow(tr("Blinking: mode"), if (lv.style == "inverted") tr("Faster the closer you get to level.") else tr("Faster the more the bow is canted."), lv.style, listOf("normal", "inverted"), enabled = blinkOn) { ctl.setStyle(it) }
                         row("tilt_offset", blinkOn, false); row("tilt_full", blinkOn, false); row("blink_min", blinkOn, false); row("blink_max", blinkOn, false)
                     }
@@ -529,7 +529,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     HorizontalDivider(color = uv.line)
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("$count ${if (count == 1) "photo" else "photos"}, ${fmt(sizeMb, 1)} MB", color = uv.muted, modifier = Modifier.weight(1f))
-                        SecondaryButton(tr("Export"), enabled = count > 0) { exportLauncher.launch("uv-sight-training-${java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())}.zip") }
+                        SecondaryButton(tr("Export"), enabled = count > 0) { exportLauncher.launch("nocked-training-${java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())}.zip") }
                         Spacer(Modifier.width(8.dp))
                         SecondaryButton(tr("Delete"), enabled = count > 0, danger = true) { askDelete = true }
                     }
@@ -598,9 +598,11 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 }
             }
             if (!state.photoOnly) Spacer(Modifier.height(14.dp))
-            // Hints after an end (phone-side settings)
-            if (!state.photoOnly) Collapsible(tr("Hints"), if (state.hints.enabled) tr("on") else tr("off")) {
+            // Hints after an end and the notifications (phone-side settings)
+            if (!state.photoOnly) Collapsible(tr("Hints and notifications"), (if (state.hints.enabled) tr("hints on") else tr("hints off")) + ", " +
+                tr("{n} of {total} notifications", "n" to listOf(state.notif.session, state.notif.rangeVibe, state.notif.autoEnd, state.notif.lowBat, state.notif.chargeFull).count { it }, "total" to 5)) {
                 val hp = state.hints
+                GroupTitle(tr("Hints"))
                 SwitchRow(tr("Hints after each end"), tr("Under the last end and in the session details: where the group sits, how steady the hold was, cant, release, rhythm. Always compared with your own earlier ends."), hp.enabled, first = true) { ctl.setHintPrefs(hp.copy(enabled = it)) }
                 HorizontalDivider(color = uv.line)
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -613,11 +615,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { ctl.setHintPrefs(hp.copy(clickMmAt18 = (t.replace(',', '.').toDoubleOrNull() ?: 0.0).coerceIn(0.0, 100.0))) }))
                 }
-            }
-            if (!state.photoOnly) Spacer(Modifier.height(14.dp))
-
-            // Notifications and vibration (phone-side settings)
-            if (!state.photoOnly) Collapsible(tr("Notifications and vibration"), tr("{n} of {total} on", "n" to listOf(state.notif.session, state.notif.rangeVibe, state.notif.autoEnd, state.notif.lowBat, state.notif.chargeFull).count { it }, "total" to 5)) {
+                GroupTitle(tr("Notifications and vibration"))
                 val n = state.notif
                 SwitchRow(tr("Session notification"), tr("Shows the running session (end, arrow, average) and keeps the connection alive while the phone is in your pocket. Off: the connection only lasts while the app is open."), n.session, first = true) { ctl.setNotifPrefs(n.copy(session = it)) }
                 SwitchRow(tr("Vibrate while setting up a sight"), tr("Only with the aiming angle set to On: 2 pulses mean aiming too low, 3 too high, one long pulse the aim fits."), n.rangeVibe) { ctl.setNotifPrefs(n.copy(rangeVibe = it)) }
@@ -625,7 +623,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 SwitchRow(tr("Session ended by the sight"), tr("Tells you when the sight closed a session on its own after a long pause."), n.autoEnd) { ctl.setNotifPrefs(n.copy(autoEnd = it)) }
                 SwitchRow(tr("Sight battery low"), tr("Warns below {LOWBATPCT} % and when the sight locks the light.", "LOWBATPCT" to SightController.LOW_BAT_PCT), n.lowBat) { ctl.setNotifPrefs(n.copy(lowBat = it)) }
                 SwitchRow(tr("Charging finished"), tr("Tells you when the sight is full while it is connected over USB."), n.chargeFull) { ctl.setNotifPrefs(n.copy(chargeFull = it)) }
-                Note(tr("If the notification disappears when the screen is off, exclude UV-Sight from your phone's battery optimisation."))
+                Note(tr("If the notification disappears when the screen is off, exclude Nocked from your phone's battery optimisation."))
             }
             Spacer(Modifier.height(14.dp))
 
@@ -656,7 +654,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 }
                 HorizontalDivider(color = uv.line)
                 SegRow(tr("Use the app"), if (state.photoOnly) tr("Photo scoring only: no Bluetooth, no sight. Score from photos and collect training data, for example on a club mate's phone.")
-                    else tr("With the UV sight: connection, sessions, settings and history."), if (state.photoOnly) "Photos only" else "With sight", listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
+                    else tr("With the Anchored sight: connection, sessions, settings and history."), if (state.photoOnly) "Photos only" else "With sight", listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
                 val li = state.loginfo
                 Note(tr("App {APPVERSION}", "APPVERSION" to APP_VERSION) + (state.hello?.let { ", firmware ${it.fw}" } ?: "") +
                     (li?.let { if (it.ok) tr(". The sight stores {v} {v2} (room for about {capacity}).", "v" to it.count, "v2" to (if (it.count == 1) tr("session") else tr("sessions")), "capacity" to (it.capacity / 1000 * 1000)) else tr(". The sight's session memory is not working.") } ?: ""))
@@ -668,7 +666,8 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp), shape = CardShape, color = uv.ink) {
                 Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("Changes apply right away. Save them to keep them after the sight restarts."), color = uv.paper, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(6.dp))
+                    TextButton(onClick = { ctl.discardSettings() }) { Text(tr("Discard"), color = uv.paper, fontWeight = FontWeight.SemiBold) }
                     PrimaryButton(tr("Save"), gold = true) { ctl.saveSettings() }
                 }
             }

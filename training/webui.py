@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UV-Sight trainer: a local web page that trains the arrow detector on your own GPU.
+"""Nocked trainer: a local web page that trains the arrow detector on your own GPU.
 
     pip install -r requirements.txt
     python3 webui.py            # then open http://localhost:8000
@@ -396,7 +396,7 @@ def preview(run, index):
 
 
 # ----------------------------------------------------------------------------- http
-PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>UV-Sight trainer</title>
+PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Nocked trainer</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body{font:15px/1.45 system-ui,sans-serif;margin:0;background:#141C17;color:#E3E9E2}
@@ -414,7 +414,7 @@ canvas{max-width:100%;background:#0f1512;border-radius:8px}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.grow{flex:1}
 progress{width:100%;height:14px}
 </style></head><body><main>
-<h1>UV-Sight trainer</h1><div class="muted" id="gpu">…</div>
+<h1>Nocked trainer</h1><div class="muted" id="gpu">…</div>
 <div class="card"><h2>1. Export from the app</h2>
 <div class="row"><input type="file" id="file" accept=".zip" multiple><button class="sec" id="upload">Upload</button><span id="upmsg" class="muted"></span></div>
 <div class="muted" style="margin-top:8px">Exports from several phones can be uploaded and trained together; tick the ones to use. Every run trains two models: the arrow detector and the face finder (centre and four edge points of the blue ring).</div>
@@ -537,7 +537,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not any(x.endswith(".json") for x in z.namelist()):
                     raise ValueError("no records in the zip")
         except Exception as e:
-            dest.unlink(missing_ok=True); self.send_json({"ok": False, "error": f"not a UV-Sight export: {e}"}); return
+            dest.unlink(missing_ok=True); self.send_json({"ok": False, "error": f"not a Nocked export: {e}"}); return
         self.send_json({"ok": True, "name": name})
 
     def do_POST(self):
@@ -581,7 +581,7 @@ def main():
     Handler.mock = a.mock
     DATA.mkdir(exist_ok=True); RUNS.mkdir(exist_ok=True)
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
-    print(f"UV-Sight trainer at http://{'localhost' if a.host == '127.0.0.1' else a.host}:{a.port}" + ("  (mock)" if a.mock else ""))
+    print(f"Nocked trainer at http://{'localhost' if a.host == '127.0.0.1' else a.host}:{a.port}" + ("  (mock)" if a.mock else ""))
     print(env_note())
     miss = export_missing()
     if miss and not a.mock:

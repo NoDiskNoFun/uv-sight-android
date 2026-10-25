@@ -22,6 +22,6 @@ class ProtocolTest {
         val e = m.toEndRec()
         assertEquals("10 9 8", e.scores); assertEquals(1.25, e.ang!!, 1e-9); assertNull(e.dist)
     }
-    @Test fun ignoresTextLines() { assertNull(Msg.parse("UV-Sight connected. 'help' lists all commands.")) }
+    @Test fun ignoresTextLines() { assertNull(Msg.parse("Anchored connected. 'help' lists all commands.")) }
     @Test fun logEndCount() { assertEquals(2, Msg.parse("""{"t":"logEnd","last":2,"n":2}""")!!.int("n")) }
 }

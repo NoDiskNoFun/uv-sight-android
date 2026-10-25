@@ -92,7 +92,7 @@ data class GroupPrefs(
     val role: String = "single",           // "single" / "user" / "trainer"
     val name: String = "",                 // the archer's or trainer's name, chosen by them
     val password: String = "",             // the group's password (one per sight; the trainer hands it out)
-    val id: String = "",                   // this app's id (16 hex digits), random until the APK is signed
+    val id: String = "",                   // this app's id (16 hex digits), derived from the phone so a reinstall keeps it
 )
 
 /** One sight on the trainer's board, read from its advertisement (no connection). */
@@ -102,7 +102,7 @@ data class BoardEntry(
     val battery: Int, val end: Int, val endShots: Int, val points: Int, val scored: Int, val x: Int,
     val ownerName: String, val seen: Long,
 ) {
-    val label: String get() = bleName.removePrefix("UV-Sight").trim().ifEmpty { "Sight " + chip.takeLast(4) }
+    val label: String get() = DEVICE_NAME_PREFIXES.fold(bleName) { n, p -> n.removePrefix(p) }.trim().ifEmpty { "Sight " + chip.takeLast(4) }
 }
 
 /**

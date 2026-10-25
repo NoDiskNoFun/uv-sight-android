@@ -1,6 +1,6 @@
-# UV-Sight for Android
+# Nocked for Android
 
-Native Android companion app for the [UV-Sight](https://github.com/NoDiskNoFun/uv-sight) bow sight: status, training scores, history, settings and calibration over Bluetooth LE. It offers the same functions as the web app of the main project, without a browser.
+**Nocked** is the native Android companion app for the **Anchored** bow sight (repository [uv-sight](https://github.com/NoDiskNoFun/uv-sight); the repositories keep their original names, the products are called Nocked and Anchored): status, training scores, history, settings and calibration over Bluetooth LE. It offers the same functions as the web app of the main project, without a browser.
 
 > **Disclaimer: AI-generated project.** The app was written with Claude (Anthropic) in a conversation with the project owner. The core logic was tested against the firmware running in a simulator; the app was not yet run on a phone by the AI. Use at your own risk.
 
@@ -23,9 +23,20 @@ Requirements: JDK 17, Android SDK (platform 35, build-tools). Then:
 ./gradlew :core:test -PskipAndroid   # the same without the Android SDK installed
 ```
 
-Every push builds the debug APK on GitHub Actions; download it from the workflow run (artifact `uv-sight-debug-apk`).
+Every push builds the APKs on GitHub Actions; download them from the workflow run. `nocked-debug-apk` is the debug build, `nocked-release-apk` the signed release build for everyday use: it installs over the previous release, keeping the phone's data, because every build carries the same signature and a higher version number (the CI run number).
 
-The release build is signed with the debug key so that it can be built without secrets. For a store release put your own keystore into `app/build.gradle.kts`.
+### Signing
+
+The release build is signed with the keystore held in four repository secrets (*Settings → Secrets and variables → Actions → Secrets*): `SIGNING_KEYSTORE_B64` (the keystore file as base64), `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS` and `SIGNING_KEY_PASSWORD`. Without them the workflow builds the debug APK only. A keystore is made once with
+
+```sh
+keytool -genkeypair -v -keystore nocked.jks -alias nocked -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 nocked.jks     # the text for SIGNING_KEYSTORE_B64
+```
+
+and must never be lost: an APK signed with another key does not install over the old one. Locally, set `SIGNING_KEYSTORE` to the keystore's path and the three other variables in the environment before `./gradlew :app:assembleRelease`; without them the release build falls back to the debug key.
+
+The app's id towards a shared sight (the archer's identity, see *Shared sight*) is derived from the phone's Android id, which stays the same for every build with the same signature, so a reinstall of the release APK keeps it. A debug build has a different signature and therefore a different id.
 
 ### Testing the core against the firmware
 
@@ -37,7 +48,7 @@ Android 12 and newer: *Nearby devices* (Bluetooth scan and connect). Android 11 
 
 ## Hints, trends and the shot trace
 
-After each end the Training tab lists what the numbers say, and the session details repeat it per end: a group that sits off centre ("Group 4 cm left, 3 cm high: move the sight", in clicks once *Settings → Hints → Sight clicks* knows your sight), a group that is tall rather than wide (anchor, draw length) or wide rather than tall (release), an unsteady hold compared with your usual one, a canted bow, an aim that sank before the release, a hard release (the bow turned fast), an uneven rhythm. Over a session: the first arrow of the ends scoring lower than the rest (from sure shot matches only) and scores falling towards the end. Everything is measured against your own earlier ends of the same setup, never against a fixed standard. History shows trends over the last sessions: group size, hold steadiness, cant consistency and hold time. *Trace* next to the last shot's angle on the Training tab shows the pin's path over the last 1.9 s before the release, with hold time, hold spread and release figures. The hints can be switched off under *Settings → Hints*. When the sight is connected, the photo scoring presets indoor or outdoor from its light sensor.
+After each end the Training tab lists what the numbers say, and the session details repeat it per end: a group that sits off centre ("Group 4 cm left, 3 cm high: move the sight", in clicks once *Settings → Hints and notifications → Sight clicks* knows your sight), a group that is tall rather than wide (anchor, draw length) or wide rather than tall (release), an unsteady hold compared with your usual one, a canted bow, an aim that sank before the release, a hard release (the bow turned fast), an uneven rhythm. Over a session: the first arrow of the ends scoring lower than the rest (from sure shot matches only) and scores falling towards the end. Everything is measured against your own earlier ends of the same setup, never against a fixed standard. History shows trends over the last sessions: group size, hold steadiness, cant consistency and hold time. *Trace* next to the last shot's angle on the Training tab shows the pin's path over the last 1.9 s before the release, with hold time, hold spread and release figures. The hints can be switched off under *Settings → Hints and notifications*. When the sight is connected, the photo scoring presets indoor or outdoor from its light sensor.
 
 ## Shot matching
 
@@ -59,7 +70,7 @@ Left is the English text as it appears in the app, right the translation. `{plac
 
 A sight built without the UV LED stage (for a bow without a pin, such as a hunting bow) announces that, and the app hides everything about the light: LED mode, brightness, light sensor, cant blinking and the distance warning. Shot counting, angles, cant, shot matching and photo scoring work as usual.
 
-Each sight introduces itself with a fixed chip id, and you can name it (*Settings → Sights*, or the `name` command); the name also appears behind "UV-Sight" in the Bluetooth name. The app keeps a list of the sights it has met. Every session is attributed to its sight, shown as a small coloured badge in the top right corner of the session card and in the session details; sessions from before this feature are attributed the first time their sight is connected again. Sync only moves sessions between the phone and the sight they belong to, so the sessions of one bow never land on the other sight. Distance, face and arrow diameter are remembered per sight and restored when it connects. The CSV export lists all sights with a `sight_id` and `sight_name` column, the backup carries the list of sights. With more than one sight known, the Status tab (and the Sights card in Settings) lets you connect only to a chosen one; otherwise the app takes whichever sight is awake, which is normally the bow in your hand.
+Each sight introduces itself with a fixed chip id, and you can name it (*Settings → Sights*, or the `name` command); the name also appears behind "Anchored" in the Bluetooth name (sights with firmware before 7.3 still call themselves "UV-Sight", the app finds both). The app keeps a list of the sights it has met. Every session is attributed to its sight, shown as a small coloured badge in the top right corner of the session card and in the session details; sessions from before this feature are attributed the first time their sight is connected again. Sync only moves sessions between the phone and the sight they belong to, so the sessions of one bow never land on the other sight. Distance, face and arrow diameter are remembered per sight and restored when it connects. The CSV export lists all sights with a `sight_id` and `sight_name` column, the backup carries the list of sights. With more than one sight known, the Status tab (and the Sights card in Settings) lets you connect only to a chosen one; otherwise the app takes whichever sight is awake, which is normally the bow in your hand.
 
 ## Shared sight (youth training)
 
@@ -101,7 +112,7 @@ Each model has its own switch on the card (*Use the arrow detector*, *Use the fa
 
 ## Notifications and vibration
 
-All of these are switched on by default and can be changed under *Settings → Notifications and vibration*.
+All of these are switched on by default and can be changed under *Settings → Hints and notifications*.
 
 - **Session notification:** while the app is connected, a foreground service keeps the Bluetooth link alive with the phone in your pocket and shows the running session: "End 4, arrow 3", below it the ends, average and X count. Tapping it opens the scoring keypad. Without a session it shows the connection and the sight's battery. Switching it off limits the connection to the time the app is open.
 - **Vibrate while setting up a sight:** only with the aiming angle set to *On*. The phone mirrors the LED: 2 pulses = aiming too low (arrow short), 3 pulses = too high, one long soft pulse = the aim fits. Repeats every 1.5 s while the state lasts. Strength: light, medium, strong. During training (aiming angle *Auto*) the phone never vibrates while you aim.
@@ -109,7 +120,7 @@ All of these are switched on by default and can be changed under *Settings → N
 - **Sight battery low:** below 15 % and when the sight locks the light because the battery is empty.
 - **Charging finished:** when the sight reports a full battery over USB.
 
-Some phones (Xiaomi, Huawei, Samsung with aggressive power saving) stop foreground services anyway. If the session notification vanishes when the screen is off, exclude UV-Sight from the battery optimisation in the Android settings.
+Some phones (Xiaomi, Huawei, Samsung with aggressive power saving) stop foreground services anyway. If the session notification vanishes when the screen is off, exclude Nocked from the battery optimisation in the Android settings.
 
 ## Using the app
 

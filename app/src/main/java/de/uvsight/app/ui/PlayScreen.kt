@@ -218,8 +218,8 @@ fun BadgesCard(state: AppState, ctl: SightController, vm: SightViewModel, manage
             SecondaryButton(tr("New"), Modifier.weight(1f)) { editing = BadgeDef(Badges.newId(), "🏅", "", "steady", "end", "min", listOf(60.0, 70.0, 80.0)) }
             SecondaryButton(tr("Templates"), Modifier.weight(1f)) { templates = true }
             SecondaryButton(tr("Share"), Modifier.weight(1f), enabled = state.badgeDefs.isNotEmpty()) {
-                val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/json").putExtra(android.content.Intent.EXTRA_TEXT, ctl.exportBadges()).putExtra(android.content.Intent.EXTRA_SUBJECT, "UV-Sight badges")
-                runCatching { context.startActivity(android.content.Intent.createChooser(send, tr("Share badges"))) }.onFailure { saveLauncher.launch("uv-sight-badges.json") }
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/json").putExtra(android.content.Intent.EXTRA_TEXT, ctl.exportBadges()).putExtra(android.content.Intent.EXTRA_SUBJECT, "Nocked badges")
+                runCatching { context.startActivity(android.content.Intent.createChooser(send, tr("Share badges"))) }.onFailure { saveLauncher.launch("nocked-badges.json") }
             }
             SecondaryButton(tr("Import"), Modifier.weight(1f)) { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }
         }

@@ -20,32 +20,24 @@ jobs:
           yes | "$SDKM" --licenses > /dev/null 2>&1 || true
           "$SDKM" "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
       - uses: gradle/actions/setup-gradle@v4
-      - name: Signing secrets
-        # Says whether the four signing secrets are there and whether the keystore opens with them; never prints a value
+      - name: Signing keystore
+        # The four repository secrets SIGNING_KEYSTORE_B64, SIGNING_STORE_PASSWORD, SIGNING_KEY_ALIAS and
+        # SIGNING_KEY_PASSWORD sign the release APK. Without them only the debug APK is built. No value is printed.
         env:
           KS_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
           KS_PASS: ${{ secrets.SIGNING_STORE_PASSWORD }}
           KS_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
-          {
-            echo "## Signing"
-            for v in KS_B64 KS_PASS KS_ALIAS KEY_PASS; do
-              if [ -n "${!v}" ]; then echo "- $v: set (${#v} chars name, value ${#KS_B64} bytes for the keystore)"; else echo "- $v: MISSING"; fi
-            done
-            if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
-              if echo "$KS_B64" | base64 -d > /tmp/sign.jks 2>/dev/null; then
-                if keytool -list -keystore /tmp/sign.jks -storepass "$KS_PASS" -alias "${KS_ALIAS:-nocked}" > /tmp/kt.txt 2>&1; then
-                  echo "- keystore: opens, alias '${KS_ALIAS:-nocked}' found ($(grep -c 'fingerprint' /tmp/kt.txt) fingerprint line)"
-                else
-                  echo "- keystore: decoded, but keytool could not open it with the password/alias: $(head -c 200 /tmp/kt.txt)"
-                fi
-                rm -f /tmp/sign.jks
-              else
-                echo "- keystore: SIGNING_KEYSTORE_B64 is not valid base64"
-              fi
-            fi
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          missing=""
+          for v in KS_B64 KS_PASS KS_ALIAS KEY_PASS; do [ -n "${!v}" ] || missing="$missing $v"; done
+          if [ -n "$missing" ]; then
+            echo "## Signing" >> "$GITHUB_STEP_SUMMARY"; echo "Secrets missing:$missing. Only the debug APK is built." >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/sign.jks"
+          keytool -list -keystore "$RUNNER_TEMP/sign.jks" -storepass "$KS_PASS" -alias "$KS_ALIAS" > /dev/null
+          echo "SIGNING_KEYSTORE=$RUNNER_TEMP/sign.jks" >> "$GITHUB_ENV"
+          echo "## Signing" >> "$GITHUB_STEP_SUMMARY"; echo "Keystore found, alias '$KS_ALIAS' opens: the release APK is signed with it." >> "$GITHUB_STEP_SUMMARY"
       - name: Language packs
         run: python3 tools/lang_check.py --check | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Core tests
@@ -54,8 +46,24 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: uv-sight-debug-apk
+          name: nocked-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+      - name: Release APK (signed)
+        if: env.SIGNING_KEYSTORE != ''
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:assembleRelease --no-daemon
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          "$ANDROID_HOME"/build-tools/35.0.0/apksigner verify --print-certs "$APK" | grep -i 'Signer #1 certificate SHA-256' | tee -a "$GITHUB_STEP_SUMMARY"
+          cp "$APK" "app/build/outputs/apk/release/nocked-$GITHUB_RUN_NUMBER.apk"
+      - uses: actions/upload-artifact@v4
+        if: env.SIGNING_KEYSTORE != ''
+        with:
+          name: nocked-release-apk
+          path: app/build/outputs/apk/release/nocked-*.apk
       - name: Test reports
         if: always()
         uses: actions/upload-artifact@v4

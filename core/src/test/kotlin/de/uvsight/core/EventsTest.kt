@@ -126,4 +126,52 @@ class EventsTest {
             }
         } finally { dispatcher.close() }
     }
+
+    @Test fun discardSendsTheSavedValuesBack() {
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val transport = FakeTransport()
+        val ctl = SightController(scope, MemoryStore(), transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
+        fun cfg(bright: Int, fade: Int) {
+            ctl.onLine("""{"t":"cfgStart","n":2}""")
+            ctl.onLine("""{"t":"cfgItem","k":"bright","v":$bright,"def":61,"min":1,"max":100,"dec":0,"zero":false,"unit":"%","d":"Brightness"}""")
+            ctl.onLine("""{"t":"cfgItem","k":"fade","v":$fade,"def":3,"min":0,"max":30,"dec":0,"zero":true,"unit":"s","d":"Fade time"}""")
+            ctl.onLine("""{"t":"cfgEnd"}""")
+        }
+        try {
+            runBlocking {
+                withContext(dispatcher) { ctl.onLinkUp() }
+                delay(100)
+                withContext(dispatcher) {
+                    ctl.onLine("""{"t":"hello","proto":24,"fw":"7.3","name":"Anchored","imu":true,"log":true,"id":"ABCDEF0123456789","sname":""}""")
+                    cfg(61, 3)                                       // the first read after connecting is the saved state
+                    assertEquals(false, ctl.state.value.cfgDirty)
+                    ctl.onLine("""{"t":"ack","cmd":"set","k":"bright","v":33}""")
+                    assertEquals(true, ctl.state.value.cfgDirty)
+                    ctl.onLine("""{"t":"ack","cmd":"set","k":"bright","v":61}""")   // back by hand: nothing left to save
+                    assertEquals(false, ctl.state.value.cfgDirty)
+                    ctl.onLine("""{"t":"ack","cmd":"set","k":"bright","v":40}""")
+                    ctl.onLine("""{"t":"ack","cmd":"set","k":"fade","v":9}""")
+                    transport.sent.clear()
+                    ctl.discardSettings()                            // every changed setting goes back to its saved value
+                    assertEquals(listOf("set bright 61", "set fade 3"), transport.sent)
+                    ctl.onLine("""{"t":"ack","cmd":"set","k":"bright","v":61}""")
+                    ctl.onLine("""{"t":"ack","cmd":"set","k":"fade","v":3}""")
+                    assertEquals(false, ctl.state.value.cfgDirty)
+                    ctl.onLine("""{"t":"ack","cmd":"set","k":"fade","v":9}""")
+                    ctl.onLine("""{"t":"ack","cmd":"save"}""")          // saving makes the current values the new baseline
+                    assertEquals(false, ctl.state.value.cfgDirty)
+                    transport.sent.clear(); ctl.discardSettings()
+                    assertEquals(emptyList<String>(), transport.sent)
+                    ctl.onLine("""{"t":"ack","cmd":"set","k":"fade","v":3}""")
+                    assertEquals(true, ctl.state.value.cfgDirty)
+                    // "defaults" reloads the list; dirty when it differs from the saved one
+                    ctl.restoreDefaults(); cfg(61, 3)
+                    assertEquals(true, ctl.state.value.cfgDirty)
+                    ctl.onLine("""{"t":"ack","cmd":"set","k":"fade","v":9}""")
+                    assertEquals(false, ctl.state.value.cfgDirty)
+                }
+            }
+        } finally { scope.cancel(); dispatcher.close() }
+    }
 }

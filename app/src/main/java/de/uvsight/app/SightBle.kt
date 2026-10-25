@@ -21,6 +21,7 @@ import android.os.ParcelUuid
 import androidx.core.content.ContextCompat
 import de.uvsight.core.BoardEntry
 import de.uvsight.core.DEVICE_NAME_PREFIX
+import de.uvsight.core.DEVICE_NAME_PREFIXES
 import de.uvsight.core.NUS_RX
 import de.uvsight.core.NUS_SERVICE
 import de.uvsight.core.NUS_TX
@@ -113,7 +114,7 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
         return true
     }
 
-    /** Scan until the remembered sight (or any UV-Sight) advertises; cancelled by the caller's timeout. */
+    /** Scan until the remembered sight (or any Anchored sight) advertises; cancelled by the caller's timeout. */
     private suspend fun scanForSight(onlyAddress: String?): BluetoothDevice {
         val scanner = adapter?.bluetoothLeScanner ?: throw IllegalStateException("no scanner")
         val remembered = prefs.get(ADDRESS_KEY)
@@ -123,7 +124,7 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val d = result.device
                 val name = result.scanRecord?.deviceName ?: d.name
-                val isSight = (name?.startsWith(DEVICE_NAME_PREFIX) == true) ||
+                val isSight = (name != null && DEVICE_NAME_PREFIXES.any { name.startsWith(it) }) ||
                     (result.scanRecord?.serviceUuids?.any { it.uuid == SERVICE } == true) || boardEntry(result) != null
                 if (!isSight) return
                 // With a preferred sight only that one; otherwise the remembered sight or, if another one
@@ -141,7 +142,7 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
     /** Older firmware advertises the UART service, 7.0 the board data; unnamed sights match the plain name. */
     private fun sightFilters() = listOf(
         ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE)).build(),
-        ScanFilter.Builder().setDeviceName(DEVICE_NAME_PREFIX).build(),
+        *DEVICE_NAME_PREFIXES.map { ScanFilter.Builder().setDeviceName(it).build() }.toTypedArray(),
         ScanFilter.Builder().setManufacturerData(0xFFFF, byteArrayOf('U'.code.toByte(), 'V'.code.toByte()), byteArrayOf(0xFF.toByte(), 0xFF.toByte())).build())
 
     // ------------------------------------------------------------------ trainer's board

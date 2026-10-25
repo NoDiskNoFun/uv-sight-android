@@ -64,7 +64,7 @@ object Coco {
             add(buildJsonObject { put("id", 2); put("name", "face"); put("keypoints", JsonArray((listOf("center") + (1..12).map { "edge$it" }).map { JsonPrimitive(it) })) })
         }
         val root: JsonObject = buildJsonObject {
-            put("info", buildJsonObject { put("description", "UV-Sight photo scoring"); put("version", "1"); put("uv_app", records.firstOrNull()?.app ?: "") })
+            put("info", buildJsonObject { put("description", "Nocked photo scoring"); put("version", "1"); put("uv_app", records.firstOrNull()?.app ?: "") })
             put("images", images); put("annotations", annotations); put("categories", categories)
         }
         return root.toString()
