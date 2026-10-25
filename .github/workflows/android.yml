@@ -20,6 +20,32 @@ jobs:
           yes | "$SDKM" --licenses > /dev/null 2>&1 || true
           "$SDKM" "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
       - uses: gradle/actions/setup-gradle@v4
+      - name: Signing secrets
+        # Says whether the four signing secrets are there and whether the keystore opens with them; never prints a value
+        env:
+          KS_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          {
+            echo "## Signing"
+            for v in KS_B64 KS_PASS KS_ALIAS KEY_PASS; do
+              if [ -n "${!v}" ]; then echo "- $v: set (${#v} chars name, value ${#KS_B64} bytes for the keystore)"; else echo "- $v: MISSING"; fi
+            done
+            if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+              if echo "$KS_B64" | base64 -d > /tmp/sign.jks 2>/dev/null; then
+                if keytool -list -keystore /tmp/sign.jks -storepass "$KS_PASS" -alias "${KS_ALIAS:-nocked}" > /tmp/kt.txt 2>&1; then
+                  echo "- keystore: opens, alias '${KS_ALIAS:-nocked}' found ($(grep -c 'fingerprint' /tmp/kt.txt) fingerprint line)"
+                else
+                  echo "- keystore: decoded, but keytool could not open it with the password/alias: $(head -c 200 /tmp/kt.txt)"
+                fi
+                rm -f /tmp/sign.jks
+              else
+                echo "- keystore: SIGNING_KEYSTORE_B64 is not valid base64"
+              fi
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Language packs
         run: python3 tools/lang_check.py --check | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Core tests
