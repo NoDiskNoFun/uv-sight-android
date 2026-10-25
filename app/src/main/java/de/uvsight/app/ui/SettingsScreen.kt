@@ -70,17 +70,9 @@ private val SEG_KEYS = listOf(tr("off"), tr("auto"), tr("on"), tr("normal"), tr(
     tr("Camera"), tr("Gallery"), tr("With sight"), tr("Photos only"), tr("Spot 40 cm"), tr("end"), tr("ends"), tr("shot"), tr("shots"), tr("arrow"), tr("arrows"),
     tr("Single"), tr("User"), tr("Trainer"))
 
-private data class Group(val title: String, val keys: List<String>, val light: Boolean = false, val cal: Boolean = false, val led: Boolean = false)
-/** Settings that only matter with the UV LED stage fitted. */
-private val LED_KEYS = setOf("tilt_offset", "tilt_full", "blink_min", "blink_max")
-private val GROUPS = listOf(
-    Group(tr("Light sensor"), listOf("dark_on", "dark_off", "confirm"), light = true, led = true),
-    Group(tr("UV light"), listOf("bright_mode", "bright", "bright_min", "fade", "vf"), led = true),
-    Group(tr("Cant and aiming range"), listOf("level_tol", "tilt_offset", "tilt_full", "blink_min", "blink_max", "tilt_smooth"), cal = true),
-    Group(tr("Shot detection and sessions"), listOf("tap_ths", "lockout", "session_end")),
-    Group(tr("Battery"), listOf("cutoff", "bat_mah")),
-    Group(tr("Power and Bluetooth"), listOf("ths", "timeout", "report", "tx_power")),
-)
+/** Every sight setting that has a place in a card below; the rest lands under Other in Advanced settings. */
+private val PLACED_KEYS = setOf("dark_on", "dark_off", "confirm", "bright_mode", "bright", "bright_min", "fade", "vf", "tilt_offset", "tilt_full", "blink_min", "blink_max",
+    "level_tol", "tilt_smooth", "tap_ths", "lockout", "session_end", "cutoff", "bat_mah", "ths", "timeout", "report", "tx_power")
 private val DESCS = mapOf(
     "dark_on" to tr("Fixed: the light turns on below this reading. Auto: full brightness from here down."),
     "dark_off" to tr("Fixed: the light turns off above this reading. Auto: the light starts dimly here. Keep it higher than Dark below."),
@@ -107,8 +99,8 @@ private val DESCS = mapOf(
 )
 private val LABELS = mapOf(
     "dark_on" to tr("Dark below"), "dark_off" to tr("Bright above"), "confirm" to tr("Readings before switching"),
-    "bright" to tr("Brightness"), "bright_min" to tr("Start brightness"), "tilt_offset" to tr("Blink dimming"), "vf" to tr("LED voltage"),
-    "fade" to tr("Fade time"), "tilt_full" to tr("Blinking range up to"), "blink_min" to tr("Slowest blinking"), "blink_max" to tr("Fastest blinking"),
+    "bright" to tr("Brightness"), "bright_min" to tr("Start brightness"), "tilt_offset" to tr("Blinking: dimming"), "vf" to tr("LED voltage"),
+    "fade" to tr("Fade time"), "tilt_full" to tr("Blinking: fastest from"), "blink_min" to tr("Blinking: slowest"), "blink_max" to tr("Blinking: fastest"),
     "tilt_smooth" to tr("Smoothing"), "session_end" to tr("End session after"),
     "level_tol" to tr("Tolerance"), "tap_ths" to tr("Shot threshold"), "lockout" to tr("Pause after a shot"),
     "cutoff" to tr("Cutoff voltage"), "ths" to tr("Wake-up sensitivity"), "timeout" to tr("Sleep after"), "report" to tr("Update the app every"),
@@ -138,17 +130,11 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
             val cfg = state.cfg
-            // Mode (phone-side)
-            UvCard {
-                Text(tr("Mode"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                SegRow(tr("Use the app"), if (state.photoOnly) tr("Photo scoring only: no Bluetooth, no sight. Score from photos and collect training data, for example on a club mate's phone.")
-                    else tr("With the UV sight: connection, sessions, settings and history."), if (state.photoOnly) "Photos only" else "With sight", listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
-            }
-            Spacer(Modifier.height(14.dp))
-            // Shared sight: alone as before, one archer of several, or the trainer; name and the group's password
+            // How this app meets a sight: alone, one archer of several, or the trainer; name and the group's password
             if (!state.photoOnly) {
-                UvCard {
-                    Text(tr("Group"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                val g0 = state.group
+                Collapsible(tr("Mode"), when (g0.role) { "user" -> tr("Archer") + (if (g0.name.isNotEmpty()) ": ${g0.name}" else ""); "trainer" -> tr("Trainer") + (if (g0.name.isNotEmpty()) ": ${g0.name}" else ""); else -> tr("Single") } +
+                    (if (connected && state.role == "locked") " · " + tr("locked") else "")) {
                     val g = state.group
                     SegRow(tr("Use the sight as"), when (g.role) {
                         "user" -> tr("One archer of several: your sessions carry your name, a shared sight shows you only yours, and your settings go to the sight when you connect.")
@@ -224,8 +210,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
             // The sights this phone knows: name the connected one, pick which to connect to, forget old ones
             if (!state.photoOnly && (connected && state.sight != null || state.sights.isNotEmpty())) {
-                UvCard {
-                    Text(tr("Sights"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Collapsible(tr("Sights"), (if (connected) state.sight?.label else null) ?: tr("{n} known", "n" to state.sights.size)) {
                     val cur = state.sight
                     if (connected && cur != null) {
                         var nameText by remember(cur.id, cur.name) { mutableStateOf(cur.name) }
@@ -268,14 +253,40 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             else {
                 val ses = state.session
                 val lv = state.level ?: LevelInfo("off", "normal", false, "auto", true, true)
-                UvCard(padding = 16) {
-                    SwitchRow(tr("Shot counter"), tr("Counts shots and records sessions."), ses?.counter == true, first = true) { ctl.shotsSwitch(it) }
+                val byKey = cfg.associateBy { it.k }
+                val autoMode = byKey["bright_mode"]?.v == 1.0
+                val row: @Composable (String, Boolean, Boolean) -> Unit = { k, enabled, first -> byKey[k]?.let { SettingRow(it, first = first, enabled = enabled) { v -> ctl.sendSet(k, v) } } }
+                val ledMode = state.status?.mode ?: "auto"
+                val rg = state.range
+
+                // LED: its mode and brightness, the light sensor that switches it, and the cant blinking it shows
+                if (state.hasLed) {
+                    Collapsible(tr("LED"), tr(ledMode) + (byKey["bright"]?.let { ", ${it.v.roundToInt()} %" } ?: "") + if (lv.cantSignal && lv.mode != "off") ", " + tr("blinks when canted") else "") {
+                        SegRow(tr("LED"), (when (ledMode) { "auto" -> tr("Auto: switched by the light sensor."); "on" -> tr("On: always lit."); else -> tr("Off: stays dark.") }) +
+                            tr(" Cant blinking works in every mode. Kept after a restart."), ledMode, listOf("off", "auto", "on"), first = true) { ctl.setLedMode(it) }
+                        if (byKey["bright_mode"] != null) SegRow(tr("Brightness mode"), if (autoMode) tr("Auto: fades in from Bright above and reaches full brightness at Dark below.") else tr("Fixed: one brightness, switched at Dark below / Bright above."),
+                            if (autoMode) "auto" else "fixed", listOf("fixed", "auto")) { ctl.sendSet("bright_mode", if (it == "auto") 1.0 else 0.0) }
+                        row("bright", true, false); if (autoMode) { row("bright_min", true, false); row("fade", true, false) }; row("vf", true, false)
+                        GroupTitle(tr("Light sensor"))
+                        state.status?.let { Note(tr("Current reading: {light} ({dark}). Lower means darker.", "light" to it.light, "dark" to (if (it.dark) tr("dark") else tr("bright")))) }
+                        row("dark_on", true, true); row("dark_off", true, false); row("confirm", true, false)
+                        GroupTitle(tr("Cant blinking"))
+                        val blinkOn = lv.cal && lv.mode != "off"
+                        if (!blinkOn) Note(if (!lv.cal) tr("Needs the calibration under Cant and aiming range.") else tr("Needs the cant measuring under Cant and aiming range."))
+                        SwitchRow(tr("Blink when canted"), tr("Off: the cant is still measured and stored, the LED just stays calm."), lv.cantSignal, enabled = blinkOn, first = true) { ctl.setCantSignal(it) }
+                        SegRow(tr("Blinking: mode"), if (lv.style == "inverted") tr("Faster the closer you get to level.") else tr("Faster the more the bow is canted."), lv.style, listOf("normal", "inverted"), enabled = blinkOn) { ctl.setStyle(it) }
+                        row("tilt_offset", blinkOn, false); row("tilt_full", blinkOn, false); row("blink_min", blinkOn, false); row("blink_max", blinkOn, false)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
+
+                // Cant and aiming range: what is measured, the distance check, the tolerance and the calibration
+                Collapsible(tr("Cant and aiming range"), tr("cant {m}, angle {a}", "m" to tr(lv.mode), "a" to tr(lv.angle)) + if (lv.cal) "" else ", " + tr("not calibrated")) {
                     SegRow(tr("Cant"), (when (lv.mode) { "auto" -> tr("Measured during a session."); "on" -> tr("Measured whenever the bow is in use. Switches the aiming angle's On off."); else -> tr("Not measured.") }) +
-                        tr(" Each end stores how canted you were.") + if (lv.cal) "" else tr(" Needs the calibration."), lv.mode, listOf("off", "auto", "on")) { ctl.setCantMode(it) }
+                        tr(" Each end stores how canted you were.") + if (lv.cal) "" else tr(" Needs the calibration."), lv.mode, listOf("off", "auto", "on"), first = true) { ctl.setCantMode(it) }
                     SegRow(tr("Aiming angle"), (when (lv.angle) { "auto" -> tr("Measured at every shot during a session."); "on" -> tr("Measured at every shot, also outside a session (for setting up a sight). Switches the cant's On off."); else -> tr("Not measured.") }) +
                         if (lv.cal) "" else tr(" Needs the calibration."), lv.angle, listOf("off", "auto", "on")) { ctl.setAngleMode(it) }
                     if (lv.angle == "on" && state.hasLed) {
-                        val rg = state.range
                         val ready = rg?.state == "ready"
                         val d = rg?.dist ?: 0
                         HorizontalDivider(color = uv.line)
@@ -294,66 +305,44 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             RoundButton("+", enabled = ready) { ctl.setCheckDist(if (d == 0) 10 else d + 10) }
                         }
                     }
-                    val ledMode = state.status?.mode ?: "auto"
-                    if (state.hasLed) SegRow(tr("LED"), (when (ledMode) { "auto" -> tr("Auto: switched by the light sensor."); "on" -> tr("On: always lit."); else -> tr("Off: stays dark.") }) +
-                        tr(" Cant blinking works in every mode. Kept after a restart."), ledMode, listOf("off", "auto", "on")) { ctl.setLedMode(it) }
+                    if (lv.angle != "off" && state.hasLed) {
+                        val ready = rg?.state == "ready"
+                        SwitchRow(tr("Warn if the distance doesn't fit"), when {
+                            ready -> tr("While aiming: double blink means aiming too low (arrow short), triple blink too high (arrow long). Comes before the cant blinking.")
+                            rg?.state == "anchor" -> tr("After a new calibration: shoot one end with the distance set, then this works again.")
+                            else -> tr("Still learning: shoot a few ends at two or more distances with the distance set ({ends} ends so far).", "ends" to (rg?.ends ?: 0))
+                        }, lv.rangeSignal && ready, enabled = lv.cal && ready) { ctl.setRangeSignal(it) }
+                    }
+                    row("level_tol", lv.cal, false); row("tilt_smooth", lv.cal, false)
+                    CalCard(state, ctl)
                 }
                 Spacer(Modifier.height(14.dp))
 
-                val byKey = cfg.associateBy { it.k }
-                val autoMode = byKey["bright_mode"]?.v == 1.0
-                val used = HashSet<String>()
-                for (g in GROUPS) {
-                    if (g.led && !state.hasLed) continue
-                    val items = g.keys.filter { state.hasLed || it !in LED_KEYS }.mapNotNull { byKey[it] }
-                    g.keys.forEach { used.add(it) }          // hidden light settings must not resurface under Other
-                    if (items.isEmpty() && !g.cal) continue
-                    UvCard(padding = 16) {
-                        Text(g.title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                        if (g.light) state.status?.let { Note(tr("Current reading: {light} ({dark}). Lower means darker.", "light" to it.light, "dark" to (if (it.dark) tr("dark") else tr("bright")))) }
-                        if (g.cal) {
-                            CalCard(state, ctl)
-                            val enabled = lv.cal
-                            if (lv.mode != "off") {
-                                if (state.hasLed) SwitchRow(tr("Blink when canted"), tr("Off: the cant is still measured and stored, the LED just stays calm."), lv.cantSignal, enabled = enabled) { ctl.setCantSignal(it) }
-                                if (state.hasLed) SegRow(tr("Cant blinking mode"), if (lv.style == "inverted") tr("Faster the closer you get to level.") else tr("Faster the more the bow is canted."), lv.style, listOf("normal", "inverted"), enabled = enabled) { ctl.setStyle(it) }
-                            }
-                            if (lv.angle != "off") {
-                                val rg = state.range
-                                val ready = rg?.state == "ready"
-                                if (state.hasLed) SwitchRow(tr("Warn if the distance doesn't fit"), when {
-                                    ready -> tr("While aiming: double blink means aiming too low (arrow short), triple blink too high (arrow long). Comes before the cant blinking.")
-                                    rg?.state == "anchor" -> tr("After a new calibration: shoot one end with the distance set, then this works again.")
-                                    else -> tr("Still learning: shoot a few ends at two or more distances with the distance set ({ends} ends so far).", "ends" to (rg?.ends ?: 0))
-                                }, lv.rangeSignal && ready, enabled = enabled && ready) { ctl.setRangeSignal(it) }
-                            }
-                        }
-                        items.forEachIndexed { i, it ->
-                            if (it.k == "bright_mode") {
-                                SegRow(tr("Brightness mode"), if (autoMode) tr("Auto: fades in from Bright above and reaches full brightness at Dark below.") else tr("Fixed: one brightness, switched at Dark below / Bright above."),
-                                    if (autoMode) "auto" else "fixed", listOf("fixed", "auto"), first = i == 0 && !g.cal) { ctl.sendSet("bright_mode", if (it == "auto") 1.0 else 0.0) }
-                                return@forEachIndexed
-                            }
-                            if ((it.k == "bright_min" || it.k == "fade") && !autoMode) return@forEachIndexed
-                            SettingRow(it, first = i == 0 && !g.cal, enabled = !g.cal || lv.cal) { v -> ctl.sendSet(it.k, v) }
-                        }
-                    }
-                    Spacer(Modifier.height(14.dp))
+                // Shot detection and sessions
+                Collapsible(tr("Shot detection and sessions"), if (ses?.counter == true) tr("counter on") else tr("counter off")) {
+                    SwitchRow(tr("Shot counter"), tr("Counts shots and records sessions."), ses?.counter == true, first = true) { ctl.shotsSwitch(it) }
+                    row("tap_ths", true, false); row("lockout", true, false); row("session_end", true, false)
                 }
-                val rest = cfg.filter { !used.contains(it.k) }
-                if (rest.isNotEmpty()) {
-                    UvCard { Text(tr("Other"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp); rest.forEachIndexed { i, it -> SettingRow(it, first = i == 0) { v -> ctl.sendSet(it.k, v) } } }
-                    Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(14.dp))
+
+                // Advanced: battery, power, Bluetooth, whatever else the firmware offers, and the defaults
+                Collapsible(tr("Advanced settings"), tr("battery, power, Bluetooth")) {
+                    GroupTitle(tr("Battery"))
+                    row("cutoff", true, true); row("bat_mah", true, false)
+                    GroupTitle(tr("Power and Bluetooth"))
+                    row("ths", true, true); row("timeout", true, false); row("report", true, false); row("tx_power", true, false)
+                    val rest = cfg.filter { it.k !in PLACED_KEYS }
+                    if (rest.isNotEmpty()) { GroupTitle(tr("Other")); rest.forEachIndexed { i, it -> SettingRow(it, first = i == 0) { v -> ctl.sendSet(it.k, v) } } }
+                    Spacer(Modifier.height(8.dp))
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { SecondaryButton(tr("Restore defaults")) { askDefaults = true } }
                 }
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { SecondaryButton(tr("Restore defaults")) { askDefaults = true } }
                 Spacer(Modifier.height(14.dp))
             }
 
             // Setups
             val st = state.setups
             if (connected && st != null) {
-                UvCard {
-                    Text(tr("Setups"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Collapsible(tr("Setups"), (st.list.firstOrNull { it.id == st.active }?.name ?: "") + (st.list.count { !it.deleted } - 1).let { if (it > 0) ", " + tr("{n} more", "n" to it) else "" }) {
                     Note(tr("One per arrow set or bow setting. Each learns its own arrow speed, so switching back needs no new learning."))
                     st.list.filter { !it.deleted }.forEachIndexed { i, it ->
                         val active = it.id == st.active
@@ -379,8 +368,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
 
             // Sessions
-            if (!state.photoOnly) UvCard {
-                Text(tr("Sessions"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+            if (!state.photoOnly) Collapsible(tr("Sessions"), (state.loginfo?.let { tr("{n} on the sight", "n" to it.count) + ", " } ?: "") + (if (state.autoCopy) tr("sync on") else tr("sync off"))) {
                 SwitchRow(tr("Sync automatically"), if (state.autoCopy) tr("Keeps the sessions on this phone and on the sight up to date whenever they are connected.") else tr("Off: use Get from sight and Copy to sight in History."), state.autoCopy, first = true) { ctl.setAutoCopy(it) }
                 SwitchRow(tr("Show removed sessions"), tr("Sessions you removed from this phone appear greyed out in History, so you can bring them back."), state.showHidden) { ctl.setShowHidden(it) }
                 if (connected) {
@@ -398,7 +386,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             Spacer(Modifier.height(14.dp))
 
             // Photo scoring and training data (phone-side settings)
-            UvCard {
+            Collapsible(tr("Photo scoring"), tr(runCatching { de.uvsight.core.FaceType.valueOf(state.photo.face) }.getOrDefault(de.uvsight.core.FaceType.WA40).label) + ", " + (if (state.photo.source == "gallery") tr("Gallery") else tr("Camera"))) {
                 val ph = state.photo
                 val store = remember { de.uvsight.app.TrainingStore(context) }
                 var dataVersion by remember { mutableIntStateOf(0) }
@@ -409,7 +397,6 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     uri?.let { u -> scope.launch { withContext(Dispatchers.IO) { runCatching { context.contentResolver.openOutputStream(u)?.use { store.exportZip(it) } } }.onFailure { vm.toast(tr("Export failed: {message}", "message" to it.message), true) }.onSuccess { vm.toast(tr("Training data exported.")) } } }
                 }
                 var askDelete by remember { mutableStateOf(false) }
-                Text(tr("Photo scoring"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 SegRow(tr("Face"), tr("Preselected on the photo screen; change it there per session."), runCatching { de.uvsight.core.FaceType.valueOf(ph.face) }.getOrDefault(de.uvsight.core.FaceType.WA40).label,
                     de.uvsight.core.FaceType.values().map { it.label }, first = true) { l -> de.uvsight.core.FaceType.values().firstOrNull { it.label == l }?.let { ctl.setPhotoPrefs(ph.copy(face = it.name)) } }
                 SegRow(tr("Photo source"), tr("Camera opens the camera app for Score from photo. Gallery lets you pick a picture you took before, for phones whose camera app fails on the request."),
@@ -555,9 +542,8 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             Spacer(Modifier.height(14.dp))
 
             // Play mode (phone-side)
-            if (!state.photoOnly) UvCard {
+            if (!state.photoOnly) Collapsible(tr("Play mode"), if (state.game.enabled) tr("on") + ", " + tr("{n} goals", "n" to state.goals.size) + ", " + tr("{n} badges", "n" to ctl.allBadgeDefs().size) else tr("off")) {
                 val gp = state.game
-                Text(tr("Play mode"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 SwitchRow(tr("Play mode"), tr("Personal bests with confetti, training streaks, the steady-hand score, badges and a daily goal. All against your own earlier results, never against others."), gp.enabled, first = true) { ctl.setGamePrefs(gp.copy(enabled = it)) }
                 if (gp.enabled) {
                     HorizontalDivider(color = uv.line)
@@ -593,6 +579,10 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     }
                     Row(Modifier.padding(top = 4.dp, bottom = 8.dp)) { SecondaryButton(tr("New goal")) { editGoal = de.uvsight.core.GoalDef(de.uvsight.core.Goals.newId(), "🎯", "", "endsAboveAvg", "total", "min", 2.0, "day") } }
                     editGoal?.let { gd -> GoalEditor(gd, state, ctl, onClose = { editGoal = null }) }
+                    HorizontalDivider(color = uv.line)
+                    // the badges: make, change, share; the history only shows them
+                    Spacer(Modifier.height(8.dp))
+                    BadgesCard(state, ctl, vm, manage = true)
                     if (state.group.role == "trainer") {
                         HorizontalDivider(color = uv.line)
                         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -609,9 +599,8 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
             if (!state.photoOnly) Spacer(Modifier.height(14.dp))
             // Hints after an end (phone-side settings)
-            if (!state.photoOnly) UvCard {
+            if (!state.photoOnly) Collapsible(tr("Hints"), if (state.hints.enabled) tr("on") else tr("off")) {
                 val hp = state.hints
-                Text(tr("Hints"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 SwitchRow(tr("Hints after each end"), tr("Under the last end and in the session details: where the group sits, how steady the hold was, cant, release, rhythm. Always compared with your own earlier ends."), hp.enabled, first = true) { ctl.setHintPrefs(hp.copy(enabled = it)) }
                 HorizontalDivider(color = uv.line)
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -628,9 +617,8 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             if (!state.photoOnly) Spacer(Modifier.height(14.dp))
 
             // Notifications and vibration (phone-side settings)
-            if (!state.photoOnly) UvCard {
+            if (!state.photoOnly) Collapsible(tr("Notifications and vibration"), tr("{n} of {total} on", "n" to listOf(state.notif.session, state.notif.rangeVibe, state.notif.autoEnd, state.notif.lowBat, state.notif.chargeFull).count { it }, "total" to 5)) {
                 val n = state.notif
-                Text(tr("Notifications and vibration"), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 SwitchRow(tr("Session notification"), tr("Shows the running session (end, arrow, average) and keeps the connection alive while the phone is in your pocket. Off: the connection only lasts while the app is open."), n.session, first = true) { ctl.setNotifPrefs(n.copy(session = it)) }
                 SwitchRow(tr("Vibrate while setting up a sight"), tr("Only with the aiming angle set to On: 2 pulses mean aiming too low, 3 too high, one long pulse the aim fits."), n.rangeVibe) { ctl.setNotifPrefs(n.copy(rangeVibe = it)) }
                 if (n.rangeVibe) SegRow(tr("Vibration strength"), "", n.vibeStrength, listOf("light", "medium", "strong")) { ctl.setNotifPrefs(n.copy(vibeStrength = it)) }
@@ -666,6 +654,9 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         SecondaryButton(tr("Start")) { askDfu = true }
                     }
                 }
+                HorizontalDivider(color = uv.line)
+                SegRow(tr("Use the app"), if (state.photoOnly) tr("Photo scoring only: no Bluetooth, no sight. Score from photos and collect training data, for example on a club mate's phone.")
+                    else tr("With the UV sight: connection, sessions, settings and history."), if (state.photoOnly) "Photos only" else "With sight", listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
                 val li = state.loginfo
                 Note(tr("App {APPVERSION}", "APPVERSION" to APP_VERSION) + (state.hello?.let { ", firmware ${it.fw}" } ?: "") +
                     (li?.let { if (it.ok) tr(". The sight stores {v} {v2} (room for about {capacity}).", "v" to it.count, "v2" to (if (it.count == 1) tr("session") else tr("sessions")), "capacity" to (it.capacity / 1000 * 1000)) else tr(". The sight's session memory is not working.") } ?: ""))

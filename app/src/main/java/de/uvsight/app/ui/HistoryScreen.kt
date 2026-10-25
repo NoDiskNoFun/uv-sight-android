@@ -103,9 +103,16 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
             if (state.syncLine.isNotEmpty()) Text(state.syncLine, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
             if (state.copyProgress.isNotEmpty()) Text(state.copyProgress, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
-            if (list.isNotEmpty()) AverageChart(list.filter { !it.hidden }, state.ends)
-            if (list.isNotEmpty()) TrendsCard(list.filter { !it.hidden }, state.ends)
-            if (state.game.enabled) { BadgesCard(state, ctl, vm); Spacer(Modifier.height(12.dp)) }
+            if (state.game.enabled) { BadgesCard(state, ctl, vm, manage = false); Spacer(Modifier.height(14.dp)) }
+            if (list.isNotEmpty()) {
+                val shown = list.filter { !it.hidden }
+                UvCard(padding = 14) {
+                    Text(tr("Progress"), fontWeight = FontWeight.SemiBold)
+                    AverageChart(shown, state.ends)
+                    TrendsCard(shown, state.ends)
+                }
+                Spacer(Modifier.height(14.dp))
+            }
         }
         if (list.isEmpty()) item { EmptyBox(tr("No sessions yet. Finished sessions appear here once the app has been connected to the sight.")) }
         else item {
@@ -159,12 +166,12 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
 private fun AverageChart(list: List<ArchiveSession>, endsStore: Map<String, List<EndDetail>>) {
     val uv = LocalUv.current
     val pts = list.filter { it.scored > 0 }.take(20).reversed()
-    UvCard(padding = 14) {
+    Column {
         val withEnds = pts.count { (endsStore[it.key] ?: emptyList()).any { e -> e.valid && e.arrows > 0 } }
-        Text(tr("Average per session") + if (withEnds > 0) tr("  (dots: single ends)") else "", fontWeight = FontWeight.SemiBold)
+        Text(tr("Average per session") + if (withEnds > 0) tr("  (dots: single ends)") else "", color = uv.muted, fontSize = 13.sp)
         if (pts.size < 2) {
             Note(tr("The chart appears as soon as two sessions with scores are stored on this phone") + if (pts.size == 1) tr(". One is there so far.") else ".")
-            return@UvCard
+            return@Column
         }
         val vals = pts.map { it.avg }
         val endAvgs = pts.map { r -> (endsStore[r.key] ?: emptyList()).filter { it.valid && it.arrows > 0 && it.sum != null }.map { it.sum!!.toDouble() / it.arrows } }
@@ -184,7 +191,6 @@ private fun AverageChart(list: List<ArchiveSession>, endsStore: Map<String, List
             Text(tr("older  ({lo} to {hi})", "lo" to (fmt(lo, 0)), "hi" to (fmt(hi, 0))), color = uv.muted, fontSize = 11.sp); Text(tr("newest"), color = uv.muted, fontSize = 11.sp)
         }
     }
-    Spacer(Modifier.height(14.dp))
 }
 
 @Composable
@@ -313,15 +319,18 @@ private fun EndsBars(ends: List<EndDetail>) {
 private fun TrendsCard(list: List<ArchiveSession>, endsStore: Map<String, List<EndDetail>>) {
     val uv = LocalUv.current
     val rows = list.sortedBy { it.sortTime }.mapNotNull { s -> endsStore[s.key]?.takeIf { it.isNotEmpty() }?.let { de.uvsight.core.Insights.sessionStats(it) } }.takeLast(12)
+    val avgs: List<Double?> = list.filter { it.scored > 0 }.sortedBy { it.sortTime }.takeLast(12).map { it.avg }
     val series = listOf(
+        Triple(tr("Average per session"), avgs, ""),
         Triple(tr("Group size"), rows.map { it.groupRadius }, "cm"),
         Triple(tr("Hold steadiness"), rows.map { it.hold }, "°"),
         Triple(tr("Cant consistency"), rows.map { it.cantSd }, "°"),
         Triple(tr("Hold time"), rows.map { it.holdMs?.div(1000.0) }, "s"),
     ).filter { (_, v, _) -> v.count { it != null } >= 2 }
     if (series.isEmpty()) return
-    UvCard(padding = 14) {
-        Text(tr("Trends over the last {rows} sessions", "rows" to rows.size), fontWeight = FontWeight.SemiBold)
+    Column {
+        Spacer(Modifier.height(6.dp))
+        Text(tr("Trends over the last sessions"), color = uv.muted, fontSize = 13.sp)
         for ((label, values, unit) in series) {
             val vals = values.map { it ?: Double.NaN }
             val present = vals.filter { !it.isNaN() }
@@ -329,7 +338,7 @@ private fun TrendsCard(list: List<ArchiveSession>, endsStore: Map<String, List<E
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.width(120.dp)) {
                     Text(label, fontSize = 13.sp, color = uv.ink)
-                    Text(tr("now {unit} {unit2}", "unit" to (fmt(last, if (unit == "°") 2 else 1)), "unit2" to unit), fontSize = 12.sp, color = uv.muted)
+                    Text(tr("now {unit} {unit2}", "unit" to (fmt(last, if (unit == "°" || unit == "") 2 else 1)), "unit2" to unit), fontSize = 12.sp, color = uv.muted)
                 }
                 Canvas(Modifier.weight(1f).height(36.dp)) {
                     val lo = present.min(); val hi = present.max(); val range = (hi - lo).takeIf { it > 1e-9 } ?: 1.0
@@ -344,7 +353,6 @@ private fun TrendsCard(list: List<ArchiveSession>, endsStore: Map<String, List<E
                 }
             }
         }
-        Note(tr("Lower is better for all four except hold time. Group size is the mean distance of the arrows from their centre (from photos)."))
+        Note(tr("Lower is better for group size, hold steadiness and cant consistency. Group size is the mean distance of the arrows from their centre (from photos)."))
     }
-    Spacer(Modifier.height(14.dp))
 }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -153,7 +154,7 @@ private data class BadgeView(val def: BadgeDef, val level: Int, val earned: Earn
 /** All badges with their level, in the history: tap for details, edit or delete own ones, new ones, templates, share. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun BadgesCard(state: AppState, ctl: SightController, vm: SightViewModel) {
+fun BadgesCard(state: AppState, ctl: SightController, vm: SightViewModel, manage: Boolean) {
     val uv = LocalUv.current
     val context = LocalContext.current
     val tz = remember { tzOffsetMs() }
@@ -177,7 +178,9 @@ fun BadgesCard(state: AppState, ctl: SightController, vm: SightViewModel) {
             vm.toast(if (n == null) tr("Not a badge file.") else tr("{n} badges added", "n" to n), n == null)
         }
     }
-    UvCard {
+    // in the history a plain card, in the settings part of the play-mode card
+    val wrap: @Composable (@Composable ColumnScope.() -> Unit) -> Unit = { c -> if (manage) Column { c() } else UvCard { c() } }
+    wrap {
         Text(tr("Badges") + " · ${views.count { it.level > 0 }}/${views.size}", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
         Spacer(Modifier.height(6.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -205,13 +208,13 @@ fun BadgesCard(state: AppState, ctl: SightController, vm: SightViewModel) {
                 (v.earned?.let { " · " + tr("{level} earned on {date}", "level" to Badges.levelName(it.level), "date" to fmtStamp(it.at)) } ?: "") +
                 (if (v.retired) " · " + tr("no longer awarded, but earned is earned") else "") +
                 (if (!v.own && !v.retired) " · " + tr("from the sight") else ""), color = uv.muted, fontSize = 12.sp)
-            if (v.own && state.group.role != "user") Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (manage && v.own && state.group.role != "user") Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SecondaryButton(tr("Edit")) { editing = b }
                 SecondaryButton(tr("Delete"), danger = true) { ctl.deleteBadge(b.id); open = null }
             }
         }
         Spacer(Modifier.height(10.dp))
-        if (state.group.role != "user") Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (manage && state.group.role != "user") Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SecondaryButton(tr("New"), Modifier.weight(1f)) { editing = BadgeDef(Badges.newId(), "🏅", "", "steady", "end", "min", listOf(60.0, 70.0, 80.0)) }
             SecondaryButton(tr("Templates"), Modifier.weight(1f)) { templates = true }
             SecondaryButton(tr("Share"), Modifier.weight(1f), enabled = state.badgeDefs.isNotEmpty()) {
@@ -220,7 +223,7 @@ fun BadgesCard(state: AppState, ctl: SightController, vm: SightViewModel) {
             }
             SecondaryButton(tr("Import"), Modifier.weight(1f)) { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }
         }
-        Text(when (state.group.role) {
+        if (manage) Text(when (state.group.role) {
             "trainer" -> tr("Your set goes to every sight you connect to as trainer; the archers fetch it from there. Share writes the set as a file others can import.")
             "user" -> tr("The badges of your group come from the sight, the trainer manages them. They stay here when you are not connected, and what you earned stays for good.")
             else -> tr("Your own badges, kept on this phone; share them as a file or import others.")

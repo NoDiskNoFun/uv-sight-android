@@ -1,6 +1,7 @@
 package de.uvsight.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -141,6 +142,26 @@ fun Seg(current: String, modes: List<String>, enabled: Boolean = true, onPick: (
                 FitText(tr(m).replaceFirstChar { it.uppercase() })
             }
         }
+    }
+}
+
+/**
+ * A card that starts folded: its header shows the title, a one-line summary of what is set, and a
+ * chevron; a tap opens it. Folded again whenever the screen is built anew.
+ */
+@Composable
+fun Collapsible(title: String, summary: String, content: @Composable ColumnScope.() -> Unit) {
+    val uv = LocalUv.current
+    var open by remember { mutableStateOf(false) }
+    UvCard {
+        Row(Modifier.fillMaxWidth().clickable { open = !open }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                if (summary.isNotEmpty()) Text(summary, color = uv.muted, fontSize = 13.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            Text(if (open) "⌃" else "⌄", color = uv.muted, fontSize = 20.sp, modifier = Modifier.padding(start = 8.dp))
+        }
+        if (open) { Spacer(Modifier.height(4.dp)); content() }
     }
 }
 
