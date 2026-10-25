@@ -153,7 +153,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                     SegRow(tr("Use the sight as"), when (g.role) {
                         "user" -> tr("One archer of several: your sessions carry your name, a shared sight shows you only yours, and your settings go to the sight when you connect.")
                         "trainer" -> tr("Trainer: the Training tab becomes the board of all sights in range, you see every session and approve other trainers.")
-                        else -> tr("Alone, as before: no name, no password.")
+                        else -> tr("Your own sight, just you: no name needed, a password only if you want one.")
                     }, when (g.role) { "user" -> "User"; "trainer" -> "Trainer"; else -> "Single" }, listOf("Single", "User", "Trainer"), first = true) {
                         ctl.setGroup(g.copy(role = when (it) { "User" -> "user"; "Trainer" -> "trainer"; else -> "single" }))
                     }
@@ -576,7 +576,23 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                         }
                     }
                     HorizontalDivider(color = uv.line)
-                    Text(tr("Goals are set on the play card of the Training tab: tap a goal to change it, New goal adds one."), color = uv.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 10.dp))
+                    // goals: what to reach today, this week, this session or ever; shown one at a time on the play card
+                    var editGoal by remember { mutableStateOf<de.uvsight.core.GoalDef?>(null) }
+                    Text(tr("Goals"), color = uv.ink, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
+                    Text(tr("Each goal shows its progress on the play card of the Training tab; swipe sideways there to see the next one."), color = uv.muted, fontSize = 13.sp)
+                    for (goal in state.goals) {
+                        Row(Modifier.fillMaxWidth().clickable { editGoal = goal }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(goal.emoji.ifEmpty { "🎯" }, fontSize = 22.sp)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(goal.title, color = uv.ink)
+                                Text(de.uvsight.core.Goals.describe(goal), color = uv.muted, fontSize = 12.sp)
+                            }
+                            SecondaryButton(tr("Edit")) { editGoal = goal }
+                        }
+                    }
+                    Row(Modifier.padding(top = 4.dp, bottom = 8.dp)) { SecondaryButton(tr("New goal")) { editGoal = de.uvsight.core.GoalDef(de.uvsight.core.Goals.newId(), "🎯", "", "endsAboveAvg", "total", "min", 2.0, "day") } }
+                    editGoal?.let { gd -> GoalEditor(gd, state, ctl, onClose = { editGoal = null }) }
                     if (state.group.role == "trainer") {
                         HorizontalDivider(color = uv.line)
                         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {

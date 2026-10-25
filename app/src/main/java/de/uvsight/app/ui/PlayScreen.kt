@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -102,21 +104,28 @@ fun PlayCard(state: AppState, ctl: SightController) {
             if (noMiss >= 3) Text("🧹 $noMiss", color = uv.ink, fontSize = 14.sp)
         }
         Spacer(Modifier.height(12.dp))
-        // the archer's goals, each with its period
-        var editGoal by remember { mutableStateOf<GoalDef?>(null) }
-        for (goal in state.goals) {
-            val p = remember(goal, sessions, ends, state.currentSessionKey) { Goals.progress(goal, sessions, ends, now, tz, state.currentSessionKey) }
-            val frac by animateFloatAsState(p.fraction, tween(600), label = "goal")
-            Row(Modifier.fillMaxWidth().clickable { editGoal = goal }, verticalAlignment = Alignment.CenterVertically) {
-                Text((goal.emoji.ifEmpty { "🎯" }) + " " + goal.title + " · " + Goals.periodLabel(goal.period), color = uv.ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Text(p.text + if (p.reached) " ✅" else "", color = if (p.reached) uv.ok else uv.muted, fontSize = 13.sp)
+        // the archer's goals: one at a time, swipe sideways for the next (they are set under Settings → Play mode)
+        if (state.goals.isEmpty()) Text(tr("No goals yet. Add some under Settings → Play mode."), color = uv.muted, fontSize = 13.sp)
+        else {
+            val pager = rememberPagerState(pageCount = { state.goals.size })
+            HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth(), pageSpacing = 12.dp) { i ->
+                val goal = state.goals[i]
+                val p = remember(goal, sessions, ends, state.currentSessionKey) { Goals.progress(goal, sessions, ends, now, tz, state.currentSessionKey) }
+                val frac by animateFloatAsState(p.fraction, tween(600), label = "goal")
+                Column(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text((goal.emoji.ifEmpty { "🎯" }) + " " + goal.title + " · " + Goals.periodLabel(goal.period), color = uv.ink, fontSize = 14.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(p.text + if (p.reached) " ✅" else "", color = if (p.reached) uv.ok else uv.muted, fontSize = 13.sp)
+                    }
+                    Box(Modifier.fillMaxWidth().padding(top = 4.dp).height(8.dp).background(uv.line, CircleShape)) {
+                        Box(Modifier.fillMaxWidth(frac).height(8.dp).background(if (p.reached) uv.ok else uv.gold, CircleShape))
+                    }
+                }
             }
-            Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp).height(8.dp).background(uv.line, CircleShape)) {
-                Box(Modifier.fillMaxWidth(frac).height(8.dp).background(if (p.reached) uv.ok else uv.gold, CircleShape))
+            if (state.goals.size > 1) Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.Center) {
+                for (i in state.goals.indices) Box(Modifier.padding(horizontal = 3.dp).size(if (i == pager.currentPage) 8.dp else 6.dp).background(if (i == pager.currentPage) uv.ink else uv.line, CircleShape))
             }
         }
-        Row { SecondaryButton(tr("New goal")) { editGoal = GoalDef(Goals.newId(), "🎯", "", "endsAboveAvg", "total", "min", 2.0, "day") } }
-        editGoal?.let { gd -> GoalEditor(gd, state, ctl, onClose = { editGoal = null }) }
         if (steady != null) {
             Spacer(Modifier.height(10.dp))
             val sf by animateFloatAsState(steady / 100f, tween(800), label = "steady")
@@ -338,7 +347,7 @@ fun MetricDropdown(metrics: List<Metric>, current: String, label: (String) -> St
 
 /** Create or change a goal: emoji, title, what, where, direction, target and the period. */
 @Composable
-private fun GoalEditor(initial: GoalDef, state: AppState, ctl: SightController, onClose: () -> Unit) {
+fun GoalEditor(initial: GoalDef, state: AppState, ctl: SightController, onClose: () -> Unit) {
     val uv = LocalUv.current
     val tz = remember { tzOffsetMs() }
     val now = System.currentTimeMillis()
