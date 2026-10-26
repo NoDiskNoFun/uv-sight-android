@@ -45,7 +45,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import de.uvsight.app.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -198,7 +201,8 @@ private fun Header(state: AppState) {
         else -> uv.line
     }
     Row(Modifier.fillMaxWidth().background(uv.paper).statusBarsPadding().padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(tr("Nocked"), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = uv.ink, modifier = Modifier.weight(1f))
+        // The app's name in its own face (Saira Stencil One, OFL; see LICENSES/)
+        Text(tr("Nocked"), fontSize = 24.sp, fontFamily = FontFamily(Font(R.font.saira_stencil_one)), color = uv.ink, modifier = Modifier.weight(1f))
         Box(Modifier.size(10.dp).background(dot, CircleShape))
         Spacer(Modifier.width(8.dp))
         Text(text, color = uv.muted, fontSize = 14.sp)

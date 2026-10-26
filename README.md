@@ -54,6 +54,10 @@ After each end the Training tab lists what the numbers say, and the session deta
 
 Which arrow on the face was which shot? The sight knows the order of the shots and, for each one, the aiming angle and how the bow turned at release; the photo knows where the arrows are. When you reach the arrow step of the photo scoring, the app asks the sight for the shots of the open end and shows the shot number under each mark: a bold number for a sure match, a grey one for a guess, "3/5" when two shots cannot be told apart. Tap an arrow and pick its shot to set it by hand. Unresolved pairs are decided at random when you save, so the end is complete, but only sure and hand-set pairs are reported back to the sight, which learns from them per setup. "Shot matching accuracy" under the photo and in *Settings → Setups* is the mean confidence over the last ends of the setup. Height is matched from the first end on; the sideways position needs a few dozen confirmed pairs before it contributes. Each setup has *Reset learning* in its menu; the *Shot matching* switch turns the feature and the sight's gyro off.
 
+## Fonts
+
+The app's name in the title bar is set in *Saira Stencil One* (Omnibus-Type, SIL Open Font License 1.1; the font file is in `app/src/main/res/font/`, the licence in `LICENSES/`). Everything else uses the phone's font.
+
 ## Languages
 
 The app follows the phone's language when a pack for it exists and falls back to English; *Settings → App → Language* overrides that. Packs are plain text files in `app/src/main/assets/lang/`, one line per text:
