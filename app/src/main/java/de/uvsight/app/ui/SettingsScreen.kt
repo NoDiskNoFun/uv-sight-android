@@ -263,7 +263,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                 // LED: its mode and brightness, the light sensor that switches it, and the cant blinking it shows
                 if (state.hasLed) {
                     Collapsible(tr("LED"), tr(ledMode) + (byKey["bright"]?.let { ", ${it.v.roundToInt()} %" } ?: "") + if (lv.cantSignal && lv.mode != "off") ", " + tr("blinks when canted") else "") {
-                        SegRow(tr("LED"), (when (ledMode) { "auto" -> tr("Auto: switched by the light sensor."); "on" -> tr("On: always lit."); else -> tr("Off: stays dark.") }) +
+                        SegRow(tr("LED"), (when (ledMode) { "auto" -> tr("Auto: on when it is dark and a session is running. A session starts with the first shot, or earlier with Start session now."); "on" -> tr("On: always lit."); else -> tr("Off: stays dark.") }) +
                             tr(" Cant blinking works in every mode. Kept after a restart."), ledMode, listOf("off", "auto", "on"), first = true) { ctl.setLedMode(it) }
                         if (byKey["bright_mode"] != null) SegRow(tr("Brightness mode"), if (autoMode) tr("Auto: fades in from Bright above and reaches full brightness at Dark below.") else tr("Fixed: one brightness, switched at Dark below / Bright above."),
                             if (autoMode) "auto" else "fixed", listOf("fixed", "auto")) { ctl.sendSet("bright_mode", if (it == "auto") 1.0 else 0.0) }
