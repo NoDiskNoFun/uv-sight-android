@@ -178,6 +178,11 @@ class SightController(
     private var trainerBuf: ArrayList<TrainerInfo>? = null
     private var badgeBuf: ArrayList<BadgeDef>? = null
     private val badgeJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+    // Declared before the init block below: Kotlin initialises properties in order, and loadBadges() runs in init.
+    // (Declared after it, they were still null there, decoding threw, and every restart lost the badges and goals.)
+    private val badgeListSer = kotlinx.serialization.builtins.ListSerializer(BadgeDef.serializer())
+    private val earnedSer = kotlinx.serialization.builtins.ListSerializer(EarnedBadge.serializer())
+    private val goalListSer = kotlinx.serialization.builtins.ListSerializer(GoalDef.serializer())
     private var pollJob: Job? = null
     private var awaitJob: Job? = null
     private var cfgBuf: MutableList<CfgItem>? = null
@@ -852,8 +857,6 @@ class SightController(
     }
 
     // ---- badges: own rules, rules from sights, what was earned ----
-    private val badgeListSer = kotlinx.serialization.builtins.ListSerializer(BadgeDef.serializer())
-    private val earnedSer = kotlinx.serialization.builtins.ListSerializer(EarnedBadge.serializer())
     private fun loadBadges() {
         val defs = store.get(BADGES_KEY)?.let { runCatching { badgeJson.decodeFromString(badgeListSer, it) }.getOrNull() } ?: emptyList()
         val earned = store.get(EARNED_KEY)?.let { runCatching { badgeJson.decodeFromString(earnedSer, it) }.getOrNull() } ?: emptyList()
@@ -869,7 +872,6 @@ class SightController(
         if (s.group.role == "single" && s.badgeDefs.isEmpty()) saveBadgeDefs(Badges.templates())
         store.put(BADGES_SEEDED_KEY, "1")
     }
-    private val goalListSer = kotlinx.serialization.builtins.ListSerializer(GoalDef.serializer())
     private fun seedGoals() {
         if (store.get(GOALS_SEEDED_KEY) == "1") return
         if (s.goals.isEmpty()) saveGoals(listOf(Goals.defaultGoal().copy(target = s.game.dailyGoal.toDouble())))
