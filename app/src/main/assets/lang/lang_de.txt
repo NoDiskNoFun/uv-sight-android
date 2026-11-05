@@ -161,7 +161,6 @@ Outdoor = Draußen
 Indoor = Halle
 Looking for the face… = Suche die Auflage…
 Face found by the model. Drag a point to adjust, or Clear to mark anew. = Auflage vom Modell gefunden. Punkt ziehen zum Anpassen, oder Löschen und neu markieren.
-Marking from the last photo. Drag a point to adjust, or Clear to mark anew. = Markierung vom letzten Foto. Punkt ziehen zum Anpassen, oder Löschen für eine neue Markierung.
 Tap the centre of the face. = Tippe auf die Mitte der Auflage.
 Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right. = Tippe 4 Punkte auf den Außenrand des blauen Rings ({edge} von 4), am besten oben, unten, links und rechts.
 The 4 points don't fit an ellipse around the centre. Add a 5th point on the blue edge (that also handles a photo taken from the side), or Undo. = Die 4 Punkte passen nicht zu einer Ellipse um die Mitte. Setze einen 5. Punkt auf den blauen Rand (das gleicht auch ein schräges Foto aus) oder mach rückgängig.
@@ -721,6 +720,7 @@ Uneven rhythm: {lo} to {hi} s between shots. = Unruhiger Rhythmus: {lo} bis {hi}
 The first arrow of an end scores {d} points below the others ({n} ends). = Der erste Pfeil einer Passe liegt {d} Punkte unter den anderen ({n} Passen).
 Scores fell from {a} to {b} per arrow over the session = Die Wertung fiel über die Sitzung von {a} auf {b} je Pfeil
 , and the hold got less steady = , und der Halt wurde unruhiger
+The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: a shorter draw. Check the bow-arm shoulder: keep it low and settled and push the bow towards the target. = Die Haltung wurde über die Sitzung unruhiger ({h0}° auf {h1}°) und die Schüsse schwächer ({g0} g auf {g1} g): ein kürzerer Auszug. Prüfe die Schulter des Bogenarms: tief und ruhig halten und den Bogen zum Ziel schieben.
 
 # --- core/src/main/kotlin/de/uvsight/core/SightController.kt
 This sight has a password. Enter it under Settings → Group. = Dieses Visier hat ein Passwort. Gib es unter Einstellungen → Gruppe ein.

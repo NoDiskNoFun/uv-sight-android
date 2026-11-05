@@ -91,7 +91,7 @@ fun Msg.toEnd() = EndMsg(int("n") ?: 0, bool("valid") ?: false, int("arrows") ?:
     dbl("cantMax"), int("canted"), int("cantN"), bool("stored") ?: true)
 
 fun Msg.toShotInfo() = ShotInfo(int("i") ?: 0, dbl("ang"), dbl("cant"), dbl("yaw"), dbl("roll"), dbl("rate"), dbl("px"), dbl("py"),
-    t = dbl("t"), hold = dbl("hold"), holdMs = int("holdMs"), drop = dbl("drop"))
+    t = dbl("t"), hold = dbl("hold"), holdMs = int("holdMs"), drop = dbl("drop"), g = dbl("g"))
 fun Msg.toTrace() = AimTrace(int("end") ?: 0, int("i") ?: 0, dbls("ms").map { it.toInt() }, dbls("pitch").map { it / 100.0 }, dbls("cant").map { it / 100.0 })
 /** "shotsStart": the frame of a shot list; the shotItem lines follow, then shotsEnd. */
 fun Msg.toShotsStart() = EndShots(int("end") ?: 0, int("n") ?: 0, int("dist")?.takeIf { it > 0 }, dbl("sdx") ?: 15.0, dbl("sdy") ?: 4.0,

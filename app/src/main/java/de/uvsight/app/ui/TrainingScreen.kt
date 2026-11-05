@@ -91,6 +91,9 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
             val rec = state.currentSessionKey?.let { k -> state.ends[k]?.firstOrNull { it.n == le.n } }
             val hints = remember(rec, state.hints) { rec?.let { ctl.endHints(it) } ?: emptyList() }
             for (h in hints) Text("• $h", color = uv.ink, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+            // and what the session so far says (first arrow, fatigue, bow-arm shoulder)
+            val sessionHints = remember(state.currentSessionKey, state.ends, state.hints) { state.currentSessionKey?.let { ctl.sessionHints(it) } ?: emptyList() }
+            for (h in sessionHints) Text("• $h", color = uv.ink, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
         }
         if (!connected) { Spacer(Modifier.height(10.dp)); Text(tr("Not connected. Keep scoring: the app reconnects when you tap Save."), color = uv.muted, fontSize = 14.sp) }
     }

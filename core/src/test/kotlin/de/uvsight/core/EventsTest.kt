@@ -210,4 +210,29 @@ class EventsTest {
             }
         } finally { scope.cancel(); dispatcher.close() }
     }
+
+    @Test fun shotShockLandsInTheEndsShotList() {
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val ctl = SightController(scope, MemoryStore(), FakeTransport(), object : UiSink { override fun toast(text: String, error: Boolean) {} })
+        try {
+            runBlocking {
+                withContext(dispatcher) { ctl.onLinkUp() }
+                delay(100)
+                withContext(dispatcher) {
+                    ctl.onLine("""{"t":"hello","proto":24,"fw":"7.6","name":"Anchored","imu":true,"log":true,"id":"ABCDEF0123456789","sname":""}""")
+                    ctl.onLine("""{"t":"session","active":true,"id":7,"epoch":1700000000,"end":1,"endShots":0,"shots":0,"start":0,"min":0}""")
+                    ctl.onLine("""{"t":"shot","end":1,"endShots":1,"total":1,"g":9.5,"clip":false,"ang":1.2,"cant":0.3}""")
+                    ctl.onLine("""{"t":"shot","end":1,"endShots":2,"total":2,"g":8.0,"clip":false,"ang":1.1,"cant":0.2}""")
+                    ctl.onLine("""{"t":"shotsStart","end":1,"n":2,"dist":18,"sdx":1.0,"sdy":1.0,"modelN":0,"matching":false}""")
+                    ctl.onLine("""{"t":"shotItem","end":1,"i":0,"ang":1.2,"cant":0.3,"yaw":null,"roll":null,"rate":null,"hold":0.1}""")
+                    ctl.onLine("""{"t":"shotItem","end":1,"i":1,"ang":1.1,"cant":0.2,"yaw":null,"roll":null,"rate":null,"hold":0.1}""")
+                    ctl.onLine("""{"t":"shotsEnd"}""")
+                }
+                delay(100)
+                val shots = ctl.state.value.endShots!!.shots
+                assertEquals(listOf(9.5, 8.0), shots.map { it.g })
+            }
+        } finally { scope.cancel(); dispatcher.close() }
+    }
 }

@@ -193,6 +193,7 @@ class SightController(
     private var lastSentScores: List<String>? = null
     private var lastSentHits: List<Hit>? = null
     private var lastSentMatch: ShotMatch.Result? = null
+    private val shotGs = HashMap<Pair<Int, Int>, Double>()   // (end, shot index) -> shock in g, from the live shot messages
     private var shotsBuf: EndShots? = null              // shot list being received (shotsStart .. shotsEnd)
     private var traceBuf: AimTrace? = null              // aim trace being received in parts ("trace" lines with k, n)
     private var shotItems: ArrayList<ShotInfo>? = null
@@ -319,7 +320,7 @@ class SightController(
     }
 
     fun onLinkDown() {
-        cfgBuf = null; cfgRetries = 0; cfgRetryJob?.cancel(); savedCfg = null
+        cfgBuf = null; cfgRetries = 0; cfgRetryJob?.cancel(); savedCfg = null; shotGs.clear()
         setAwaiting(false)
         set { copy(confirm = null) }
         stopPolling()
@@ -462,6 +463,9 @@ class SightController(
             "level" -> set { copy(level = m.toLevel()) }
             "shot" -> {
                 val ang = m.dbl("ang"); val cant = m.dbl("cant")
+                // the shock of this shot, kept until the end's shot list arrives (the list itself carries none)
+                val g = m.dbl("g"); val endNo = m.int("end"); val k = m.int("endShots")
+                if (g != null && endNo != null && k != null && k > 0) shotGs[endNo to k - 1] = g
                 val txt = listOfNotNull(ang?.let { "angle ${fmt(it, 2)}°" }, cant?.let { "cant ${fmt(it, 1)}°" }).joinToString(", ")
                 set {
                     val st = status?.let { if (m.dbl("g") != null) it.copy(lastShotG = m.dbl("g"), lastShotClip = m.bool("clip") ?: false) else it }
@@ -519,10 +523,11 @@ class SightController(
                 val frame = shotsBuf; val items = shotItems ?: emptyList<ShotInfo>()
                 shotsBuf = null; shotItems = null
                 if (frame != null) {
-                    val list = frame.copy(shots = items)
+                    val withG = items.mapIndexed { i, sh -> if (sh.g == null) sh.copy(g = shotGs[frame.end to i]) else sh }
+                    val list = frame.copy(shots = withG)
                     val open = s.session?.takeIf { it.active }?.end
                     if (open != null && frame.end == open) set { copy(endShots = list) }
-                    else s.currentSessionKey?.let { key -> archive.setEndShots(key, frame.end, items); refreshHistory() }
+                    else s.currentSessionKey?.let { key -> archive.setEndShots(key, frame.end, withG); refreshHistory() }
                 }
             }
             "shotModel" -> set { copy(shotModel = m.toShotModel()) }

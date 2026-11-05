@@ -176,7 +176,8 @@ data class ShotInfo(val i: Int, val ang: Double? = null, val cant: Double? = nul
                     val t: Double? = null,        // seconds since the end's first shot
                     val hold: Double? = null,     // spread of the aiming angle while holding, deg
                     val holdMs: Int? = null,      // how long the aim stayed steady before the release
-                    val drop: Double? = null)     // aiming angle in the last 150..400 ms minus the hold mean, deg (sinking < 0)
+                    val drop: Double? = null,     // aiming angle in the last 150..400 ms minus the hold mean, deg (sinking < 0)
+                    val g: Double? = null)         // peak of the shot's shock in g (from the live shot message; a weaker shot means a shorter draw)
 
 /** The aim trace of one shot: angle and cant over the ~1.9 s before the release (ms before the release, oldest first). */
 data class AimTrace(val end: Int, val i: Int, val ms: List<Int>, val pitch: List<Double>, val cant: List<Double>)

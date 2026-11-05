@@ -136,6 +136,16 @@ object Insights {
             if (a - b >= 0.5) out.add(tr("Scores fell from {a} to {b} per arrow over the session", "a" to f2(a), "b" to f2(b)) +
                 (if (ha.isNotEmpty() && hb.isNotEmpty() && hb.average() > ha.average() * 1.3) tr(", and the hold got less steady") else "") + ".")
         }
+        // bow-arm shoulder: the hold spreads and the shots get weaker (a shorter draw) as the session goes on
+        val shots = valid.flatMap { e -> e.shots ?: emptyList() }.filter { it.hold != null && it.g != null && it.g > 0 }
+        if (shots.size >= 12) {
+            val k = shots.size / 3
+            val h0 = shots.take(k).map { it.hold!! }.average(); val h1 = shots.takeLast(k).map { it.hold!! }.average()
+            val g0 = shots.take(k).map { it.g!! }.average(); val g1 = shots.takeLast(k).map { it.g!! }.average()
+            if (h1 >= h0 * 1.3 && h1 - h0 >= 0.05 && g1 <= g0 * 0.85)
+                out.add(tr("The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: a shorter draw. Check the bow-arm shoulder: keep it low and settled and push the bow towards the target.",
+                    "h0" to f2(h0), "h1" to f2(h1), "g0" to f1(g0), "g1" to f1(g1)))
+        }
         return out
     }
 

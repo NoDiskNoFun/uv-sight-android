@@ -164,7 +164,6 @@ Outdoor = Outdoor
 Indoor = Indoor
 Looking for the face… = Looking for the face…
 Face found by the model. Drag a point to adjust, or Clear to mark anew. = Face found by the model. Drag a point to adjust, or Clear to mark anew.
-Marking from the last photo. Drag a point to adjust, or Clear to mark anew. = Marking from the last photo. Drag a point to adjust, or Clear to mark anew.
 Tap the centre of the face. = Tap the centre of the face.
 Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right. = Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right.
 The 4 points don't fit an ellipse around the centre. Add a 5th point on the blue edge (that also handles a photo taken from the side), or Undo. = The 4 points don't fit an ellipse around the centre. Add a 5th point on the blue edge (that also handles a photo taken from the side), or Undo.
@@ -354,7 +353,7 @@ Loading settings… = Loading settings…
 Try again = Try again
 LED = LED
 blinks when canted = blinks when canted
-Auto: switched by the light sensor. = Auto: switched by the light sensor.
+Auto: on when it is dark and a session is running. A session starts with the first shot, or earlier with Start session now. = Auto: on when it is dark and a session is running. A session starts with the first shot, or earlier with Start session now.
 On: always lit. = On: always lit.
 Off: stays dark. = Off: stays dark.
  Cant blinking works in every mode. Kept after a restart. =  Cant blinking works in every mode. Kept after a restart.
@@ -724,6 +723,7 @@ Uneven rhythm: {lo} to {hi} s between shots. = Uneven rhythm: {lo} to {hi} s bet
 The first arrow of an end scores {d} points below the others ({n} ends). = The first arrow of an end scores {d} points below the others ({n} ends).
 Scores fell from {a} to {b} per arrow over the session = Scores fell from {a} to {b} per arrow over the session
 , and the hold got less steady = , and the hold got less steady
+The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: a shorter draw. Check the bow-arm shoulder: keep it low and settled and push the bow towards the target. = The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: a shorter draw. Check the bow-arm shoulder: keep it low and settled and push the bow towards the target.
 
 # --- core/src/main/kotlin/de/uvsight/core/SightController.kt
 This sight has a password. Enter it under Settings → Group. = This sight has a password. Enter it under Settings → Group.

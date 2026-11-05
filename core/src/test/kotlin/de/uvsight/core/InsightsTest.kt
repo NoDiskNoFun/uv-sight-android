@@ -63,6 +63,21 @@ class InsightsTest {
         assertTrue(h.any { it.startsWith("Scores fell from 10.00 to 8.00 per arrow") && it.contains("less steady") }, h.toString())
     }
 
+    @Test fun bowArmShoulderOverTheSession() {
+        // 6 ends of 3 shots: the hold spreads from 0.10° to 0.16° and the shock drops from 10 g to 7 g
+        val ends = (1..6).map { n ->
+            val hold = if (n <= 2) 0.10 else if (n <= 4) 0.13 else 0.16
+            val g = if (n <= 2) 10.0 else if (n <= 4) 8.5 else 7.0
+            EndDetail(n, true, 3, 27, 0, List(3) { "9" }, null, 18, false, 0, null, null, 3, null, null, null, null,
+                shots = (0..2).map { ShotInfo(it, hold = hold, holdMs = 1000, g = g) })
+        }
+        val h = Insights.sessionHints(ends)
+        assertTrue(h.any { it.startsWith("The hold spread more (0.10° to 0.16°) and the shots got weaker (10.0 g to 7.0 g)") }, h.toString())
+        // steady shots, or no shock figures: no such hint
+        assertTrue(Insights.sessionHints(ends.map { e -> e.copy(shots = e.shots!!.map { it.copy(g = 10.0) }) }).none { it.startsWith("The hold spread") })
+        assertTrue(Insights.sessionHints(ends.map { e -> e.copy(shots = e.shots!!.map { it.copy(g = null) }) }).none { it.startsWith("The hold spread") })
+    }
+
     @Test fun statsAndBaseline() {
         val hits = listOf(Hit(10.0, 0.0, 10), Hit(-10.0, 0.0, 10), Hit(0.0, 10.0, 10), Hit(0.0, -10.0, 10))
         val ends = (1..4).map { n -> end(n, hits, shots = (0..3).map { ShotInfo(it, hold = 0.1 * n, holdMs = 1000, cant = 1.0 * it) }) }

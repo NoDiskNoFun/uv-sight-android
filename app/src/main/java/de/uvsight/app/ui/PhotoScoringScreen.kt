@@ -112,7 +112,6 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var center by remember { mutableStateOf<Offset?>(null) }
     var edge by remember { mutableStateOf(listOf<Offset>()) }
     var skipFace by remember { mutableStateOf(false) }
-    var faceRestored by remember { mutableStateOf(false) }   // marking taken over from the last photo
     var faceFromModel by remember { mutableStateOf(false) }  // marking proposed by the face finder
     var faceEdited by remember { mutableStateOf(false) }     // ... and a point of it dragged by hand: counts as hand-marked
     var arrowsEdited by remember { mutableStateOf(false) }   // a mark added, moved, re-ringed or deleted by hand after the proposals
@@ -155,8 +154,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             val fh = if (exifRot % 180 == 0) bounds.outHeight else bounds.outWidth
             rotation = exifRot; fullSize = IntSize(fw, fh); bitmap = upright
             // The face finder proposes the centre and four edge points; without it (or when it finds
-            // nothing) the marking of the last photo is taken over: the face lands in the same place
-            // when the phone is held as before, so only a check or a small adjustment is needed.
+            // nothing) the face is marked by hand. (Taking over the last photo's marking was tried and dropped: it confused more than it helped.)
             var proposed = false
             if (hasFaceModel) {
                 val best = runCatching { de.uvsight.app.TflitePoseDetector(modelStore.faceFile).use { it.detect(upright, 0.3) } }.getOrNull()
@@ -169,12 +167,6 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     }
                 }
                 faceLooked = true
-            }
-            val fm = prefs.faceMarks
-            if (!proposed && fm != null && fm.size >= 10 && fm.size % 2 == 0) {
-                center = Offset((fm[0] * upright.width).toFloat(), (fm[1] * upright.height).toFloat())
-                edge = (2 until fm.size step 2).map { Offset((fm[it] * upright.width).toFloat(), (fm[it + 1] * upright.height).toFloat()) }
-                faceRestored = true
             }
         }
     }
@@ -389,7 +381,6 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 Text(when {
                     !faceLooked && center == null -> tr("Looking for the face…")
                     faceFromModel && geometry != null -> tr("Face found by the model. Drag a point to adjust, or Clear to mark anew.")
-                    faceRestored && geometry != null -> tr("Marking from the last photo. Drag a point to adjust, or Clear to mark anew.")
                     center == null -> tr("Tap the centre of the face.")
                     edge.size < 4 -> tr("Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right.", "edge" to edge.size)
                     geometry == null && edge.size == 4 -> tr("The 4 points don't fit an ellipse around the centre. Add a 5th point on the blue edge (that also handles a photo taken from the side), or Undo.")
@@ -398,8 +389,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     else -> tr("Face found. Add more edge points for precision, or continue.")
                 }, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SecondaryButton(tr("Undo"), enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null; faceRestored = false; faceFromModel = false }
-                    SecondaryButton(tr("Clear"), enabled = center != null) { center = null; edge = emptyList(); faceRestored = false; faceFromModel = false }
+                    SecondaryButton(tr("Undo"), enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null; faceFromModel = false }
+                    SecondaryButton(tr("Clear"), enabled = center != null) { center = null; edge = emptyList(); faceFromModel = false }
                     SecondaryButton(tr("Skip face")) { skipFace = true; center = null; edge = emptyList(); step = 2 }
                     Spacer(Modifier.weight(1f))
                     PrimaryButton(tr("Next"), enabled = geometry != null) { goToArrows() }
@@ -469,7 +460,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                 shots = endShots?.shots,
                                 // a part a model proposed counts as hand-marked once you corrected it (dragged a face point;
                                 // added, moved, re-ringed or deleted an arrow); accepted untouched, it stays the model's
-                                faceSource = if (center == null) null else if (faceFromModel) (if (faceEdited) "model-adjusted" else "model") else if (faceRestored) "restored" else "user",
+                                faceSource = if (center == null) null else if (faceFromModel) (if (faceEdited) "model-adjusted" else "model") else "user",
                                 faceModel = if (center != null && faceFromModel) modelInfo?.face?.name ?: modelInfo?.name else null,
                                 trainArrows = marks.isNotEmpty() && (marks.none { it.source == "model" } || arrowsEdited),
                                 trainFace = center != null && (!faceFromModel || faceEdited),
