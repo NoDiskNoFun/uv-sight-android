@@ -116,7 +116,7 @@ private fun shownValue(it: CfgItem, v: Double): String {
 }
 
 @Composable
-fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
+fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, onPair: () -> Unit = {}) {
     val uv = LocalUv.current
     val context = LocalContext.current
     val connected = state.conn == ConnState.CONNECTED
@@ -243,6 +243,9 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
                             }
                         }
                     }
+                    HorizontalDivider(color = uv.line)
+                    Text(tr("Without a preferred sight the app connects to any of the known ones, never to a stranger's."), color = uv.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp, bottom = 8.dp))
+                    SecondaryButton(tr("Connect a new sight"), Modifier.fillMaxWidth()) { onPair() }
                 }
                 Spacer(Modifier.height(14.dp))
             }

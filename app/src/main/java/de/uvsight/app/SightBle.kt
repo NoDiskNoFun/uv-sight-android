@@ -114,10 +114,11 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
         return true
     }
 
-    /** Scan until the remembered sight (or any Anchored sight) advertises; cancelled by the caller's timeout. */
+    /** Scan until the preferred sight, or any sight this app knows, advertises; cancelled by the caller's timeout.
+     *  Without any known sight (first start) any Anchored sight is taken; the pairing dialog normally comes first. */
     private suspend fun scanForSight(onlyAddress: String?): BluetoothDevice {
         val scanner = adapter?.bluetoothLeScanner ?: throw IllegalStateException("no scanner")
-        val remembered = prefs.get(ADDRESS_KEY)
+        val known = (controller?.knownAddresses() ?: emptySet()) + listOfNotNull(prefs.get(ADDRESS_KEY)?.takeIf { it.isNotEmpty() })
         val preferred = onlyAddress ?: prefs.get(SightController.PREFER_ADDRESS_KEY)?.takeIf { it.isNotEmpty() }
         val found = CompletableDeferred<BluetoothDevice>()
         val cb = object : ScanCallback() {
@@ -127,9 +128,10 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
                 val isSight = (name != null && DEVICE_NAME_PREFIXES.any { name.startsWith(it) }) ||
                     (result.scanRecord?.serviceUuids?.any { it.uuid == SERVICE } == true) || boardEntry(result) != null
                 if (!isSight) return
-                // With a preferred sight only that one; otherwise the remembered sight or, if another one
-                // answers first, that one (the address is updated on success)
+                // With a preferred sight only that one; otherwise any sight this app has met before
+                // (so a club mate's sight never takes the place of yours), whichever answers first
                 if (preferred != null && d.address != preferred) return
+                if (preferred == null && known.isNotEmpty() && d.address !in known) return
                 found.complete(d)
             }
             override fun onScanFailed(errorCode: Int) { found.completeExceptionally(IllegalStateException("scan failed $errorCode")) }
@@ -153,6 +155,17 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
     fun boardEntry(result: ScanResult): BoardEntry? {
         val d = result.scanRecord?.getManufacturerSpecificData(0xFFFF) ?: return null
         if (d.size < 23 || d[0] != 'U'.code.toByte() || d[1] != 'V'.code.toByte()) return null
+        return boardData(result, d)
+    }
+    /** A sight seen by its name or UART service alone (firmware before 7.0): an entry without board data, for the pairing list. */
+    private fun plainEntry(result: ScanResult): BoardEntry? {
+        val name = result.scanRecord?.deviceName ?: result.device.name
+        val isSight = (name != null && DEVICE_NAME_PREFIXES.any { name.startsWith(it) }) || (result.scanRecord?.serviceUuids?.any { it.uuid == SERVICE } == true)
+        if (!isSight) return null
+        return BoardEntry(result.device.address, name ?: DEVICE_NAME_PREFIX, "", session = false, pw = false, hasOwner = false, counterOn = false, linked = false,
+            battery = -1, end = 0, endShots = 0, points = 0, scored = 0, x = 0, ownerName = "", seen = System.currentTimeMillis())
+    }
+    private fun boardData(result: ScanResult, d: ByteArray): BoardEntry {
         fun u(i: Int) = d[i].toInt() and 0xFF
         val flags = u(3)
         val chip = "%02X%02X%02X%02X".format(u(14), u(13), u(12), u(11))
@@ -164,12 +177,14 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
     }
 
     /** Keep scanning and hand the board (sights seen in the last 15 s) to the controller; the trainer's screen starts and stops it. */
+    private var boardUsers = 0      // the trainer's screen and the pairing dialog can both want it
     fun startBoardScan() {
+        boardUsers++
         if (boardCb != null || !hasPermissions(context)) return
         val scanner = adapter?.bluetoothLeScanner ?: return
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val e = boardEntry(result) ?: return
+                val e = boardEntry(result) ?: plainEntry(result) ?: return
                 scope.launch {
                     board[e.address] = e
                     val now = System.currentTimeMillis()
@@ -182,7 +197,11 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         runCatching { scanner.startScan(sightFilters(), settings, cb) }.onFailure { boardCb = null }
     }
-    fun stopBoardScan() { boardCb?.let { cb -> runCatching { adapter?.bluetoothLeScanner?.stopScan(cb) } }; boardCb = null }
+    fun stopBoardScan() {
+        if (boardUsers > 0) boardUsers--
+        if (boardUsers > 0) return
+        boardCb?.let { cb -> runCatching { adapter?.bluetoothLeScanner?.stopScan(cb) } }; boardCb = null
+    }
 
     private fun cleanup() {
         val g = gatt

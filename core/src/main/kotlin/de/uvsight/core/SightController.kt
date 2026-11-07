@@ -754,6 +754,11 @@ class SightController(
     // ------------------------------------------------------------------ sights
     /** Bluetooth address of the current link, set by the transport before the sight says hello. */
     var linkAddress: String? = null
+    /** The addresses of the sights this app has met: with any known, "whichever is awake" connects to those only. */
+    fun knownAddresses(): Set<String> = s.sights.mapNotNull { it.address }.toSet()
+    /** The sight chosen in the pairing dialog: connect to it now and, once it has introduced itself, prefer it. */
+    private var pairAddress: String? = null
+    fun pairSight(address: String) { pairAddress = address; connectBoardEntry(address) }
 
     /** The sight introduced itself: register it, and switch to its own preferences. */
     private fun onSightIdentified(id: String, name: String?) {
@@ -765,6 +770,7 @@ class SightController(
         if (i >= 0) list[i] = si else list.add(si)
         archive.saveSights(list)
         set { copy(sight = si, sights = list) }
+        if (pairAddress != null && pairAddress == si.address) { pairAddress = null; preferSight(si.id) }
         si.distM?.let { d -> if (d != s.distM) { set { copy(distM = d, distAuto = false) }; store.put(DIST_KEY, d.toString()) } }
         val ph = s.photo
         if ((si.face != null && si.face != ph.face) || (si.arrowMm != null && si.arrowMm != ph.arrowMm))

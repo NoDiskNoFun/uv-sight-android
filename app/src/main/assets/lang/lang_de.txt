@@ -146,6 +146,17 @@ Trends over the last sessions = Trends über die letzten Sitzungen
 now {unit} {unit2} = jetzt {unit} {unit2}
 Lower is better for group size, hold steadiness and cant consistency. Group size is the mean distance of the arrows from their centre (from photos). = Bei Gruppengröße, Ruhe im Halten und gleichmäßiger Verkantung ist weniger besser. Gruppengröße ist der mittlere Abstand der Pfeile von ihrem Zentrum (aus Fotos).
 
+# --- app/src/main/java/de/uvsight/app/ui/Pairing.kt
+Connect a sight = Visier verbinden
+Every Anchored sight in range. Move the bow so yours sends its beacon, then tap it: the app connects to it and keeps to it from then on. = Alle Anchored-Visiere in Reichweite. Bewege den Bogen, damit deines sein Signal sendet, und tippe es an: Die App verbindet sich damit und bleibt von nun an bei ihm.
+Allow Bluetooth = Bluetooth erlauben
+Searching… = Suche…
+ (known) =  (bekannt)
+Id …{chip} = Id …{chip}
+in use by {name} = in Benutzung von {name}
+session running = Sitzung läuft
+password = Passwort
+
 # --- app/src/main/java/de/uvsight/app/ui/PhotoScoringScreen.kt
 Face found by the model. Tap Face to check or adjust it. = Auflage vom Modell gefunden. Tippe auf Auflage, um sie zu prüfen oder anzupassen.
 Arrow detection failed: {message} = Pfeilerkennung fehlgeschlagen: {message}
@@ -344,6 +355,8 @@ from an import = aus einem Import
 Preferred = Bevorzugt
 Prefer = Bevorzugen
 Forget = Vergessen
+Without a preferred sight the app connects to any of the known ones, never to a stranger's. = Ohne bevorzugtes Visier verbindet sich die App mit jedem der bekannten, nie mit einem fremden.
+Connect a new sight = Neues Visier verbinden
 Connect to the sight on the Status tab to change settings. = Verbinde dich im Status-Tab mit dem Visier, um Einstellungen zu ändern.
 The settings didn't arrive completely. Move closer to the sight and try again. = Die Einstellungen kamen nicht vollständig an. Geh näher ans Visier und versuch es noch einmal.
 Loading settings… = Lade Einstellungen…
@@ -545,7 +558,7 @@ Done = Fertig
 Connected. Waiting for data from the sight… = Verbunden. Warte auf Daten vom Visier…
 Move the bow so the sight wakes up, then connect. = Bewege den Bogen, damit das Visier aufwacht, dann verbinden.
 Connect to = Verbinden mit
-Whichever is awake = Das, das wach ist
+Any known sight = Jedes bekannte Visier
 Connect = Verbinden
 Battery empty. The LED is off until you charge. = Akku leer. Die LED bleibt aus, bis du lädst.
 Battery empty. Charge the sight. = Akku leer. Lade das Visier.

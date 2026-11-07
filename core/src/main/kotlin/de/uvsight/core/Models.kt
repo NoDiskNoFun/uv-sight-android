@@ -102,7 +102,7 @@ data class BoardEntry(
     val battery: Int, val end: Int, val endShots: Int, val points: Int, val scored: Int, val x: Int,
     val ownerName: String, val seen: Long,
 ) {
-    val label: String get() = DEVICE_NAME_PREFIXES.fold(bleName) { n, p -> n.removePrefix(p) }.trim().ifEmpty { "Sight " + chip.takeLast(4) }
+    val label: String get() = DEVICE_NAME_PREFIXES.fold(bleName) { n, p -> n.removePrefix(p) }.trim().ifEmpty { if (chip.isEmpty()) "Sight" else "Sight " + chip.takeLast(4) }
 }
 
 /**

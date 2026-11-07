@@ -149,6 +149,17 @@ Trends over the last sessions = Trends over the last sessions
 now {unit} {unit2} = now {unit} {unit2}
 Lower is better for group size, hold steadiness and cant consistency. Group size is the mean distance of the arrows from their centre (from photos). = Lower is better for group size, hold steadiness and cant consistency. Group size is the mean distance of the arrows from their centre (from photos).
 
+# --- app/src/main/java/de/uvsight/app/ui/Pairing.kt
+Connect a sight = Connect a sight
+Every Anchored sight in range. Move the bow so yours sends its beacon, then tap it: the app connects to it and keeps to it from then on. = Every Anchored sight in range. Move the bow so yours sends its beacon, then tap it: the app connects to it and keeps to it from then on.
+Allow Bluetooth = Allow Bluetooth
+Searching… = Searching…
+ (known) =  (known)
+Id …{chip} = Id …{chip}
+in use by {name} = in use by {name}
+session running = session running
+password = password
+
 # --- app/src/main/java/de/uvsight/app/ui/PhotoScoringScreen.kt
 Face found by the model. Tap Face to check or adjust it. = Face found by the model. Tap Face to check or adjust it.
 Arrow detection failed: {message} = Arrow detection failed: {message}
@@ -347,6 +358,8 @@ from an import = from an import
 Preferred = Preferred
 Prefer = Prefer
 Forget = Forget
+Without a preferred sight the app connects to any of the known ones, never to a stranger's. = Without a preferred sight the app connects to any of the known ones, never to a stranger's.
+Connect a new sight = Connect a new sight
 Connect to the sight on the Status tab to change settings. = Connect to the sight on the Status tab to change settings.
 The settings didn't arrive completely. Move closer to the sight and try again. = The settings didn't arrive completely. Move closer to the sight and try again.
 Loading settings… = Loading settings…
@@ -548,7 +561,7 @@ Done = Done
 Connected. Waiting for data from the sight… = Connected. Waiting for data from the sight…
 Move the bow so the sight wakes up, then connect. = Move the bow so the sight wakes up, then connect.
 Connect to = Connect to
-Whichever is awake = Whichever is awake
+Any known sight = Any known sight
 Connect = Connect
 Battery empty. The LED is off until you charge. = Battery empty. The LED is off until you charge.
 Battery empty. Charge the sight. = Battery empty. Charge the sight.

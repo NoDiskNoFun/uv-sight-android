@@ -44,7 +44,7 @@ fun StatusScreen(state: AppState, ctl: SightController, connect: () -> Unit) {
             if (state.conn != ConnState.CONNECTED && state.sights.size > 1) {
                 Text(tr("Connect to"), color = uv.muted, fontSize = 13.sp)
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
-                    FilterChip(selected = state.preferredSightId == null, onClick = { ctl.preferSight(null) }, label = { Text(tr("Whichever is awake")) }, modifier = Modifier.padding(end = 6.dp))
+                    FilterChip(selected = state.preferredSightId == null, onClick = { ctl.preferSight(null) }, label = { Text(tr("Any known sight")) }, modifier = Modifier.padding(end = 6.dp))
                     for (si in state.sights) FilterChip(selected = state.preferredSightId == si.id, onClick = { ctl.preferSight(si.id) },
                         label = { Text(si.label) }, leadingIcon = { Box(Modifier.size(10.dp).background(sightColor(si), CircleShape)) }, modifier = Modifier.padding(end = 6.dp))
                 }

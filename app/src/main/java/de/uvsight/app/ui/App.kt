@@ -70,20 +70,29 @@ fun UvSightApp(vm: SightViewModel) {
     LaunchedEffect(Unit) {
         vm.toasts.collect { t -> snackError = t.error; snackbar.showSnackbar(t.text, duration = SnackbarDuration.Short) }
     }
+    var pairing by remember { mutableStateOf(false) }                 // the pairing dialog is open
+    var bleGranted by remember { mutableStateOf(SightBle.hasPermissions(context)) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         // Notifications are optional; Bluetooth is not
         val bleOk = SightBle.requiredPermissions().all { granted[it] == true }
-        if (bleOk) ctl.connect() else vm.toast(tr("Bluetooth permission is needed to find the sight."), true)
+        if (bleOk) { bleGranted = true; if (!pairing) ctl.connect() } else vm.toast(tr("Bluetooth permission is needed to find the sight."), true)
     }
-    var photoFile by remember { mutableStateOf<java.io.File?>(null) }
-    var celebration by remember { mutableStateOf<de.uvsight.core.CoreEvent.Celebrate?>(null) }
-    LaunchedEffect(Unit) { ctl.events.collect { e -> if (e is de.uvsight.core.CoreEvent.Celebrate && state.game.enabled) celebration = e } }
-    val connect = {
+    val wantedPermissions = {
         val wanted = SightBle.requiredPermissions().toMutableList()
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             wanted.add(android.Manifest.permission.POST_NOTIFICATIONS)
-        if (SightBle.hasPermissions(context) && wanted.size == SightBle.requiredPermissions().size) ctl.connect() else permLauncher.launch(wanted.toTypedArray())
+        wanted
+    }
+    // the first start: no sight known yet, so ask which one is yours
+    LaunchedEffect(Unit) { if (!state.photoOnly && state.sights.isEmpty()) pairing = true }
+    var photoFile by remember { mutableStateOf<java.io.File?>(null) }
+    var celebration by remember { mutableStateOf<de.uvsight.core.CoreEvent.Celebrate?>(null) }
+    LaunchedEffect(Unit) { ctl.events.collect { e -> if (e is de.uvsight.core.CoreEvent.Celebrate && state.game.enabled) celebration = e } }
+    val connect: () -> Unit = {
+        val wanted = wantedPermissions()
+        if (state.sights.isEmpty()) pairing = true                                   // no sight known: choose one first
+        else if (SightBle.hasPermissions(context) && wanted.size == SightBle.requiredPermissions().size) ctl.connect() else permLauncher.launch(wanted.toTypedArray())
     }
 
     Scaffold(
@@ -120,13 +129,14 @@ fun UvSightApp(vm: SightViewModel) {
                     if (state.group.role == "trainer" && !state.photoOnly) TrainerScreen(state, ctl, vm) else TrainingScreen(state, ctl, vm, onPhoto = { photoFile = it })
                 }
                 View.HISTORY -> HistoryScreen(state, ctl, vm)
-                View.SETTINGS -> SettingsScreen(state, ctl, vm)
+                View.SETTINGS -> SettingsScreen(state, ctl, vm, onPair = { pairing = true })
                 View.CONSOLE -> ConsoleScreen(state, ctl)
             }
         }
     }
 
     photoFile?.let { f -> PhotoScoringScreen(vm, f, onClose = { photoFile = null }) }
+    if (pairing) PairDialog(state, ctl, vm, allowed = bleGranted, requestPermissions = { permLauncher.launch(wantedPermissions().toTypedArray()) }, onClose = { pairing = false })
     celebration?.let { c -> Celebration(c) { celebration = null } }
 
     // ---- dialogs driven by the controller ----

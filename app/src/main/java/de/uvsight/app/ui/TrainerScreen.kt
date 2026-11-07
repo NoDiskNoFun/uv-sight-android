@@ -100,7 +100,7 @@ private fun BoardTile(e: BoardEntry, onClick: () -> Unit) {
             }, color = if (e.session) uv.ink else uv.muted, fontSize = 14.sp)
             if (e.session) Text(tr("End {end} · {shots} shots · {points} points · {x} X", "end" to e.end, "shots" to e.endShots, "points" to e.points, "x" to e.x), color = uv.muted, fontSize = 13.sp)
         }
-        Text("${e.battery} %", color = if (e.battery <= 15) uv.red else uv.muted, fontSize = 13.sp)
+        if (e.battery >= 0) Text("${e.battery} %", color = if (e.battery <= 15) uv.red else uv.muted, fontSize = 13.sp)
     }
 }
 
