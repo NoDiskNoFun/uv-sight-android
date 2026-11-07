@@ -12,7 +12,10 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,7 +34,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -265,14 +270,20 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         scale = ns
     }
 
-    Column(Modifier.fillMaxSize().background(uv.paper).statusBarsPadding().navigationBarsPadding()) {
-        // Top bar
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onClose) { Text(tr("Cancel")) }
-            Text(if (step == 1) tr("Mark the face") else tr("Mark the arrows"), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            TextButton(onClick = { zoomAround(0.7f, Offset(container.width / 2f, container.height / 2f)) }) { Text("−") }
-            TextButton(onClick = { zoomAround(1.4f, Offset(container.width / 2f, container.height / 2f)) }) { Text("+") }
-            TextButton(onClick = { bitmap?.let { b -> scale = min(container.width.toFloat() / b.width, container.height.toFloat() / b.height); offset = Offset((container.width - b.width * scale) / 2, (container.height - b.height * scale) / 2) } }) { Text(tr("Fit")) }
+    // The phone's back button leaves this screen, not the app
+    BackHandler(onBack = onClose)
+    // A Surface sets the text colour for the whole screen (outside the app's scaffold the default would be black, unreadable in dark mode)
+    Surface(Modifier.fillMaxSize(), color = uv.paper, contentColor = uv.ink) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        // Top bar: compact buttons so the title keeps its room on a narrow screen
+        val barButton = ButtonDefaults.textButtonColors(contentColor = uv.ink)
+        val tight = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onClose, colors = barButton, contentPadding = tight, modifier = Modifier.defaultMinSize(minWidth = 1.dp)) { Text(tr("Cancel")) }
+            FitText(if (step == 1) tr("Mark the face") else tr("Mark the arrows"), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = uv.ink, modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
+            TextButton(onClick = { zoomAround(0.7f, Offset(container.width / 2f, container.height / 2f)) }, colors = barButton, contentPadding = tight, modifier = Modifier.defaultMinSize(minWidth = 1.dp)) { Text("−", fontSize = 18.sp) }
+            TextButton(onClick = { zoomAround(1.4f, Offset(container.width / 2f, container.height / 2f)) }, colors = barButton, contentPadding = tight, modifier = Modifier.defaultMinSize(minWidth = 1.dp)) { Text("+", fontSize = 18.sp) }
+            TextButton(onClick = { bitmap?.let { b -> scale = min(container.width.toFloat() / b.width, container.height.toFloat() / b.height); offset = Offset((container.width - b.width * scale) / 2, (container.height - b.height * scale) / 2) } }, colors = barButton, contentPadding = tight, modifier = Modifier.defaultMinSize(minWidth = 1.dp)) { Text(tr("Fit")) }
         }
 
         // Image with marks
@@ -472,4 +483,5 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             }
         }
     }
+    }   // Surface
 }
