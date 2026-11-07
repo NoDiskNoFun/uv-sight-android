@@ -109,7 +109,7 @@ fun UvSightApp(vm: SightViewModel) {
                 }
                 for ((v, label, icon) in tabs) {
                     NavigationBarItem(selected = state.view == v, onClick = { ctl.setView(v) },
-                        icon = { Icon(icon, contentDescription = label) }, label = { Text(label) },
+                        icon = { Icon(icon, contentDescription = label) }, label = { FitText(label, fontSize = 12.sp) },   // shrinks on narrow screens instead of breaking the word
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = uv.ink, selectedTextColor = uv.ink,
                             unselectedIconColor = uv.muted, unselectedTextColor = uv.muted, indicatorColor = uv.gold.copy(alpha = 0.35f)))
                 }

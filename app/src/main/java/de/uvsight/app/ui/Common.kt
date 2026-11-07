@@ -40,6 +40,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import de.uvsight.core.tr
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,14 +98,17 @@ fun SecondaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolea
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun ReadingRow(label: String, value: String, small: String = "", first: Boolean = false) {
     val uv = LocalUv.current
     if (!first) HorizontalDivider(color = uv.line)
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-        Text(label, color = uv.muted)
+    // Label left, value right; on a narrow screen (large display size on a 720 px phone) the value moves
+    // to a line of its own instead of being squeezed into a column of single letters
+    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, color = uv.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(value, fontWeight = FontWeight.SemiBold, color = uv.ink)
-            if (small.isNotEmpty()) { Spacer(Modifier.width(6.dp)); Text(small, color = uv.muted, fontSize = 13.sp) }
+            Text(value, fontWeight = FontWeight.SemiBold, color = uv.ink, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            if (small.isNotEmpty()) { Spacer(Modifier.width(6.dp)); Text(small, color = uv.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }
