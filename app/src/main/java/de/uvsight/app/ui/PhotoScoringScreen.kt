@@ -6,7 +6,6 @@ import android.graphics.Matrix
 import android.media.ExifInterface
 import android.os.Build
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -45,13 +44,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -333,11 +330,11 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     }
                 }
             }) {
-            bitmap?.let { b ->
-                Image(b.asImageBitmap(), contentDescription = "Photo of the face", contentScale = ContentScale.None, alignment = Alignment.TopStart,
-                    modifier = Modifier.graphicsLayer { translationX = offset.x; translationY = offset.y; scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0f, 0f) })
-            }
+            // The photo is drawn by hand with the view's shift and zoom. (An Image composable was clipped to the
+            // container before the zoom applied, so on small screens only the photo's top-left corner showed.)
+            val photo = remember(bitmap) { bitmap?.asImageBitmap() }
             Canvas(Modifier.fillMaxSize()) {
+                photo?.let { img -> withTransform({ translate(offset.x, offset.y); scale(scale, scale, pivot = Offset.Zero) }) { drawImage(img) } }
                 val stroke = Stroke(2.dp.toPx())
                 geometry?.let { g ->
                     for (k in 1..10) {
