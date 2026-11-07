@@ -648,6 +648,11 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                 }
                 HorizontalDivider(color = uv.line)
                 if (!state.photoOnly) SwitchRow(tr("Show console"), tr("A tab with the raw messages of the sight, for troubleshooting."), state.consoleEnabled, first = true) { ctl.setConsoleEnabled(it) }
+                HorizontalDivider(color = uv.line)
+                var launcher by remember { mutableStateOf(de.uvsight.app.Launcher.enabled(context)) }
+                SwitchRow(tr("Use as the home screen"), tr("For a phone that only serves the sight. On: the phone asks whether Nocked becomes its home app; choose Always. Off: the phone's choice of home app opens, so you can pick your old one again."), launcher, first = true) {
+                    launcher = it; de.uvsight.app.Launcher.set(context, it)
+                }
                 if (connected) {
                     HorizontalDivider(color = uv.line)
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {

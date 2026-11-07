@@ -151,7 +151,7 @@ Connect a sight = Visier verbinden
 Every Anchored sight in range. Move the bow so yours sends its beacon, then tap it: the app connects to it and keeps to it from then on. = Alle Anchored-Visiere in Reichweite. Bewege den Bogen, damit deines sein Signal sendet, und tippe es an: Die App verbindet sich damit und bleibt von nun an bei ihm.
 Allow Bluetooth = Bluetooth erlauben
 Searching… = Suche…
- (known) =  (bekannt)
+ (known) = (bekannt)
 Id …{chip} = Id …{chip}
 in use by {name} = in Benutzung von {name}
 session running = Sitzung läuft
@@ -512,6 +512,8 @@ Phone language when a pack for it exists, else English. Language packs are plain
 Phone language = Telefonsprache
 Show console = Konsole anzeigen
 A tab with the raw messages of the sight, for troubleshooting. = Ein Tab mit den Rohmeldungen des Visiers, zur Fehlersuche.
+Use as the home screen = Als Startbildschirm verwenden
+For a phone that only serves the sight. On: the phone asks whether Nocked becomes its home app; choose Always. Off: the phone's choice of home app opens, so you can pick your old one again. = Für ein Handy, das nur dem Visier dient. An: Das Handy fragt, ob Nocked seine Startbildschirm-App wird; wähle „Immer“. Aus: Die Auswahl der Startbildschirm-App des Handys öffnet sich, damit du deine alte wieder wählen kannst.
 Firmware update = Firmware-Update
 Prepares the sight for new firmware. Connect it to your computer with the USB cable first. = Bereitet das Visier auf neue Firmware vor. Verbinde es vorher per USB-Kabel mit dem Computer.
 Start = Starten

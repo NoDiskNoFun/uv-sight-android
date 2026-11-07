@@ -515,6 +515,8 @@ Phone language when a pack for it exists, else English. Language packs are plain
 Phone language = Phone language
 Show console = Show console
 A tab with the raw messages of the sight, for troubleshooting. = A tab with the raw messages of the sight, for troubleshooting.
+Use as the home screen = Use as the home screen
+For a phone that only serves the sight. On: the phone asks whether Nocked becomes its home app; choose Always. Off: the phone's choice of home app opens, so you can pick your old one again. = For a phone that only serves the sight. On: the phone asks whether Nocked becomes its home app; choose Always. Off: the phone's choice of home app opens, so you can pick your old one again.
 Firmware update = Firmware update
 Prepares the sight for new firmware. Connect it to your computer with the USB cable first. = Prepares the sight for new firmware. Connect it to your computer with the USB cable first.
 Start = Start
