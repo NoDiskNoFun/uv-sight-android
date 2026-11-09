@@ -396,12 +396,12 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     edge.size == 4 -> tr("Face found. A 5th edge point also corrects a photo taken from the side; or continue.")
                     else -> tr("Face found. Add more edge points for precision, or continue.")
                 }, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // the buttons wrap on a narrow screen; Next takes the rest of its line (a whole line of its own when wrapped)
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SecondaryButton(tr("Undo"), enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null; faceFromModel = false }
                     SecondaryButton(tr("Clear"), enabled = center != null) { center = null; edge = emptyList(); faceFromModel = false }
                     SecondaryButton(tr("Skip face")) { skipFace = true; center = null; edge = emptyList(); step = 2 }
-                    Spacer(Modifier.weight(1f))
-                    PrimaryButton(tr("Next"), enabled = geometry != null) { goToArrows() }
+                    PrimaryButton(tr("Next"), Modifier.weight(1f), enabled = geometry != null) { goToArrows() }
                 }
             } else {
                 val sightShots = state.session?.takeIf { it.active }?.endShots
@@ -434,11 +434,10 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                         }
                     }
                 } else Text(tr("Tap each arrow where it enters the face. Tap a mark to change its ring, drag to move it."), color = uv.muted, fontSize = 13.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                FlowRow(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SecondaryButton(tr("Undo"), enabled = marks.isNotEmpty()) { marks = marks.dropLast(1); selected = null; arrowsEdited = true }
                     if (!skipFace) SecondaryButton(tr("Face")) { step = 1 }
-                    Spacer(Modifier.weight(1f))
-                    PrimaryButton(tr("Use scores"), enabled = marks.isNotEmpty() && marks.all { it.ring >= 0 }) {
+                    PrimaryButton(tr("Use scores"), Modifier.weight(1f), enabled = marks.isNotEmpty() && marks.all { it.ring >= 0 }) {
                         val rings = marks.map { it.ring }
                         val hitList: List<Hit>? = hitsOf(marks)
                         val sa = shotAssign
