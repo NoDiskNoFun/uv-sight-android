@@ -29,6 +29,7 @@ data class AppState(
     val bat: BatInfo? = null,
     val cfg: List<CfgItem>? = null,
     val cfgDirty: Boolean = false,
+    val introduceSight: Boolean = false,     // a sight met for the first time: ask for its name and bow
     val cfgGaveUp: Boolean = false,
     val session: SessionInfo? = null,
     val level: LevelInfo? = null,
@@ -411,7 +412,7 @@ class SightController(
                 }) }
                 set { copy(role = h.role, rolePending = h.pending, primary = h.primary, needsPassword = h.role == "locked" && s.group.password.isEmpty()) }
                 helloWait?.complete(true); helloWait = null
-                h.id?.let { onSightIdentified(it, h.sightName) }
+                h.id?.let { onSightIdentified(it, h.sightName, h.bow) }
                 if (h.role != "locked") afterUnlocked()
             }
             "auth" -> {
@@ -507,10 +508,10 @@ class SightController(
                 val ls = liveSlot
                 if (!inLogAnswer && ls != null && sl.epoch == ls.epoch && sl.id == ls.id) { handleLiveSlot(sl); return finish() }
                 copyState?.let { if (it.phase == "keys") it.keys.add("${sl.epoch}-${sl.id}") }
-                if (!inLogAnswer) { archive.archiveSlot(sl.epoch, sl, false, s.sight?.id); refreshHistory(); return finish() }
+                if (!inLogAnswer) { archive.archiveSlot(sl.epoch, sl, false, s.sight?.id, bow()); refreshHistory(); return finish() }
                 syncGot++
                 syncSeen?.add("${sl.epoch ?: syncEpoch}-${sl.id}")
-                if (archive.archiveSlot(sl.epoch ?: syncEpoch, sl, hiddenFetch, s.sight?.id)) syncCount++
+                if (archive.archiveSlot(sl.epoch ?: syncEpoch, sl, hiddenFetch, s.sight?.id, bow())) syncCount++
                 refreshHistory()
             }
             "endrec" -> { val e = m.toEndRec(); if (inLogAnswer) syncGot++; endsSeen?.add("${e.epoch}-${e.id}"); archive.mergeEndRec(e); refreshHistory() }
@@ -761,15 +762,17 @@ class SightController(
     fun pairSight(address: String) { pairAddress = address; connectBoardEntry(address) }
 
     /** The sight introduced itself: register it, and switch to its own preferences. */
-    private fun onSightIdentified(id: String, name: String?) {
+    private fun onSightIdentified(id: String, name: String?, bow: Int? = null) {
         val list = archive.sights().toMutableList()
         val i = list.indexOfFirst { it.id == id }
         val now = clock.now()
-        val si = if (i >= 0) list[i].copy(name = name ?: list[i].name, address = linkAddress ?: list[i].address, lastSeen = now)
-                 else SightInfo(id, name ?: "", color = list.size, address = linkAddress, lastSeen = now)
+        val si = if (i >= 0) list[i].copy(name = name ?: list[i].name, address = linkAddress ?: list[i].address, lastSeen = now, bow = bow ?: list[i].bow)
+                 else SightInfo(id, name ?: "", color = list.size, address = linkAddress, lastSeen = now, bow = bow)
         if (i >= 0) list[i] = si else list.add(si)
         archive.saveSights(list)
         set { copy(sight = si, sights = list) }
+        // met for the first time (and the sight knows bow types): the app asks for name and bow once, in single mode
+        if (!si.introduced && bow != null && s.group.role == "single") set { copy(introduceSight = true) }
         if (pairAddress != null && pairAddress == si.address) { pairAddress = null; preferSight(si.id) }
         si.distM?.let { d -> if (d != s.distM) { set { copy(distM = d, distAuto = false) }; store.put(DIST_KEY, d.toString()) } }
         val ph = s.photo
@@ -967,9 +970,11 @@ class SightController(
         if (!s.hints.enabled) return emptyList()
         val all = archive.ends().values.flatten()
         val tol = s.cfg?.firstOrNull { it.k == "level_tol" }?.v ?: 2.0
-        return Insights.endHints(e, Insights.baseline(all, e.setup, exclude = all.firstOrNull { it === e } ?: e), tol, s.hints.clickMmAt18.takeIf { it > 0 })
+        return Insights.endHints(e, Insights.baseline(all, e.setup, exclude = all.firstOrNull { it === e } ?: e), tol, s.hints.clickMmAt18.takeIf { it > 0 }, bowOfEnd(e))
     }
-    fun sessionHints(key: String): List<String> = if (!s.hints.enabled) emptyList() else Insights.sessionHints(archive.ends()[key] ?: emptyList())
+    fun sessionHints(key: String): List<String> = if (!s.hints.enabled) emptyList() else Insights.sessionHints(archive.ends()[key] ?: emptyList(), archive.sessions().firstOrNull { it.key == key }?.bow ?: bow())
+    /** The bow an end was shot with: its session's, else the current one. */
+    private fun bowOfEnd(e: EndDetail): Int = archive.ends().entries.firstOrNull { (_, l) -> l.any { it === e } }?.key?.let { k -> archive.sessions().firstOrNull { it.key == k }?.bow } ?: bow()
     /** Mean confidence of the matches over the last ends of a setup, or null without data. */
     fun matchAccuracy(setupId: Int?): Double? = ShotMatch.accuracy(archive.ends().values.flatten(), setupId)
 
@@ -1026,7 +1031,7 @@ class SightController(
         val ls = liveSlot
         val stored = ls == null || ls.stored
         val before = gameSnapshot()
-        archive.archiveSlot(sl.epoch, sl, false, s.sight?.id)
+        archive.archiveSlot(sl.epoch, sl, false, s.sight?.id, bow())
         archive.markOnSight(setOf("${sl.epoch}-${sl.id}"), stored)
         if (stored) toast(tr("Session saved: {scored} arrows, average {avg}, {x} X", "scored" to sl.scored, "avg" to (fmt(sl.avg, 2)), "x" to sl.x))
         else toast(tr("The sight could not store this session") + (ls?.error?.let { " ($it)" } ?: "") + tr(". It is kept on this phone."), true)
@@ -1346,6 +1351,43 @@ class SightController(
         return if (dec == 0) v.roundToInt().toString() else fmt(v, dec)
     }
     fun saveSettings() = send("save")
+
+    // ---- the bow the sight is on (Bow.*): from the sight's settings when loaded, else its hello, else what the app remembers ----
+    fun bow(): Int = s.cfgValue("bow")?.toInt() ?: s.hello?.bow ?: s.sight?.bow ?: Bow.COMPOUND
+    private fun fmtPlain(v: Double) = if (v == Math.floor(v)) v.toLong().toString() else fmt(v, 1)
+    /** Change the bow type on the sight (kept with Save, like every setting); the app remembers it per sight right away. */
+    fun setBow(i: Int) { send("set bow $i"); updateSight { it.copy(bow = i) } }
+    /** What the sight has now for a suggestion's key, or null when unknown (1/0 for the switches). */
+    fun currentOf(key: String): Double? = when (key) {
+        "cant_signal" -> s.level?.let { if (it.cantSignal) 1.0 else 0.0 }
+        "range_signal" -> s.level?.let { if (it.rangeSignal) 1.0 else 0.0 }
+        "led_mode" -> s.status?.let { if (it.mode == "off") 0.0 else 1.0 }
+        else -> s.cfgValue(key)
+    }
+    /** Apply the chosen suggestions of a bow: settings-table keys by "set", the switches by their commands. */
+    fun applyBowSuggestions(bow: Int, keys: Set<String>) {
+        for (sg in Bow.suggestions(bow)) {
+            if (sg.key !in keys) continue
+            when (sg.key) {
+                "cant_signal" -> setCantSignal(sg.value == 1.0)
+                "range_signal" -> setRangeSignal(sg.value == 1.0)
+                "led_mode" -> setLedMode(if (sg.value == 0.0) "off" else "auto")
+                else -> send("set ${sg.key} ${fmtPlain(sg.value)}")
+            }
+        }
+    }
+    /** The first-connect dialog's answer: name and bow go to the sight, the bow's suggestions are applied and saved. */
+    fun introduceSight(name: String, bow: Int) {
+        set { copy(introduceSight = false) }
+        updateSight { it.copy(introduced = true, bow = bow) }
+        val n = name.trim()
+        if (n != (s.sight?.name ?: "")) send("name " + n.ifEmpty { "-" })
+        send("set bow $bow")
+        applyBowSuggestions(bow, Bow.suggestions(bow).map { it.key }.toSet())
+        send("save")
+    }
+    /** The first-connect dialog dismissed: not asked again for this sight. */
+    fun skipIntroduction() { set { copy(introduceSight = false) }; updateSight { it.copy(introduced = true) } }
     fun restoreDefaults() { expectDefaults = true; send("defaults") }
 
     /** The settings as last saved on the sight (k -> v), taken from the first read after connecting and after every save. */

@@ -88,4 +88,34 @@ class InsightsTest {
         val b = Insights.baseline(ends, null, exclude = ends[3])
         assertEquals(0.2, assertNotNull(b.hold), 1e-9)
     }
+
+    @Test fun hintsFollowTheBow() {
+        // a tight group 6 cm low: the sight bows move the sight, the barebow adjusts the crawl, the traditional archer the gap
+        val low = listOf(Hit(0.0, -60.0, 8), Hit(5.0, -62.0, 8), Hit(-5.0, -58.0, 8), Hit(2.0, -61.0, 8))
+        val e = end(1, low)
+        val none = Insights.Baseline(null, null, null, 0)
+        assertTrue(Insights.endHints(e, none, bow = Bow.COMPOUND).any { it.contains("move the sight") })
+        assertTrue(Insights.endHints(e, none, bow = Bow.RECURVE).any { it.contains("move the sight") })
+        assertTrue(Insights.endHints(e, none, bow = Bow.BAREBOW).any { it.contains("adjust the crawl") })
+        assertTrue(Insights.endHints(e, none, bow = Bow.TRADITIONAL).any { it.contains("check the gap") })
+        assertTrue(Insights.endHints(e, none, bow = Bow.TRADITIONAL).none { it.contains("move the sight") })
+        // cant: a sight bow reports the mean cant above the tolerance, the traditional archer only an unsteady cant
+        val steadyCant = end(2, low, shots = (0..3).map { ShotInfo(it, cant = -6.0) }, cant = -6.0)
+        assertTrue(Insights.endHints(steadyCant, none, cantTol = 2.0, bow = Bow.COMPOUND).any { it.startsWith("Bow canted 6.0°") })
+        assertTrue(Insights.endHints(steadyCant, none, cantTol = 2.0, bow = Bow.TRADITIONAL).none { it.startsWith("Bow canted") })
+        val wobbly = end(3, low, shots = listOf(ShotInfo(0, cant = -2.0), ShotInfo(1, cant = -8.0), ShotInfo(2, cant = -3.0), ShotInfo(3, cant = -9.0)), cant = -5.5)
+        assertTrue(Insights.endHints(wobbly, none, cantTol = 2.0, bow = Bow.TRADITIONAL).any { it.startsWith("Cant varied") })
+        // a bow without stabilisers turns more at the release: 200°/s is hard for a compound, not for a longbow
+        val rel = (0..3).map { ShotInfo(it, rate = if (it == 2) 200.0 else 60.0) }
+        assertTrue(Insights.endHints(end(4, low, shots = rel), none, bow = Bow.COMPOUND).any { it.startsWith("Hard release") })
+        assertTrue(Insights.endHints(end(4, low, shots = rel), none, bow = Bow.TRADITIONAL).none { it.startsWith("Hard release") })
+    }
+
+    @Test fun bowSuggestionsAndKeys() {
+        assertEquals("traditional", Bow.key(3)); assertEquals(2, Bow.index("barebow")); assertEquals(0, Bow.index("nonsense"))
+        assertTrue(Bow.suggestions(Bow.COMPOUND).none { it.key == "led_mode" })
+        assertTrue(Bow.suggestions(Bow.TRADITIONAL).any { it.key == "led_mode" && it.value == 0.0 })
+        assertTrue(Bow.suggestions(Bow.TRADITIONAL).any { it.key == "cant_signal" && it.value == 0.0 })
+        assertTrue(Bow.suggestions(Bow.BAREBOW).any { it.key == "cant_signal" && it.value == 1.0 })
+    }
 }

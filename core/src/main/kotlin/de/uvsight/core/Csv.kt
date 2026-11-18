@@ -17,7 +17,7 @@ object Csv {
         "average", "x_count") + (1..CSV_ARROWS).map { "a$it" } + listOf("scores",
         "angle_deg", "angle_sd_deg", "angle_n", "cant_deg", "cant_max_deg", "canted", "cant_n",
         "session_ends", "session_arrows", "session_average", "session_x", "session_minutes", "session_shots",
-        "session_invalid_ends", "session_invalid_arrows", "corrected", "ended_by_hand", "distance_source", "setup", "sight_id", "sight_name")
+        "session_invalid_ends", "session_invalid_arrows", "corrected", "ended_by_hand", "distance_source", "setup", "sight_id", "sight_name", "bow")
 
     fun field(v: Any?): String {
         if (v == null) return ""
@@ -42,6 +42,7 @@ object Csv {
                 "session_invalid_ends" to r.invalidEnds, "session_invalid_arrows" to r.invalidArrows,
                 "corrected" to if (r.mismatch) 1 else 0, "ended_by_hand" to if (r.manual) 1 else 0,
                 "sight_id" to (r.sightId ?: ""), "sight_name" to (r.sightId?.let { sightNameOf(it) } ?: ""),
+                "bow" to (r.bow?.let { Bow.key(it) } ?: ""),
             )
             val ends = endsStore[r.key] ?: emptyList()
             val rows: List<EndDetail?> = if (ends.isEmpty()) listOf(null) else ends
@@ -119,6 +120,7 @@ object Csv {
                 invalidEnds = num(o["session_invalid_ends"]) ?: 0, invalidArrows = num(o["session_invalid_arrows"]) ?: 0,
                 mismatch = o["corrected"] == "1", manual = o["ended_by_hand"] == "1",
                 sightId = o["sight_id"]?.takeIf { it.isNotEmpty() },
+                bow = o["bow"]?.takeIf { it.isNotEmpty() }?.let { Bow.index(it) },
             ))
             val el = list.filter { !it["end"].isNullOrEmpty() }.map { r ->
                 val v = r["valid"] == "1"

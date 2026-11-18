@@ -72,6 +72,21 @@ Connecting = Verbinde
 Connected = Verbunden
 Nocked = Nocked
 
+# --- app/src/main/java/de/uvsight/app/ui/BowDialogs.kt
+A new sight = Ein neues Visier
+Later = Später
+Done = Fertig
+Give the sight a name and say which bow it is on. Its cant tolerance, blinking range and signals are then set to the values suggested for that bow and saved; every one of them stays changeable under Settings. = Gib dem Visier einen Namen und sag, auf welchem Bogen es sitzt. Verkantungstoleranz, Blinkbereich und Signale werden dann auf die für diesen Bogen vorgeschlagenen Werte gesetzt und gespeichert; jeder davon bleibt unter Einstellungen änderbar.
+Name of this sight = Name dieses Visiers
+e.g. Hoyt = z. B. Hoyt
+Bow = Bogen
+on = ein
+off = aus
+Suggested values: {bow} = Vorgeschlagene Werte: {bow}
+Apply = Übernehmen
+Everything is already set as suggested for this bow. = Alles ist bereits so eingestellt, wie für diesen Bogen vorgeschlagen.
+Tick what to change. The values apply right away; Save in the bar below keeps them after a restart, Discard takes them back. = Hake an, was geändert werden soll. Die Werte gelten sofort; Speichern in der Leiste unten behält sie nach einem Neustart, Verwerfen nimmt sie zurück.
+
 # --- app/src/main/java/de/uvsight/app/ui/Common.kt
 This sight has a password. Enter the group's password under Settings → Group. = Dieses Visier hat ein Passwort. Gib das Gruppenpasswort unter Einstellungen → Gruppe ein.
 Another archer is connected to this sight; this app only reads until they leave. = Ein anderer Schütze ist mit diesem Visier verbunden; diese App liest nur, bis er geht.
@@ -245,9 +260,7 @@ Target = Zielwert
 Right now: {text} = Aktuell: {text}
 
 # --- app/src/main/java/de/uvsight/app/ui/SettingsScreen.kt
-off = aus
 auto = auto
-on = ein
 normal = normal
 inverted = umgekehrt
 fixed = fest
@@ -343,10 +356,9 @@ Remove = Entfernen
 The last trainer can only be removed over the USB console (group clear). = Der letzte Trainer lässt sich nur über die USB-Konsole entfernen (group clear).
 Sights = Visiere
 {n} known = {n} bekannt
-Name of this sight = Name dieses Visiers
 Shown in the app and behind "Anchored" in the Bluetooth name. Id {id}. = Erscheint in der App und hinter „Anchored“ im Bluetooth-Namen. Id {id}.
-e.g. Hoyt = z. B. Hoyt
 Save name = Namen speichern
+Suggested values for this bow = Vorgeschlagene Werte für diesen Bogen
 Known sights = Bekannte Visiere
 Sessions, sync and the distance, face and arrow diameter are kept per sight. Pick one to connect only to it. = Sitzungen, Abgleich sowie Distanz, Auflage und Pfeildurchmesser werden je Visier gemerkt. Wähle eines, um nur mit ihm zu verbinden.
  (connected) = (verbunden)
@@ -456,7 +468,6 @@ the arrow detector = den Pfeildetektor
 Testing {model} on the CPU = Teste {model} auf der CPU
 Compiling the GPU shader cache for {model} = Erzeuge den GPU-Shader-Cache für {model}
 Testing {model} on the GPU = Teste {model} auf der GPU
-Done = Fertig
 Model imported: {name} = Modell importiert: {name}
 no face model = kein Auflagen-Modell
 Import failed = Import fehlgeschlagen
@@ -707,6 +718,19 @@ Clean run = Saubere Serie
 X collector = X-Sammler
 Big end = Große Passe
 
+# --- core/src/main/kotlin/de/uvsight/core/Bow.kt
+Recurve = Recurve
+Barebow = Blankbogen
+Traditional = Traditionell
+Compound = Compound
+Olympic recurve: sight, clicker, finger release. Hints point to the sight, the anchor and the release. = Olympischer Recurve: Visier, Klicker, Fingerlösen. Tipps zielen auf Visier, Anker und Lösen.
+No sight, string or face walking. Hints point to the crawl and the anchor instead of the sight; the cant tolerance is wider. = Kein Visier, String- oder Face-Walking. Tipps zielen auf Crawl und Anker statt auf das Visier; die Verkantungstoleranz ist weiter.
+Hunting bow, longbow, instinctive: no sight, no clicker, a short hold. Cant is judged by how steady it is, not by its size; the LED signals are off by default. = Jagdbogen, Langbogen, instinktiv: kein Visier, kein Klicker, kurzes Halten. Die Verkantung wird nach ihrer Gleichmäßigkeit beurteilt, nicht nach ihrer Größe; die LED-Signale sind standardmäßig aus.
+Sight with a scale, peep and release; the draw is fixed by the cams. Hints point to the sight and the release; the cant tolerance is tight. = Visier mit Skala, Peep und Release; der Auszug ist durch die Cams fest. Tipps zielen auf Visier und Release; die Verkantungstoleranz ist eng.
+Cant tolerance = Verkantungstoleranz
+Blinking range up to = Blinkbereich bis
+Blink when canted = Blinken bei Verkantung
+
 # --- core/src/main/kotlin/de/uvsight/core/Game.kt
 New best end = Neue beste Passe
 New best average = Neuer bester Schnitt
@@ -728,17 +752,27 @@ left = links
 right = rechts
 low = tief
 high = hoch
-Group {offset} = Gruppe {offset}
 : move the sight = : Visier verstellen
+: adjust the crawl = : Crawl anpassen
+: check anchor and face contact = : Anker und Gesichtskontakt prüfen
+: check the gap and the anchor = : Lücke (Gap) und Anker prüfen
+: check anchor and bow arm = : Anker und Bogenarm prüfen
+Group {offset} = Gruppe {offset}
 {n} {clicks} {dir} = {n} {clicks} {dir}
 click = Klick
 clicks = Klicks
 down = runter
 up = hoch
+Vertical spread ({v} cm up/down vs {h} sideways): the draw is fixed, so check release timing, peep alignment and the bow arm. = Senkrechte Streuung ({v} cm hoch/tief gegen {h} seitlich): Der Auszug ist fest, prüfe Release-Timing, Peep-Ausrichtung und Bogenarm.
+Vertical spread ({v} cm up/down vs {h} sideways): the draw length varies; check the anchor and draw to the same point every time. = Senkrechte Streuung ({v} cm hoch/tief gegen {h} seitlich): Die Auszugslänge schwankt; prüfe den Anker und ziehe jedes Mal bis zum selben Punkt.
 Vertical spread ({v} cm up/down vs {h} sideways): check anchor and draw length. = Streuung in der Höhe ({v} cm hoch/runter gegen {h} seitlich): Anker und Auszugslänge prüfen.
-Horizontal spread ({h} cm sideways vs {v} up/down): check the release. = Streuung in der Breite ({h} cm seitlich gegen {v} hoch/runter): Release prüfen.
+Horizontal spread ({h} cm sideways vs {v} up/down): check the release and the grip (torque). = Waagerechte Streuung ({h} cm seitlich gegen {v} hoch/tief): Prüfe Release und Griff (Torque).
+Horizontal spread ({h} cm sideways vs {v} up/down): check the release and the bow arm. = Waagerechte Streuung ({h} cm seitlich gegen {v} hoch/tief): Prüfe Lösen und Bogenarm.
+Horizontal spread ({h} cm sideways vs {v} up/down): check the release (plucking the string). = Waagerechte Streuung ({h} cm seitlich gegen {v} hoch/tief): Prüfe das Lösen (Zupfen an der Sehne).
 Wider group than usual ({now} cm vs {usual} cm). = Weitere Gruppe als sonst ({now} cm gegen {usual} cm).
 Unsteady hold (±{now}° vs your usual ±{usual}°). = Unruhiger Halt (±{now}° gegen sonst ±{usual}°).
+Cant varied ±{now}° within the end{usual}: keep the same cant every shot. = Verkantung schwankte in der Passe um ±{now}°{usual}: Halte bei jedem Schuss dieselbe Verkantung.
+ (usually ±{sd}°) =  (sonst ±{sd}°)
 Bow canted {side} in {n} of {total} shots. = Bogen bei {n} von {total} Schüssen nach {side} verkantet.
 Bow canted {deg}° {side} on average. = Bogen im Mittel {deg}° nach {side} verkantet.
 Aim sank before the release in {n} shots. = Ziel ist bei {n} Schüssen vor dem Lösen abgesunken.
@@ -749,6 +783,7 @@ Uneven rhythm: {lo} to {hi} s between shots. = Unruhiger Rhythmus: {lo} bis {hi}
 The first arrow of an end scores {d} points below the others ({n} ends). = Der erste Pfeil einer Passe liegt {d} Punkte unter den anderen ({n} Passen).
 Scores fell from {a} to {b} per arrow over the session = Die Wertung fiel über die Sitzung von {a} auf {b} je Pfeil
 , and the hold got less steady = , und der Halt wurde unruhiger
+The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: the bow was not drawn into the wall (creeping). Check the bow-arm shoulder: keep it low and settled and push the bow towards the target. = Die Haltung wurde über die Sitzung unruhiger ({h0}° auf {h1}°) und die Schüsse schwächer ({g0} g auf {g1} g): nicht bis an die Wand gezogen (Kriechen). Prüfe die Schulter des Bogenarms: tief und ruhig halten und den Bogen zum Ziel schieben.
 The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: a shorter draw. Check the bow-arm shoulder: keep it low and settled and push the bow towards the target. = Die Haltung wurde über die Sitzung unruhiger ({h0}° auf {h1}°) und die Schüsse schwächer ({g0} g auf {g1} g): ein kürzerer Auszug. Prüfe die Schulter des Bogenarms: tief und ruhig halten und den Bogen zum Ziel schieben.
 
 # --- core/src/main/kotlin/de/uvsight/core/SightController.kt

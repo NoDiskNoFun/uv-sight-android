@@ -75,6 +75,21 @@ Connecting = Connecting
 Connected = Connected
 Nocked = Nocked
 
+# --- app/src/main/java/de/uvsight/app/ui/BowDialogs.kt
+A new sight = A new sight
+Later = Later
+Done = Done
+Give the sight a name and say which bow it is on. Its cant tolerance, blinking range and signals are then set to the values suggested for that bow and saved; every one of them stays changeable under Settings. = Give the sight a name and say which bow it is on. Its cant tolerance, blinking range and signals are then set to the values suggested for that bow and saved; every one of them stays changeable under Settings.
+Name of this sight = Name of this sight
+e.g. Hoyt = e.g. Hoyt
+Bow = Bow
+on = on
+off = off
+Suggested values: {bow} = Suggested values: {bow}
+Apply = Apply
+Everything is already set as suggested for this bow. = Everything is already set as suggested for this bow.
+Tick what to change. The values apply right away; Save in the bar below keeps them after a restart, Discard takes them back. = Tick what to change. The values apply right away; Save in the bar below keeps them after a restart, Discard takes them back.
+
 # --- app/src/main/java/de/uvsight/app/ui/Common.kt
 This sight has a password. Enter the group's password under Settings → Group. = This sight has a password. Enter the group's password under Settings → Group.
 Another archer is connected to this sight; this app only reads until they leave. = Another archer is connected to this sight; this app only reads until they leave.
@@ -173,7 +188,7 @@ Mark the arrows = Mark the arrows
 Fit = Fit
 Outdoor = Outdoor
 Indoor = Indoor
-Looking for the face… = Looking for the face…
+Looking for the face… Tap its centre to mark it yourself; the finder's result is then ignored. = Looking for the face… Tap its centre to mark it yourself; the finder's result is then ignored.
 Face found by the model. Drag a point to adjust, or Clear to mark anew. = Face found by the model. Drag a point to adjust, or Clear to mark anew.
 Tap the centre of the face. = Tap the centre of the face.
 Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right. = Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right.
@@ -248,9 +263,7 @@ Target = Target
 Right now: {text} = Right now: {text}
 
 # --- app/src/main/java/de/uvsight/app/ui/SettingsScreen.kt
-off = off
 auto = auto
-on = on
 normal = normal
 inverted = inverted
 fixed = fixed
@@ -346,10 +359,9 @@ Remove = Remove
 The last trainer can only be removed over the USB console (group clear). = The last trainer can only be removed over the USB console (group clear).
 Sights = Sights
 {n} known = {n} known
-Name of this sight = Name of this sight
 Shown in the app and behind "Anchored" in the Bluetooth name. Id {id}. = Shown in the app and behind "Anchored" in the Bluetooth name. Id {id}.
-e.g. Hoyt = e.g. Hoyt
 Save name = Save name
+Suggested values for this bow = Suggested values for this bow
 Known sights = Known sights
 Sessions, sync and the distance, face and arrow diameter are kept per sight. Pick one to connect only to it. = Sessions, sync and the distance, face and arrow diameter are kept per sight. Pick one to connect only to it.
  (connected) =  (connected)
@@ -459,7 +471,6 @@ the arrow detector = the arrow detector
 Testing {model} on the CPU = Testing {model} on the CPU
 Compiling the GPU shader cache for {model} = Compiling the GPU shader cache for {model}
 Testing {model} on the GPU = Testing {model} on the GPU
-Done = Done
 Model imported: {name} = Model imported: {name}
 no face model = no face model
 Import failed = Import failed
@@ -483,7 +494,7 @@ How sure the arrow detector has to be before an arrow is proposed. Lower finds m
 Use the face finder = Use the face finder
 Off: you mark the face yourself and the photo trains the face finder. = Off: you mark the face yourself and the photo trains the face finder.
 Face confidence: {faceConf} % = Face confidence: {faceConf} %
-How sure the face finder has to be; of the faces above it the surest is taken. Lower finds the face in more photos, but may put it on something else. = How sure the face finder has to be; of the faces above it the surest is taken. Lower finds the face in more photos, but may put it on something else.
+Below this the face is not proposed and you mark it by hand. Lower accepts the finder's face on more photos, higher sends more photos to marking by hand. = Below this the face is not proposed and you mark it by hand. Lower accepts the finder's face on more photos, higher sends more photos to marking by hand.
 Collect training data = Collect training data
 Keeps every scored photo with its marks on this phone, so the recognition models can be trained (again) later. Only what you marked or corrected by hand is used: with the face finder on, the photo trains the arrow detector; with the arrow detector on, the face finder; a proposal you accepted untouched trains nothing. Photos never leave the phone unless you export them. = Keeps every scored photo with its marks on this phone, so the recognition models can be trained (again) later. Only what you marked or corrected by hand is used: with the face finder on, the photo trains the arrow detector; with the arrow detector on, the face finder; a proposal you accepted untouched trains nothing. Photos never leave the phone unless you export them.
 Export = Export
@@ -710,6 +721,19 @@ Clean run = Clean run
 X collector = X collector
 Big end = Big end
 
+# --- core/src/main/kotlin/de/uvsight/core/Bow.kt
+Recurve = Recurve
+Barebow = Barebow
+Traditional = Traditional
+Compound = Compound
+Olympic recurve: sight, clicker, finger release. Hints point to the sight, the anchor and the release. = Olympic recurve: sight, clicker, finger release. Hints point to the sight, the anchor and the release.
+No sight, string or face walking. Hints point to the crawl and the anchor instead of the sight; the cant tolerance is wider. = No sight, string or face walking. Hints point to the crawl and the anchor instead of the sight; the cant tolerance is wider.
+Hunting bow, longbow, instinctive: no sight, no clicker, a short hold. Cant is judged by how steady it is, not by its size; the LED signals are off by default. = Hunting bow, longbow, instinctive: no sight, no clicker, a short hold. Cant is judged by how steady it is, not by its size; the LED signals are off by default.
+Sight with a scale, peep and release; the draw is fixed by the cams. Hints point to the sight and the release; the cant tolerance is tight. = Sight with a scale, peep and release; the draw is fixed by the cams. Hints point to the sight and the release; the cant tolerance is tight.
+Cant tolerance = Cant tolerance
+Blinking range up to = Blinking range up to
+Blink when canted = Blink when canted
+
 # --- core/src/main/kotlin/de/uvsight/core/Game.kt
 New best end = New best end
 New best average = New best average
@@ -731,17 +755,27 @@ left = left
 right = right
 low = low
 high = high
-Group {offset} = Group {offset}
 : move the sight = : move the sight
+: adjust the crawl = : adjust the crawl
+: check anchor and face contact = : check anchor and face contact
+: check the gap and the anchor = : check the gap and the anchor
+: check anchor and bow arm = : check anchor and bow arm
+Group {offset} = Group {offset}
 {n} {clicks} {dir} = {n} {clicks} {dir}
 click = click
 clicks = clicks
 down = down
 up = up
+Vertical spread ({v} cm up/down vs {h} sideways): the draw is fixed, so check release timing, peep alignment and the bow arm. = Vertical spread ({v} cm up/down vs {h} sideways): the draw is fixed, so check release timing, peep alignment and the bow arm.
+Vertical spread ({v} cm up/down vs {h} sideways): the draw length varies; check the anchor and draw to the same point every time. = Vertical spread ({v} cm up/down vs {h} sideways): the draw length varies; check the anchor and draw to the same point every time.
 Vertical spread ({v} cm up/down vs {h} sideways): check anchor and draw length. = Vertical spread ({v} cm up/down vs {h} sideways): check anchor and draw length.
-Horizontal spread ({h} cm sideways vs {v} up/down): check the release. = Horizontal spread ({h} cm sideways vs {v} up/down): check the release.
+Horizontal spread ({h} cm sideways vs {v} up/down): check the release and the grip (torque). = Horizontal spread ({h} cm sideways vs {v} up/down): check the release and the grip (torque).
+Horizontal spread ({h} cm sideways vs {v} up/down): check the release and the bow arm. = Horizontal spread ({h} cm sideways vs {v} up/down): check the release and the bow arm.
+Horizontal spread ({h} cm sideways vs {v} up/down): check the release (plucking the string). = Horizontal spread ({h} cm sideways vs {v} up/down): check the release (plucking the string).
 Wider group than usual ({now} cm vs {usual} cm). = Wider group than usual ({now} cm vs {usual} cm).
 Unsteady hold (±{now}° vs your usual ±{usual}°). = Unsteady hold (±{now}° vs your usual ±{usual}°).
+Cant varied ±{now}° within the end{usual}: keep the same cant every shot. = Cant varied ±{now}° within the end{usual}: keep the same cant every shot.
+ (usually ±{sd}°) =  (usually ±{sd}°)
 Bow canted {side} in {n} of {total} shots. = Bow canted {side} in {n} of {total} shots.
 Bow canted {deg}° {side} on average. = Bow canted {deg}° {side} on average.
 Aim sank before the release in {n} shots. = Aim sank before the release in {n} shots.
@@ -752,6 +786,7 @@ Uneven rhythm: {lo} to {hi} s between shots. = Uneven rhythm: {lo} to {hi} s bet
 The first arrow of an end scores {d} points below the others ({n} ends). = The first arrow of an end scores {d} points below the others ({n} ends).
 Scores fell from {a} to {b} per arrow over the session = Scores fell from {a} to {b} per arrow over the session
 , and the hold got less steady = , and the hold got less steady
+The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: the bow was not drawn into the wall (creeping). Check the bow-arm shoulder: keep it low and settled and push the bow towards the target. = The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: the bow was not drawn into the wall (creeping). Check the bow-arm shoulder: keep it low and settled and push the bow towards the target.
 The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: a shorter draw. Check the bow-arm shoulder: keep it low and settled and push the bow towards the target. = The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: a shorter draw. Check the bow-arm shoulder: keep it low and settled and push the bow towards the target.
 
 # --- core/src/main/kotlin/de/uvsight/core/SightController.kt

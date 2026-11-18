@@ -27,6 +27,7 @@ data class ArchiveSession(
     val onSight: Boolean? = null,
     val owner: String? = null,                // the archer's app id on a shared sight, null = no owner
     val ownerName: String? = null,
+    val bow: Int? = null,                     // the bow the session was shot with (Bow.*), null = not known (before firmware 7.7)
 ) {
     val sortTime: Long get() = endedAt ?: importedAt
     val startedAt: Long? get() = endedAt?.let { it - min * 60_000L }
@@ -79,7 +80,8 @@ data class HelloInfo(val proto: Int, val fw: String, val name: String, val imu: 
                      val pw: Boolean = false,        // shared sight: a password is set
                      val role: String = "none",      // this link: none / open / locked / user / trainer
                      val pending: Boolean = false,   // trainer access requested, not approved yet
-                     val primary: Boolean = true)    // this link is the archer's (false: another archer is connected)
+                     val primary: Boolean = true,    // this link is the archer's (false: another archer is connected)
+                     val bow: Int? = null)           // the bow the sight is on (Bow.*), firmware 7.7 and newer
 
 /** Answer to "auth" and the group state of a shared sight. */
 data class AuthInfo(val ok: Boolean, val role: String, val pending: Boolean)
@@ -101,6 +103,7 @@ data class BoardEntry(
     val session: Boolean, val pw: Boolean, val hasOwner: Boolean, val counterOn: Boolean, val linked: Boolean,
     val battery: Int, val end: Int, val endShots: Int, val points: Int, val scored: Int, val x: Int,
     val ownerName: String, val seen: Long,
+    val bow: Int = 0,                                 // from the advertisement's flags (firmware 7.7; 0 before)
 ) {
     val label: String get() = DEVICE_NAME_PREFIXES.fold(bleName) { n, p -> n.removePrefix(p) }.trim().ifEmpty { if (chip.isEmpty()) "Sight" else "Sight " + chip.takeLast(4) }
 }
@@ -122,6 +125,8 @@ data class SightInfo(
     val face: String? = null,
     val arrowMm: Double? = null,
     val settings: Map<String, String> = emptyMap(),   // shared sight: the setting commands this app sent last, replayed on connect
+    val bow: Int? = null,                             // the bow this sight is on, as the sight last said (Bow.*)
+    val introduced: Boolean = false,                  // the first-connect dialog (name and bow) was shown for it
 ) {
     val label: String get() = name.ifEmpty { "Sight " + id.takeLast(4) }
 }

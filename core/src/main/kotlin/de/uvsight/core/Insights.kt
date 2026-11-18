@@ -31,12 +31,20 @@ object Insights {
     fun holdOf(e: EndDetail): Double? = e.shots?.mapNotNull { it.hold }?.takeIf { it.isNotEmpty() }?.average() ?: e.angSd
 
     /** What is usual for this archer: medians over earlier ends (same setup when given). */
-    data class Baseline(val hold: Double?, val groupRadius: Double?, val holdMs: Double?, val ends: Int)
+    data class Baseline(val hold: Double?, val groupRadius: Double?, val holdMs: Double?, val ends: Int, val cantSd: Double? = null)
+
+    /** How much the cant varied within an end (deg), from its shots; null below three readings. */
+    fun cantSdOf(e: EndDetail): Double? {
+        val c = e.shots?.mapNotNull { it.cant } ?: return null
+        if (c.size < 3) return null
+        val m = c.average(); return sqrt(c.sumOf { (it - m) * (it - m) } / c.size)
+    }
 
     fun baseline(ends: List<EndDetail>, setup: Int?, exclude: EndDetail? = null): Baseline {
         val rel = ends.filter { it.valid && (setup == null || it.setup == null || it.setup == setup) && it !== exclude }
         return Baseline(median(rel.mapNotNull { holdOf(it) }), median(rel.mapNotNull { group(it.hits)?.radius }),
-            median(rel.mapNotNull { e -> e.shots?.mapNotNull { it.holdMs?.toDouble() }?.takeIf { it.isNotEmpty() }?.average() }), rel.size)
+            median(rel.mapNotNull { e -> e.shots?.mapNotNull { it.holdMs?.toDouble() }?.takeIf { it.isNotEmpty() }?.average() }), rel.size,
+            median(rel.mapNotNull { cantSdOf(it) }))
     }
 
     private fun median(v: List<Double>): Double? = if (v.isEmpty()) null else v.sorted().let { s -> if (s.size % 2 == 1) s[s.size / 2] else (s[s.size / 2 - 1] + s[s.size / 2]) / 2 }
@@ -46,10 +54,12 @@ object Insights {
     /**
      * Hints for one end. cantTol: the sight's cant tolerance in degrees. clickMmAt18: how far one
      * click of the sight moves the group at 18 m (null = unknown, then only centimetres are given).
+     * bow: the bow type (Bow.*), which decides the wording and some thresholds.
      */
-    fun endHints(e: EndDetail, base: Baseline, cantTol: Double = 2.0, clickMmAt18: Double? = null): List<String> {
+    fun endHints(e: EndDetail, base: Baseline, cantTol: Double = 2.0, clickMmAt18: Double? = null, bow: Int = Bow.COMPOUND): List<String> {
         val out = ArrayList<String>()
         if (!e.valid) return out
+        val prof = Bow.profile(bow, cantTol)
         val g = group(e.hits)
         if (g != null) {
             val off = hypot(g.cx, g.cy)
@@ -58,9 +68,16 @@ object Insights {
                 val parts = ArrayList<String>()
                 if (abs(g.cx) >= 1.0) parts.add(tr("{cm} cm {side}", "cm" to f1(abs(g.cx)), "side" to (if (g.cx < 0) tr("left") else tr("right"))))
                 if (abs(g.cy) >= 1.0) parts.add(tr("{cm} cm {side}", "cm" to f1(abs(g.cy)), "side" to (if (g.cy < 0) tr("low") else tr("high"))))
-                var s = tr("Group {offset}", "offset" to parts.joinToString(", ")) + if (tight) tr(": move the sight") else ""
+                // a tight group off centre: the sight, or without one the crawl / the gap and the anchor
+                val fix = when {
+                    !tight -> ""
+                    Bow.hasSight(bow) -> tr(": move the sight")
+                    bow == Bow.BAREBOW -> if (abs(g.cy) >= abs(g.cx)) tr(": adjust the crawl") else tr(": check anchor and face contact")
+                    else -> if (abs(g.cy) >= abs(g.cx)) tr(": check the gap and the anchor") else tr(": check anchor and bow arm")
+                }
+                var s = tr("Group {offset}", "offset" to parts.joinToString(", ")) + fix
                 val d = e.dist
-                if (clickMmAt18 != null && clickMmAt18 > 0 && d != null && d > 0) {
+                if (Bow.hasSight(bow) && clickMmAt18 != null && clickMmAt18 > 0 && d != null && d > 0) {
                     val perClickCm = clickMmAt18 / 10 * d / 18.0
                     val cl = ArrayList<String>()
                     val kx = (abs(g.cx) / perClickCm).roundToInt(); val ky = (abs(g.cy) / perClickCm).roundToInt()
@@ -71,8 +88,16 @@ object Insights {
                 out.add(s + ".")
             }
             if (g.n >= 4) {
-                if (g.sdY > 1.5 * g.sdX && g.sdY > 3) out.add(tr("Vertical spread ({v} cm up/down vs {h} sideways): check anchor and draw length.", "v" to f1(g.sdY), "h" to f1(g.sdX)))
-                else if (g.sdX > 1.5 * g.sdY && g.sdX > 3) out.add(tr("Horizontal spread ({h} cm sideways vs {v} up/down): check the release.", "h" to f1(g.sdX), "v" to f1(g.sdY)))
+                if (g.sdY > 1.5 * g.sdX && g.sdY > 3) out.add(when (bow) {
+                    Bow.COMPOUND -> tr("Vertical spread ({v} cm up/down vs {h} sideways): the draw is fixed, so check release timing, peep alignment and the bow arm.", "v" to f1(g.sdY), "h" to f1(g.sdX))
+                    Bow.TRADITIONAL -> tr("Vertical spread ({v} cm up/down vs {h} sideways): the draw length varies; check the anchor and draw to the same point every time.", "v" to f1(g.sdY), "h" to f1(g.sdX))
+                    else -> tr("Vertical spread ({v} cm up/down vs {h} sideways): check anchor and draw length.", "v" to f1(g.sdY), "h" to f1(g.sdX))
+                })
+                else if (g.sdX > 1.5 * g.sdY && g.sdX > 3) out.add(when (bow) {
+                    Bow.COMPOUND -> tr("Horizontal spread ({h} cm sideways vs {v} up/down): check the release and the grip (torque).", "h" to f1(g.sdX), "v" to f1(g.sdY))
+                    Bow.TRADITIONAL -> tr("Horizontal spread ({h} cm sideways vs {v} up/down): check the release and the bow arm.", "h" to f1(g.sdX), "v" to f1(g.sdY))
+                    else -> tr("Horizontal spread ({h} cm sideways vs {v} up/down): check the release (plucking the string).", "h" to f1(g.sdX), "v" to f1(g.sdY))
+                })
             }
             if (base.groupRadius != null && g.n >= 3 && g.radius > base.groupRadius * 1.5 && g.radius > 3) out.add(tr("Wider group than usual ({now} cm vs {usual} cm).", "now" to f1(g.radius), "usual" to f1(base.groupRadius)))
         }
@@ -80,15 +105,20 @@ object Insights {
         if (hold != null && base.hold != null && base.ends >= 3 && hold > base.hold * 1.5 && hold > 0.05) out.add(tr("Unsteady hold (±{now}° vs your usual ±{usual}°).", "now" to f2(hold), "usual" to f2(base.hold)))
         val canted = e.canted ?: 0
         val cant = e.cant
-        if (canted >= 2 && cant != null) out.add(tr("Bow canted {side} in {n} of {total} shots.", "side" to (if (cant < 0) tr("left") else tr("right")), "n" to canted, "total" to (e.cantN ?: e.arrows)))
-        else if (cant != null && abs(cant) > cantTol) out.add(tr("Bow canted {deg}° {side} on average.", "deg" to f1(abs(cant)), "side" to (if (cant < 0) tr("left") else tr("right"))))
+        if (prof.cantAsSteadiness) {
+            // a traditional archer cants on purpose: what counts is that the cant is the same shot after shot
+            val sd = cantSdOf(e)
+            if (sd != null && sd > 1.0 && (base.cantSd == null || sd > base.cantSd * 1.5))
+                out.add(tr("Cant varied ±{now}° within the end{usual}: keep the same cant every shot.", "now" to f1(sd), "usual" to (base.cantSd?.let { tr(" (usually ±{sd}°)", "sd" to f1(it)) } ?: "")))
+        } else if (canted >= 2 && cant != null) out.add(tr("Bow canted {side} in {n} of {total} shots.", "side" to (if (cant < 0) tr("left") else tr("right")), "n" to canted, "total" to (e.cantN ?: e.arrows)))
+        else if (cant != null && abs(cant) > prof.cantTol) out.add(tr("Bow canted {deg}° {side} on average.", "deg" to f1(abs(cant)), "side" to (if (cant < 0) tr("left") else tr("right"))))
         e.shots?.let { shots ->
-            val sinking = shots.count { (it.drop ?: 0.0) < -0.4 }
+            val sinking = shots.count { (it.drop ?: 0.0) < prof.sinkThreshold }
             if (sinking >= 2) out.add(tr("Aim sank before the release in {n} shots.", "n" to sinking))
             val rates = shots.mapNotNull { it.rate }
             if (rates.size >= 3) {
                 val med = median(rates)!!
-                val hard = shots.filter { (it.rate ?: 0.0) > 2 * med && (it.rate ?: 0.0) > 150 }
+                val hard = shots.filter { (it.rate ?: 0.0) > 2 * med && (it.rate ?: 0.0) > prof.hardReleaseMin }
                 if (hard.isNotEmpty()) out.add(tr("Hard release in {shots}: the bow turned {rate}°/s.", "shots" to (if (hard.size == 1) tr("shot {n}", "n" to hard[0].i + 1) else tr("shots {list}", "list" to hard.joinToString(", ") { "${it.i + 1}" })), "rate" to f1(hard.maxOf { it.rate!! })))
             }
             rhythm(shots)?.let { (cv, lo, hi) -> if (shots.size >= 4 && cv > 0.5) out.add(tr("Uneven rhythm: {lo} to {hi} s between shots.", "lo" to f1(lo), "hi" to f1(hi))) }
@@ -106,8 +136,8 @@ object Insights {
         return Triple(if (m > 0) sd / m else 0.0, iv.min(), iv.max())
     }
 
-    /** Hints over a whole session: first-arrow effect and fatigue. */
-    fun sessionHints(ends: List<EndDetail>): List<String> {
+    /** Hints over a whole session: first-arrow effect, fatigue and the bow-arm shoulder; bow: the bow type (Bow.*). */
+    fun sessionHints(ends: List<EndDetail>, bow: Int = Bow.COMPOUND): List<String> {
         val out = ArrayList<String>()
         val valid = ends.filter { it.valid }.sortedBy { it.n }
         // first arrow of the end vs the rest, from sure or hand-set shot matches
@@ -143,8 +173,11 @@ object Insights {
             val h0 = shots.take(k).map { it.hold!! }.average(); val h1 = shots.takeLast(k).map { it.hold!! }.average()
             val g0 = shots.take(k).map { it.g!! }.average(); val g1 = shots.takeLast(k).map { it.g!! }.average()
             if (h1 >= h0 * 1.3 && h1 - h0 >= 0.05 && g1 <= g0 * 0.85)
-                out.add(tr("The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: a shorter draw. Check the bow-arm shoulder: keep it low and settled and push the bow towards the target.",
-                    "h0" to f2(h0), "h1" to f2(h1), "g0" to f1(g0), "g1" to f1(g1)))
+                out.add(if (bow == Bow.COMPOUND)
+                    tr("The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: the bow was not drawn into the wall (creeping). Check the bow-arm shoulder: keep it low and settled and push the bow towards the target.",
+                        "h0" to f2(h0), "h1" to f2(h1), "g0" to f1(g0), "g1" to f1(g1))
+                    else tr("The hold spread more ({h0}° to {h1}°) and the shots got weaker ({g0} g to {g1} g) over the session: a shorter draw. Check the bow-arm shoulder: keep it low and settled and push the bow towards the target.",
+                        "h0" to f2(h0), "h1" to f2(h1), "g0" to f1(g0), "g1" to f1(g1)))
         }
         return out
     }

@@ -226,6 +226,17 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { ctl.renameSight(nameText) }))
                         }
                         if (nameText.trim() != cur.name) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { SecondaryButton(tr("Save name")) { ctl.renameSight(nameText) } }
+                        // the bow this sight is on: the hints follow it; a change offers the bow's suggested values, each with a tick
+                        if (state.hello?.bow != null) {
+                            val bow = ctl.bow()
+                            var suggestFor by remember { mutableStateOf<Int?>(null) }
+                            val labels = (0..3).map { de.uvsight.core.Bow.label(it) }
+                            SegRow(tr("Bow"), de.uvsight.core.Bow.describe(bow), de.uvsight.core.Bow.label(bow), labels) { picked ->
+                                val i = labels.indexOf(picked).coerceAtLeast(0); if (i != bow) { ctl.setBow(i); suggestFor = i }
+                            }
+                            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.End) { SecondaryButton(tr("Suggested values for this bow")) { suggestFor = bow } }
+                            suggestFor?.let { b -> BowSuggestDialog(b, ctl, onClose = { suggestFor = null }) }
+                        }
                     }
                     if (state.sights.size > 1 || (state.sights.size == 1 && (cur == null || !connected))) {
                         HorizontalDivider(color = uv.line)

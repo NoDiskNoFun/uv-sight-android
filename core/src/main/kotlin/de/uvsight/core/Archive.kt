@@ -90,13 +90,13 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
      * Store a session from the sight. Returns true if it was new.
      * hiddenFetch: a full log answer is running to recover sessions removed before their data was kept.
      */
-    fun archiveSlot(epoch: Long?, sl: SlotMsg, hiddenFetch: Boolean, sightId: String? = null): Boolean {
+    fun archiveSlot(epoch: Long?, sl: SlotMsg, hiddenFetch: Boolean, sightId: String? = null, bow: Int? = null): Boolean {
         val list = sessions().toMutableList()
         val key = "$epoch-${sl.id}"
         val now = clock.now()
         if (deleted().contains(key)) {
             if (hiddenFetch && list.none { it.key == key }) {
-                list.add(fromSlot(key, epoch, sl, sl.start?.let { it * 1000 + sl.min * 60_000L }, now).copy(hidden = true, sightId = sightId))
+                list.add(fromSlot(key, epoch, sl, sl.start?.let { it * 1000 + sl.min * 60_000L }, now).copy(hidden = true, sightId = sightId, bow = bow))
                 saveSessions(list)
             }
             return false
@@ -108,11 +108,11 @@ class Archive(private val store: KeyValueStore, private val clock: Clock = Syste
         val idx = list.indexOfFirst { it.key == key }
         if (idx >= 0) {
             val found = list[idx]
-            val upd = found.copy(endedAt = found.endedAt ?: endedAt, sightId = found.sightId ?: sightId, owner = found.owner ?: sl.owner, ownerName = found.ownerName ?: sl.ownerName)
+            val upd = found.copy(endedAt = found.endedAt ?: endedAt, sightId = found.sightId ?: sightId, bow = found.bow ?: bow, owner = found.owner ?: sl.owner, ownerName = found.ownerName ?: sl.ownerName)
             if (upd != found) { list[idx] = upd; saveSessions(list) }
             return false
         }
-        list.add(fromSlot(key, epoch, sl, endedAt, now).copy(sightId = sightId))
+        list.add(fromSlot(key, epoch, sl, endedAt, now).copy(sightId = sightId, bow = bow))
         saveSessions(list)
         return true
     }

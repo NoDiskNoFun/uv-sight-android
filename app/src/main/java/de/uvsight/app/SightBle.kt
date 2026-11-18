@@ -173,7 +173,7 @@ class SightBle(private val context: Context, private val scope: CoroutineScope, 
         val name = result.scanRecord?.deviceName ?: result.device.name ?: DEVICE_NAME_PREFIX
         return BoardEntry(result.device.address, name, chip, session = flags and 1 != 0, pw = flags and 2 != 0, hasOwner = flags and 4 != 0,
             counterOn = flags and 8 != 0, linked = flags and 16 != 0, battery = u(4), end = u(5), endShots = u(6), points = u(7) or (u(8) shl 8),
-            scored = u(9), x = u(10), ownerName = String(nameBytes, Charsets.UTF_8), seen = System.currentTimeMillis())
+            scored = u(9), x = u(10), ownerName = String(nameBytes, Charsets.UTF_8), seen = System.currentTimeMillis(), bow = (flags shr 5) and 3)
     }
 
     /** Keep scanning and hand the board (sights seen in the last 15 s) to the controller; the trainer's screen starts and stops it. */

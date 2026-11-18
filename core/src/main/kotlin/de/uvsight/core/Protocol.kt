@@ -45,7 +45,7 @@ class Msg(val t: String, val obj: JsonObject) {
 
 fun Msg.toHello() = HelloInfo(int("proto") ?: 0, str("fw") ?: "?", str("name") ?: "", bool("imu") ?: false, bool("log") ?: false,
     id = str("id")?.takeIf { it.isNotEmpty() }, sightName = str("sname")?.takeIf { it.isNotEmpty() }, led = bool("led") ?: true,
-    pw = bool("pw") ?: false, role = str("role") ?: "none", pending = bool("pending") ?: false, primary = bool("primary") ?: true)
+    pw = bool("pw") ?: false, role = str("role") ?: "none", pending = bool("pending") ?: false, primary = bool("primary") ?: true, bow = int("bow"))
 fun Msg.toAuth() = AuthInfo(bool("ok") ?: false, str("role") ?: "none", bool("pending") ?: false)
 fun Msg.toGroup() = GroupInfo(bool("pw") ?: false, int("trainers") ?: 0, int("waiting") ?: 0, str("role") ?: "none", bool("pending") ?: false)
 fun Msg.toTrainer() = TrainerInfo(str("id") ?: "", str("name") ?: "", bool("pending") ?: false)

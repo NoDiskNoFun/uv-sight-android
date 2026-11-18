@@ -90,6 +90,7 @@ private fun BoardTile(e: BoardEntry, onClick: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(e.label, fontWeight = FontWeight.SemiBold, color = uv.ink)
+                Text("  " + de.uvsight.core.Bow.label(e.bow), color = uv.muted, fontSize = 12.sp)
                 if (e.pw) Text("  🔒", fontSize = 12.sp)
                 if (e.linked) Text("  " + tr("linked"), color = uv.muted, fontSize = 12.sp)
             }

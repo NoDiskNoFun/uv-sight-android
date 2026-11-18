@@ -155,6 +155,7 @@ fun UvSightApp(vm: SightViewModel) {
             },
             dismissButton = { TextButton(onClick = { ctl.answerConfirm("no") }) { Text(tr("Edit scores")) } })
     }
+    if (state.introduceSight) NewSightDialog(state, ctl)
     state.afterClearCount?.let { n ->
         AlertDialog(onDismissRequest = { ctl.afterClearAnswer(false) },
             title = { Text(tr("{n} {n2} deleted on the sight", "n" to n, "n2" to (if (n == 1) tr("session") else tr("sessions")))) },

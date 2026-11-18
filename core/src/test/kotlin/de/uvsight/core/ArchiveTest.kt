@@ -62,7 +62,7 @@ class ArchiveTest {
         // the badge name travels through the CSV
         a.saveSights(listOf(SightInfo("S1", "Hoyt")))
         val csv = Csv.export(a.sessions(), a.ends(), { id -> a.sights().firstOrNull { it.id == id }?.label ?: "" }) { a.setupNameOf(it) }
-        assertTrue(csv.lines()[0].endsWith(",sight_id,sight_name"))
+        assertTrue(csv.lines()[0].endsWith(",sight_id,sight_name,bow"))
         val rows = Csv.parse(csv)
         assertEquals(mapOf("S1" to "Hoyt"), Csv.sightsIn(rows))
         val (ss, _) = Csv.importEndsCsv(rows, emptyMap(), 5)

@@ -165,7 +165,7 @@ fun HistoryScreen(state: AppState, ctl: SightController, vm: SightViewModel) {
 private fun SessionDialog(r: ArchiveSession, ends: List<EndDetail>, ctl: SightController, sightOf: de.uvsight.core.SightInfo?, onClose: () -> Unit, onRemove: () -> Unit) {
     val uv = LocalUv.current
     WideDialog(onDismiss = onClose,
-        title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(fmtDate(r), Modifier.weight(1f)); SightBadge(sightOf) } },
+        title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(fmtDate(r), Modifier.weight(1f)); r.bow?.let { Text(de.uvsight.core.Bow.label(it), color = uv.muted, fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp)) }; SightBadge(sightOf) } },
         buttons = {
             if (r.hidden) TextButton(onClick = { onClose(); ctl.unhideSession(r) }) { Text(tr("Show again")) }
             TextButton(onClick = onRemove) { Text(tr("Remove…")) }
