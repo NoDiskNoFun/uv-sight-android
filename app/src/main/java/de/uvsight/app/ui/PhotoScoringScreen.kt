@@ -159,7 +159,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             // nothing) the face is marked by hand. (Taking over the last photo's marking was tried and dropped: it confused more than it helped.)
             var proposed = false
             if (hasFaceModel) {
-                val best = runCatching { modelStore.detector(modelStore.faceFile).use { it.detect(upright, 0.3) } }.getOrNull()
+                val best = runCatching { modelStore.detector(modelStore.faceFile).use { it.detect(upright, prefs.faceConf) } }.getOrNull()
                     ?.filter { it.kpts.size >= 5 }?.maxByOrNull { it.conf }
                 if (best != null) {
                     val c = best.kpts[0]; val e = best.kpts.subList(1, 5)

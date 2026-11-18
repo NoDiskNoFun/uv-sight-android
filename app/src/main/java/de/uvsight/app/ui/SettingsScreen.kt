@@ -559,12 +559,22 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                 }
                 modelInfo?.let { mi -> runLine(mi)?.let { Text(it, color = uv.muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp)) } }
                 // Each model can be switched off on its own: that part is then marked by hand and counts as training data
-                if (modelInfo?.arrows != null) SwitchRow(tr("Use the arrow detector"), tr("Off: you tap the arrows yourself and the photo trains the arrow detector."), ph.useArrowModel) { ctl.setPhotoPrefs(ph.copy(useArrowModel = it)) }
-                if (modelInfo?.face != null) SwitchRow(tr("Use the face finder"), tr("Off: you mark the face yourself (or take over the last marking) and the photo trains the face finder."), ph.useFaceModel) { ctl.setPhotoPrefs(ph.copy(useFaceModel = it)) }
-                if (modelInfo?.arrows != null && ph.useArrowModel) {
-                    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                        Text(tr("Confidence: {modelConf} %", "modelConf" to ((ph.modelConf * 100).roundToInt())), color = uv.muted, fontSize = 13.sp)
+                // each model has its switch and, right under it, its confidence threshold
+                if (modelInfo?.arrows != null) {
+                    SwitchRow(tr("Use the arrow detector"), tr("Off: you tap the arrows yourself and the photo trains the arrow detector."), ph.useArrowModel) { ctl.setPhotoPrefs(ph.copy(useArrowModel = it)) }
+                    if (ph.useArrowModel) Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        Text(tr("Arrow confidence: {modelConf} %", "modelConf" to ((ph.modelConf * 100).roundToInt())), color = uv.muted, fontSize = 13.sp)
+                        Text(tr("How sure the arrow detector has to be before an arrow is proposed. Lower finds more, with more false alarms. While the sight counts the shots of the end, their number decides and this is only a floor."), color = uv.muted, fontSize = 12.sp)
                         Slider(value = ph.modelConf.toFloat(), onValueChange = { ctl.setPhotoPrefs(ph.copy(modelConf = (it * 20).roundToInt() / 20.0)) }, valueRange = 0.1f..0.9f,
+                            colors = SliderDefaults.colors(thumbColor = uv.gold, activeTrackColor = uv.gold))
+                    }
+                }
+                if (modelInfo?.face != null) {
+                    SwitchRow(tr("Use the face finder"), tr("Off: you mark the face yourself and the photo trains the face finder."), ph.useFaceModel) { ctl.setPhotoPrefs(ph.copy(useFaceModel = it)) }
+                    if (ph.useFaceModel) Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        Text(tr("Face confidence: {faceConf} %", "faceConf" to ((ph.faceConf * 100).roundToInt())), color = uv.muted, fontSize = 13.sp)
+                        Text(tr("How sure the face finder has to be; of the faces above it the surest is taken. Lower finds the face in more photos, but may put it on something else."), color = uv.muted, fontSize = 12.sp)
+                        Slider(value = ph.faceConf.toFloat(), onValueChange = { ctl.setPhotoPrefs(ph.copy(faceConf = (it * 20).roundToInt() / 20.0)) }, valueRange = 0.1f..0.9f,
                             colors = SliderDefaults.colors(thumbColor = uv.gold, activeTrackColor = uv.gold))
                     }
                 }

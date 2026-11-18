@@ -237,7 +237,8 @@ data class PhotoPrefs(
     val arrowMm: Double = 6.0,           // shaft diameter for the line-cutter rule
     val collect: Boolean = false,        // keep photos and marks as training data
     val environment: String = "outdoor", // "outdoor" / "indoor", remembered choice
-    val modelConf: Double = 0.4,         // confidence threshold of the detection model
+    val modelConf: Double = 0.4,         // confidence threshold of the arrow detector
+    val faceConf: Double = 0.3,          // confidence threshold of the face finder (its best face above it is taken)
     val faceMarks: List<Double>? = null, // last face marking as image fractions: [cx, cy, e1x, e1y, ...], reused on the next photo
     val source: String = "camera",       // where Score from photo gets the picture: "camera" or "gallery"
     val cameraApp: String = "",          // package of the camera app to use; "" = whatever the system picks
