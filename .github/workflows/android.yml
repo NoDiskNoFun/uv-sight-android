@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write      # the beta release
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -64,6 +66,19 @@ jobs:
         with:
           name: nocked-release-apk
           path: app/build/outputs/apk/release/nocked-*.apk
+      - name: Beta release
+        # One rolling release "beta" with the signed APK under a fixed name, so
+        # https://github.com/<owner>/<repo>/releases/latest/download/nocked.apk is always the newest build
+        if: env.SIGNING_KEYSTORE != '' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(ls app/build/outputs/apk/release/nocked-*.apk | head -1)
+          cp "$APK" nocked.apk
+          gh release delete beta --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create beta nocked.apk "$APK" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title "Nocked beta, build $GITHUB_RUN_NUMBER" \
+            --notes "Signed release APK of commit ${GITHUB_SHA::7}, built by GitHub Actions. Open nocked.apk on the phone to install; it updates an earlier beta in place and keeps the phone's data. A debug build has to be uninstalled first."
       - name: Test reports
         if: always()
         uses: actions/upload-artifact@v4

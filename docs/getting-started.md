@@ -6,7 +6,7 @@ Anchored is the small box on your bow sight. Nocked is the app on your phone. To
 
 - The Anchored sight, mounted on your bow, with a charged battery. It charges through the USB-C socket with any phone charger; a full charge takes about two hours. The small light near the socket shows charging.
 - An Android phone (Android 8 or newer) with Bluetooth. iPhones are not supported.
-- The Nocked app. You get it as an APK file from whoever built your sight (or from the project page). Open the file on the phone and allow the installation when Android asks; this needs the one-time permission "install unknown apps" for the app you opened the file with, usually your browser or files app.
+- The Nocked app. Open this link on the phone and tap **nocked.apk**: <https://github.com/NoDiskNoFun/uv-sight-android/releases/latest>. Then open the downloaded file and allow the installation when Android asks; this needs the one-time permission "install unknown apps" for the app you opened the file with, usually your browser or files app. Updates work the same way: download the newer file and open it, the app keeps all its data.
 
 ## 1. Wake the sight
 
