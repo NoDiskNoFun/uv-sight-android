@@ -145,8 +145,11 @@ class ModelStore(context: Context) {
      * cache, the second shows whether the cache works and what a photo really costs. The GPU is kept when its
      * second run is not slower than the CPU; the choice and the times land in model.json. Call off the UI thread.
      */
-    fun measure(): ModelInfo? {
+    fun measure(progress: (stage: String, done: Int, total: Int) -> Unit = { _, _, _ -> }): ModelInfo? {
         val info = info() ?: return null
+        val total = (if (hasArrows) 4 else 0) + (if (hasFace) 4 else 0)     // per model: CPU twice, GPU compile, GPU from the cache
+        var done = 0
+        fun step(stage: String) { progress(stage, done, total); done++ }
         fun time(file: File, gpu: Boolean): Long {
             val t0 = System.nanoTime()
             TflitePoseDetector(file, gpu, gpuCache).use { d ->
@@ -156,9 +159,10 @@ class ModelStore(context: Context) {
             return (System.nanoTime() - t0) / 1_000_000
         }
         fun run(file: File): RunInfo {
-            time(file, false); val cpu = time(file, false)
-            val first = runCatching { time(file, true) }
-            val second = if (first.isSuccess) runCatching { time(file, true) } else first
+            val which = if (file == faceFile) "face" else "arrows"
+            step("cpu:$which"); time(file, false); step("cpu:$which"); val cpu = time(file, false)
+            step("compile:$which"); val first = runCatching { time(file, true) }
+            step("gpu:$which"); val second = if (first.isSuccess) runCatching { time(file, true) } else first
             val g = second.getOrNull(); val g1 = first.getOrNull()
             val cache = if (g != null && g1 != null) g < g1 * 0.6 else null       // the compile step gone: the cache works
             return if (g != null && g <= cpu) RunInfo("gpu", g, cpu, g, null, g1, cache)
@@ -166,6 +170,7 @@ class ModelStore(context: Context) {
         }
         val updated = info.copy(arrowsRun = if (hasArrows) runCatching { run(arrowsFile) }.getOrNull() else null, faceRun = if (hasFace) runCatching { run(faceFile) }.getOrNull() else null)
         infoFile.writeText(json.encodeToString(ModelInfo.serializer(), updated))
+        progress("done", total, total)
         return updated
     }
 

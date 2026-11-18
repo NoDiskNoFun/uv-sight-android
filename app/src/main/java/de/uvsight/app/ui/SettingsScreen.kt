@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -482,6 +483,20 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                 val modelStore = remember { de.uvsight.app.ModelStore(context) }
                 var modelVersion by remember { mutableIntStateOf(0) }
                 val modelInfo = remember(modelVersion) { modelStore.info() }
+                var testing by remember { mutableStateOf<Pair<String, Float>?>(null) }      // the test run's stage and progress
+                val measure: suspend () -> de.uvsight.app.ModelInfo? = {
+                    withContext(Dispatchers.IO) { runCatching { modelStore.measure { stage, done, total ->
+                        val (kind, which) = stage.split(':').let { it[0] to it.getOrElse(1) { "" } }
+                        val model = if (which == "face") tr("the face finder") else tr("the arrow detector")
+                        val text = when (kind) {
+                            "cpu" -> tr("Testing {model} on the CPU", "model" to model)
+                            "compile" -> tr("Compiling the GPU shader cache for {model}", "model" to model)
+                            "gpu" -> tr("Testing {model} on the GPU", "model" to model)
+                            else -> tr("Done")
+                        }
+                        testing = text to (if (total > 0) done.toFloat() / total else 1f)
+                    } }.getOrNull() }.also { testing = null }
+                }
                 val modelLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                     uri?.let { u -> scope.launch {
                         val name = u.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.zip"
@@ -489,14 +504,14 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                         res.onSuccess { vm.toast(tr("Model imported: {name}", "name" to it.name) + (if (it.face != null) "" else " · " + tr("no face model"))); modelVersion++ }.onFailure { vm.toast(it.message ?: tr("Import failed"), true) }
                         if (res.isSuccess) {
                             // the test run: where does each model run on this phone, and how fast
-                            val m = withContext(Dispatchers.IO) { runCatching { modelStore.measure() }.getOrNull() }
+                            val m = measure()
                             modelVersion++
                             if (m != null) vm.toast(runLine(m) ?: tr("Could not run the models."))
                         }
                     } }
                 }
                 // models imported by an earlier version of the app: measure them once
-                LaunchedEffect(modelInfo?.imported) { if (modelInfo != null && !modelInfo.measured) { withContext(Dispatchers.IO) { runCatching { modelStore.measure() } }; modelVersion++ } }
+                LaunchedEffect(modelInfo?.imported) { if (modelInfo != null && !modelInfo.measured) { measure(); modelVersion++ } }
                 HorizontalDivider(color = uv.line)
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -510,8 +525,14 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                         } ?: tr("None. Score from photo works by hand; train the models with the trainer in training/ and import the ZIP it offers."), color = uv.muted, fontSize = 13.sp)
                     }
                     Spacer(Modifier.width(8.dp))
-                    SecondaryButton(tr("Import")) { modelLauncher.launch(arrayOf("*/*")) }
-                    if (modelInfo != null) { Spacer(Modifier.width(8.dp)); SecondaryButton(tr("Remove"), danger = true) { modelStore.remove(); modelVersion++ } }
+                    SecondaryButton(tr("Import"), enabled = testing == null) { modelLauncher.launch(arrayOf("*/*")) }
+                    if (modelInfo != null) { Spacer(Modifier.width(8.dp)); SecondaryButton(tr("Remove"), danger = true, enabled = testing == null) { modelStore.remove(); modelVersion++ } }
+                }
+                testing?.let { (text, frac) ->
+                    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
+                        Text(text + "… " + (frac * 100).roundToInt() + " %", color = uv.ink, fontSize = 13.sp)
+                        LinearProgressIndicator(progress = { frac }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = uv.gold, trackColor = uv.line)
+                    }
                 }
                 modelInfo?.eval?.let { ev ->
                     // what the trainer measured on its validation photos, the same numbers as in its results table

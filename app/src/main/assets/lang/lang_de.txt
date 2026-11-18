@@ -451,6 +451,12 @@ System lets Android choose (usually the built-in camera). Pick another app if th
 System = System
 Arrow diameter = Pfeildurchmesser
 Shaft diameter for the line-cutter rule: a shaft touching a line counts the higher ring. = Schaftdurchmesser für die Linienregel: ein Schaft, der eine Linie berührt, zählt den höheren Ring.
+the face finder = den Auflagenfinder
+the arrow detector = den Pfeildetektor
+Testing {model} on the CPU = Teste {model} auf der CPU
+Compiling the GPU shader cache for {model} = Erzeuge den GPU-Shader-Cache für {model}
+Testing {model} on the GPU = Teste {model} auf der GPU
+Done = Fertig
 Model imported: {name} = Modell importiert: {name}
 no face model = kein Auflagen-Modell
 Import failed = Import fehlgeschlagen
@@ -555,7 +561,6 @@ Step 1 of 2: Put the bow in a stand, level it with the bubble and aim horizontal
 Step 2 of 2: Keep the bow level, but aim clearly up, arrow tip up, at least 20 degrees. Then tap Measure and keep it still. = Schritt 2 von 2: Bogen gerade halten, aber deutlich nach oben zielen, Pfeilspitze hoch, mindestens 20 Grad. Dann auf Messen tippen und ruhig halten.
 Calibration saved. Check the cant reading in a session: it should stay near 0° with the bubble centred. = Kalibrierung gespeichert. Prüfe die Verkantung in einer Sitzung: sie sollte mit zentrierter Libelle nahe 0° bleiben.
 Measure = Messen
-Done = Fertig
 kernel cache works = Shader-Cache wirkt
 no kernel cache, first run {ms} ms = kein Shader-Cache, erster Lauf {ms} ms
 GPU {ms} ms = GPU {ms} ms

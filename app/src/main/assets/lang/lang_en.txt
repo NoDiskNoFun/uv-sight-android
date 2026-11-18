@@ -454,6 +454,12 @@ System lets Android choose (usually the built-in camera). Pick another app if th
 System = System
 Arrow diameter = Arrow diameter
 Shaft diameter for the line-cutter rule: a shaft touching a line counts the higher ring. = Shaft diameter for the line-cutter rule: a shaft touching a line counts the higher ring.
+the face finder = the face finder
+the arrow detector = the arrow detector
+Testing {model} on the CPU = Testing {model} on the CPU
+Compiling the GPU shader cache for {model} = Compiling the GPU shader cache for {model}
+Testing {model} on the GPU = Testing {model} on the GPU
+Done = Done
 Model imported: {name} = Model imported: {name}
 no face model = no face model
 Import failed = Import failed
@@ -558,7 +564,6 @@ Step 1 of 2: Put the bow in a stand, level it with the bubble and aim horizontal
 Step 2 of 2: Keep the bow level, but aim clearly up, arrow tip up, at least 20 degrees. Then tap Measure and keep it still. = Step 2 of 2: Keep the bow level, but aim clearly up, arrow tip up, at least 20 degrees. Then tap Measure and keep it still.
 Calibration saved. Check the cant reading in a session: it should stay near 0° with the bubble centred. = Calibration saved. Check the cant reading in a session: it should stay near 0° with the bubble centred.
 Measure = Measure
-Done = Done
 kernel cache works = kernel cache works
 no kernel cache, first run {ms} ms = no kernel cache, first run {ms} ms
 GPU {ms} ms = GPU {ms} ms
