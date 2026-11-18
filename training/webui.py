@@ -289,21 +289,22 @@ def mock_train(job, run, imgsz, train_face):
 
 def export_model(job, trained, imgsz, ds, dest, precision="int8"):
     """TFLite of a trained model. int8 is calibrated on all photos of the run (not only the few validation ones) and
-    is the smallest and fastest; float16 and float32 keep the keypoints a little more exact at a larger, slower model.
-    Ultralytics 8.4 calls the format "litert" and the option "quantize"; older versions take tflite with int8/half."""
+    is the smallest and fastest; float32 keeps the keypoints a little more exact at a larger model (the phone's GPU
+    delegate runs it as float16; LiteRT has no separate float16 file). Ultralytics 8.4 calls the format "litert"
+    and takes quantize=8 or 32; older versions take tflite with int8=True."""
+    int8 = precision == "int8"
     calib = ds / "calib.yaml"
     calib.write_text((ds / "data.yaml").read_text().replace("val: images/val", "val: [images/train, images/val]"))
     kw = {"imgsz": imgsz}
-    if precision == "int8": kw["data"] = str(calib)
+    if int8: kw["data"] = str(calib)
     try:
-        out = trained.export(format="litert", quantize={"int8": "int8", "fp16": "fp16", "fp32": "none"}[precision], **kw)
+        out = trained.export(format="litert", quantize=8 if int8 else 32, **kw)
     except Exception as e:
-        job.say(f"litert export not available ({e.__class__.__name__}), using the tflite export")
-        out = trained.export(format="tflite", int8=precision == "int8", half=precision == "fp16", **kw)
+        job.say(f"litert export not available ({e.__class__.__name__}: {str(e)[:120]}), using the tflite export of older Ultralytics")
+        out = trained.export(format="tflite", int8=int8, **kw)
     src = Path(out)
     if src.is_dir():
-        tag = {"int8": "int8", "fp16": "float16", "fp32": "float32"}[precision]
-        cands = sorted(src.glob(f"*{tag}*.tflite")) or sorted(src.glob("*.tflite"))
+        cands = (sorted(src.glob("*int8*.tflite")) if int8 else [f for f in sorted(src.glob("*.tflite")) if "int8" not in f.name and "w8a" not in f.name]) or sorted(src.glob("*.tflite"))
         src = cands[0]
     shutil.copy(src, dest)
     job.say(f"{dest.name}: {dest.stat().st_size // 1024} kB")
@@ -429,7 +430,7 @@ progress{width:100%;height:14px}
 <label>Image size<select id="imgsz"><option>320</option><option selected>640</option><option>800</option></select></label>
 <label>Epochs (per model)<input id="epochs" type="number" value="120" min="1" style="width:80px"></label>
 <label>Model size<select id="size"><option value="n" selected>nano</option><option value="s">small</option><option value="m">medium</option></select></label>
-<label>Precision<select id="precision"><option value="int8" selected>int8 (small, fast)</option><option value="fp16">float16</option><option value="fp32">float32 (most exact)</option></select></label>
+<label>Precision<select id="precision"><option value="int8" selected>int8 (small, fast)</option><option value="fp32">float32 (most exact; the phone's GPU runs it as float16)</option></select></label>
 <label>Batch<input id="batch" type="number" value="16" min="1" style="width:70px"></label>
 <label>Validation share<input id="val" type="number" value="0.2" step="0.05" min="0" max="0.5" style="width:70px"></label>
 <label>Run name<input id="name" placeholder="auto"></label>
