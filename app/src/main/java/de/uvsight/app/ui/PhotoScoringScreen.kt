@@ -161,7 +161,10 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             if (hasFaceModel) {
                 val best = runCatching { modelStore.detector(modelStore.faceFile).use { it.detect(upright, prefs.faceConf) } }.getOrNull()
                     ?.filter { it.kpts.size >= 5 }?.maxByOrNull { it.conf }
-                if (best != null) {
+                // The finder takes a while with a large model. A marking begun by hand in the meantime, or the
+                // arrow step already open, wins: the finder's face is then dropped, not laid over the user's.
+                val untouched = center == null && edge.isEmpty() && step == 1
+                if (best != null && untouched) {
                     val c = best.kpts[0]; val e = best.kpts.subList(1, 5)
                     if (FaceGeometry.fit(c, e) != null) {
                         center = Offset(c.x.toFloat(), c.y.toFloat()); edge = e.map { Offset(it.x.toFloat(), it.y.toFloat()) }
