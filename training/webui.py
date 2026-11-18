@@ -234,6 +234,7 @@ def run_job(job, mock):
         ev["train_photos"] = len(train); ev["val_photos"] = len(val)
         has_face = (run / "face.tflite").exists()
         info = {"name": job.name, "imgsz": imgsz, "task": "pose", "trained": time.time(), "train_photos": len(train), "val_photos": len(val),
+                "size": p.get("size", "n"), "precision": p.get("precision", "int8"),
                 "arrows": {"file": "arrows.tflite", "kpt": ["entry"]},
                 "face": {"file": "face.tflite", "kpt": facegeom.FACE_KPT} if has_face else None,
                 "eval": {k: v for k, v in ev.items() if k != "per_image"}}
@@ -286,19 +287,23 @@ def mock_train(job, run, imgsz, train_face):
     return predict, (predict_face if train_face else None)
 
 
-def export_int8(job, trained, imgsz, ds, dest):
-    """int8 TFLite of a trained model, calibrated on all photos of the run (not only the few validation ones).
-    Ultralytics 8.4 calls the format "litert" and the option "quantize"; older versions take tflite/int8."""
+def export_model(job, trained, imgsz, ds, dest, precision="int8"):
+    """TFLite of a trained model. int8 is calibrated on all photos of the run (not only the few validation ones) and
+    is the smallest and fastest; float16 and float32 keep the keypoints a little more exact at a larger, slower model.
+    Ultralytics 8.4 calls the format "litert" and the option "quantize"; older versions take tflite with int8/half."""
     calib = ds / "calib.yaml"
     calib.write_text((ds / "data.yaml").read_text().replace("val: images/val", "val: [images/train, images/val]"))
+    kw = {"imgsz": imgsz}
+    if precision == "int8": kw["data"] = str(calib)
     try:
-        out = trained.export(format="litert", quantize="int8", imgsz=imgsz, data=str(calib))
+        out = trained.export(format="litert", quantize={"int8": "int8", "fp16": "fp16", "fp32": "none"}[precision], **kw)
     except Exception as e:
         job.say(f"litert export not available ({e.__class__.__name__}), using the tflite export")
-        out = trained.export(format="tflite", int8=True, imgsz=imgsz, data=str(calib))
+        out = trained.export(format="tflite", int8=precision == "int8", half=precision == "fp16", **kw)
     src = Path(out)
     if src.is_dir():
-        cands = sorted(src.glob("*int8*.tflite")) or sorted(src.glob("*.tflite"))
+        tag = {"int8": "int8", "fp16": "float16", "fp32": "float32"}[precision]
+        cands = sorted(src.glob(f"*{tag}*.tflite")) or sorted(src.glob("*.tflite"))
         src = cands[0]
     shutil.copy(src, dest)
     job.say(f"{dest.name}: {dest.stat().st_size // 1024} kB")
@@ -335,9 +340,9 @@ def real_train(job, run, ds, imgsz, stage):
     if job.stop:
         return None
     best = run / f"train_{stage}" / "weights" / "best.pt"
-    job.say("exporting int8 TFLite")
+    job.say(f"exporting {p.get('precision', 'int8')} TFLite")
     trained = YOLO(str(best))
-    export_int8(job, trained, imgsz, ds, run / f"{stage}.tflite")
+    export_model(job, trained, imgsz, ds, run / f"{stage}.tflite", p.get("precision", "int8"))
 
     def predict(rec, img):
         res = trained.predict(str(img), imgsz=imgsz, conf=0.25, verbose=False)[0]
@@ -423,7 +428,8 @@ progress{width:100%;height:14px}
 <div class="row">
 <label>Image size<select id="imgsz"><option>320</option><option selected>640</option><option>800</option></select></label>
 <label>Epochs (per model)<input id="epochs" type="number" value="120" min="1" style="width:80px"></label>
-<label>Model size<select id="size"><option value="n" selected>nano</option><option value="s">small</option></select></label>
+<label>Model size<select id="size"><option value="n" selected>nano</option><option value="s">small</option><option value="m">medium</option></select></label>
+<label>Precision<select id="precision"><option value="int8" selected>int8 (small, fast)</option><option value="fp16">float16</option><option value="fp32">float32 (most exact)</option></select></label>
 <label>Batch<input id="batch" type="number" value="16" min="1" style="width:70px"></label>
 <label>Validation share<input id="val" type="number" value="0.2" step="0.05" min="0" max="0.5" style="width:70px"></label>
 <label>Run name<input id="name" placeholder="auto"></label>
@@ -473,7 +479,7 @@ for(const m of p.marks){g.strokeStyle='#58B27E';g.lineWidth=2;g.beginPath();g.ar
 img.src=p.image+'?t='+Date.now();$('prevcard').scrollIntoView({behavior:'smooth'});}
 $('prev').onclick=()=>openPreview(prevRun,prevIdx-1);$('next').onclick=()=>openPreview(prevRun,prevIdx+1);
 $('upload').onclick=async()=>{const fs=[...$('file').files];if(!fs.length)return;const done=[];for(const f of fs){$('upmsg').textContent=`uploading ${f.name}…`;const r=await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'PUT',body:f});const j=await r.json();if(!j.ok){$('upmsg').textContent=j.error;return}done.push(j.name)}$('upmsg').textContent=`stored ${done.join(', ')}`;refresh()};
-$('start').onclick=async()=>{const body={exports:st.exports.map(e=>e.name).filter(n=>chosen.get(n)),imgsz:$('imgsz').value,epochs:$('epochs').value,size:$('size').value,batch:$('batch').value,val:$('val').value,name:$('name').value};
+$('start').onclick=async()=>{const body={exports:st.exports.map(e=>e.name).filter(n=>chosen.get(n)),imgsz:$('imgsz').value,epochs:$('epochs').value,size:$('size').value,precision:$('precision').value,batch:$('batch').value,val:$('val').value,name:$('name').value};
 const j=await api('/api/train',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(!j.ok)alert(j.error);refresh()};
 $('stop').onclick=()=>api('/api/stop',{method:'POST'});
 refresh();setInterval(refresh,2000);
@@ -559,7 +565,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({"ok": False, "error": "the TFLite export needs " + ", ".join(miss) + f": run pip install -r requirements.txt with the Python this page uses ({sys.executable})"}); return
                 name = (body.get("name") or "").strip() or time.strftime("run-%Y%m%d-%H%M%S")
                 params = {"exports": exports, "imgsz": int(body.get("imgsz", 640)), "epochs": int(body.get("epochs", 120)),
-                          "size": body.get("size", "n"), "batch": int(body.get("batch", 16)), "val": float(body.get("val", 0.2)), "name": name}
+                          "size": body.get("size", "n"), "precision": body.get("precision", "int8"), "batch": int(body.get("batch", 16)), "val": float(body.get("val", 0.2)), "name": name}
                 JOB = Job(params)
                 threading.Thread(target=run_job, args=(JOB, Handler.mock), daemon=True).start()
             self.send_json({"ok": True, "name": name})
