@@ -159,7 +159,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             // nothing) the face is marked by hand. (Taking over the last photo's marking was tried and dropped: it confused more than it helped.)
             var proposed = false
             if (hasFaceModel) {
-                val best = runCatching { de.uvsight.app.TflitePoseDetector(modelStore.faceFile).use { it.detect(upright, 0.3) } }.getOrNull()
+                val best = runCatching { modelStore.detector(modelStore.faceFile).use { it.detect(upright, 0.3) } }.getOrNull()
                     ?.filter { it.kpts.size >= 5 }?.maxByOrNull { it.conf }
                 if (best != null) {
                     val c = best.kpts[0]; val e = best.kpts.subList(1, 5)
@@ -210,7 +210,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         val b = bitmap ?: return@LaunchedEffect
         if (!hasArrowModel) return@LaunchedEffect
         // a low floor here; how many proposals are taken is decided when the arrow step opens (the sight's shot count helps)
-        val found = withContext(Dispatchers.IO) { runCatching { de.uvsight.app.TflitePoseDetector(modelStore.arrowsFile).use { it.detect(b, minOf(prefs.modelConf, 0.15)) } } }
+        val found = withContext(Dispatchers.IO) { runCatching { modelStore.detector(modelStore.arrowsFile).use { it.detect(b, minOf(prefs.modelConf, 0.15)) } } }
         found.onFailure { vm.toast(tr("Arrow detection failed: {message}", "message" to it.message), true); detections = emptyList() }
         found.onSuccess { detections = it }
     }

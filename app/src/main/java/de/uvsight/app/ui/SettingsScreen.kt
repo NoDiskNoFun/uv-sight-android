@@ -487,8 +487,16 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                         val name = u.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.zip"
                         val res = withContext(Dispatchers.IO) { runCatching { val bytes = context.contentResolver.openInputStream(u)?.use { it.readBytes() } ?: throw IllegalArgumentException("could not read the file"); modelStore.import(bytes, name) } }
                         res.onSuccess { vm.toast(tr("Model imported: {name}", "name" to it.name) + (if (it.face != null) "" else " · " + tr("no face model"))); modelVersion++ }.onFailure { vm.toast(it.message ?: tr("Import failed"), true) }
+                        if (res.isSuccess) {
+                            // the test run: where does each model run on this phone, and how fast
+                            val m = withContext(Dispatchers.IO) { runCatching { modelStore.measure() }.getOrNull() }
+                            modelVersion++
+                            if (m != null) vm.toast(runLine(m) ?: tr("Could not run the models."))
+                        }
                     } }
                 }
+                // models imported by an earlier version of the app: measure them once
+                LaunchedEffect(modelInfo?.imported) { if (modelInfo != null && !modelInfo.measured) { withContext(Dispatchers.IO) { runCatching { modelStore.measure() } }; modelVersion++ } }
                 HorizontalDivider(color = uv.line)
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -521,6 +529,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                         if ((ev.valPhotos ?: 0) < 5) Text(tr("Few validation photos: these numbers say little yet."), color = uv.muted, fontSize = 12.sp)
                     }
                 }
+                modelInfo?.let { mi -> runLine(mi)?.let { Text(it, color = uv.muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp)) } }
                 // Each model can be switched off on its own: that part is then marked by hand and counts as training data
                 if (modelInfo?.arrows != null) SwitchRow(tr("Use the arrow detector"), tr("Off: you tap the arrows yourself and the photo trains the arrow detector."), ph.useArrowModel) { ctl.setPhotoPrefs(ph.copy(useArrowModel = it)) }
                 if (modelInfo?.face != null) SwitchRow(tr("Use the face finder"), tr("Off: you mark the face yourself (or take over the last marking) and the photo trains the face finder."), ph.useFaceModel) { ctl.setPhotoPrefs(ph.copy(useFaceModel = it)) }
@@ -792,4 +801,11 @@ private fun CalCard(state: AppState, ctl: SightController) {
             }
         }
     }
+}
+
+/** "Runs on this phone: arrows GPU, 140 ms · face CPU, 60 ms", or null before the test run. */
+private fun runLine(mi: de.uvsight.app.ModelInfo): String? {
+    fun part(label: String, r: de.uvsight.app.RunInfo?) = r?.let { "$label ${if (it.backend == "gpu") "GPU" else "CPU"}, ${it.ms} ms" + (if (it.backend == "cpu" && it.gpuMs != null) " (" + tr("GPU {ms} ms", "ms" to it.gpuMs) + ")" else "") }
+    val parts = listOfNotNull(if (mi.arrows != null) part(tr("arrows"), mi.arrowsRun) else null, if (mi.face != null) part(tr("face"), mi.faceRun) else null)
+    return if (parts.isEmpty()) null else tr("Runs on this phone:") + " " + parts.joinToString(" · ")
 }

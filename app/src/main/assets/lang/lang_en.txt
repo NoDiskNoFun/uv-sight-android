@@ -457,6 +457,7 @@ Shaft diameter for the line-cutter rule: a shaft touching a line counts the high
 Model imported: {name} = Model imported: {name}
 no face model = no face model
 Import failed = Import failed
+Could not run the models. = Could not run the models.
 Detection models = Detection models
 {name}, input {inputSize} px. = {name}, input {inputSize} px.
 Arrows: found and marked for you; check and correct them. = Arrows: found and marked for you; check and correct them.
@@ -558,6 +559,9 @@ Step 2 of 2: Keep the bow level, but aim clearly up, arrow tip up, at least 20 d
 Calibration saved. Check the cant reading in a session: it should stay near 0° with the bubble centred. = Calibration saved. Check the cant reading in a session: it should stay near 0° with the bubble centred.
 Measure = Measure
 Done = Done
+GPU {ms} ms = GPU {ms} ms
+face = face
+Runs on this phone: = Runs on this phone:
 
 # --- app/src/main/java/de/uvsight/app/ui/StatusScreen.kt
 Connected. Waiting for data from the sight… = Connected. Waiting for data from the sight…

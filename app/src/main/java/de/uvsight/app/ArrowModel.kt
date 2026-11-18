@@ -39,16 +39,24 @@ data class ModelEval(
     @SerialName("face_center_mm_median") val faceCenterMm: Double? = null, @SerialName("face_ring_accuracy") val faceRingAccuracy: Double? = null,
 )
 
+/** Where a model runs on this phone and how long one photo takes there, measured once after the import. */
+@Serializable
+data class RunInfo(val backend: String, val ms: Long, val cpuMs: Long? = null, val gpuMs: Long? = null, val gpuError: String? = null)
+
 /**
  * What is installed: the arrow detector (the fields name..outputShape, kept flat so model.json files of
- * earlier versions still read), the face finder if the ZIP had one, and the trainer's evaluation.
+ * earlier versions still read), the face finder if the ZIP had one, the trainer's evaluation, and where
+ * each model runs on this phone.
  */
 @Serializable
 data class ModelInfo(
     val name: String, val inputSize: Int, val inputType: String, val outputShape: List<Int>, val imported: Long,
     val face: ModelPart? = null, val eval: ModelEval? = null, val trained: Long? = null, val arrowsPresent: Boolean = true,
+    val arrowsRun: RunInfo? = null, val faceRun: RunInfo? = null,
 ) {
     val arrows: ModelPart? get() = if (arrowsPresent) ModelPart(name, inputSize, inputType, outputShape, 1) else null
+    /** True once both installed models have been measured. */
+    val measured: Boolean get() = (!arrowsPresent || arrowsRun != null) && (face == null || faceRun != null)
 }
 
 /**
@@ -123,6 +131,37 @@ class ModelStore(context: Context) {
     }
 
     fun remove() { arrowsFile.delete(); faceFile.delete(); infoFile.delete() }
+
+    /**
+     * The test run after an import: each model once on the CPU and once on the GPU, on a blank photo. The GPU
+     * is kept when it works and is not slower; the choice and the times land in model.json. Call off the UI thread.
+     */
+    fun measure(): ModelInfo? {
+        val info = info() ?: return null
+        fun time(file: File, gpu: Boolean): Long {
+            TflitePoseDetector(file, gpu).use { d ->
+                val probe = Bitmap.createBitmap(d.inputSize * 4 / 3, d.inputSize, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(200, 200, 190)) }
+                d.detect(probe, 0.5)                                      // the first run warms up (the GPU compiles its shaders)
+                val t0 = System.nanoTime(); d.detect(probe, 0.5); return (System.nanoTime() - t0) / 1_000_000
+            }
+        }
+        fun run(file: File): RunInfo {
+            val cpu = time(file, false)
+            val gpu = runCatching { time(file, true) }
+            val g = gpu.getOrNull()
+            return if (g != null && g <= cpu) RunInfo("gpu", g, cpu, g) else RunInfo("cpu", cpu, cpu, g, gpu.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName })
+        }
+        val updated = info.copy(arrowsRun = if (hasArrows) runCatching { run(arrowsFile) }.getOrNull() else null, faceRun = if (hasFace) runCatching { run(faceFile) }.getOrNull() else null)
+        infoFile.writeText(json.encodeToString(ModelInfo.serializer(), updated))
+        return updated
+    }
+
+    /** A detector for this file on the backend the test run chose; falls back to the CPU if the GPU refuses today. */
+    fun detector(file: File): TflitePoseDetector {
+        val run = if (file == faceFile) info()?.faceRun else info()?.arrowsRun
+        if (run?.backend == "gpu") runCatching { return TflitePoseDetector(file, true) }
+        return TflitePoseDetector(file, false)
+    }
 }
 
 /**
@@ -130,8 +169,15 @@ class ModelStore(context: Context) {
  * ([1, N, N, 3] or channels-first [1, 3, N, N]), tensor types and quantisation are read from the model,
  * so the app adapts to whatever the training produced. Coordinates that come out normalised are scaled up.
  */
-class TflitePoseDetector(file: File) : AutoCloseable {
-    private val interpreter = org.tensorflow.lite.Interpreter(file, org.tensorflow.lite.Interpreter.Options().setNumThreads(4))
+class TflitePoseDetector(file: File, gpu: Boolean = false) : AutoCloseable {
+    // The GPU delegate lives on the thread that created it: create and use a detector on one thread.
+    private val delegate: org.tensorflow.lite.gpu.GpuDelegate? = if (!gpu) null else {
+        val compat = org.tensorflow.lite.gpu.CompatibilityList()
+        require(compat.isDelegateSupportedOnThisDevice) { "GPU not supported on this phone" }
+        org.tensorflow.lite.gpu.GpuDelegate(compat.bestOptionsForThisDevice)
+    }
+    val backend: String = if (delegate != null) "gpu" else "cpu"
+    private val interpreter = org.tensorflow.lite.Interpreter(file, org.tensorflow.lite.Interpreter.Options().setNumThreads(4).apply { delegate?.let { addDelegate(it) } })
     private val input = interpreter.getInputTensor(0)
     private val output = interpreter.getOutputTensor(0)
     val inputSize: Int
@@ -193,5 +239,5 @@ class TflitePoseDetector(file: File) : AutoCloseable {
         return YoloPoseDecoder.decode(values, outShape, lb, confThreshold)
     }
 
-    override fun close() { interpreter.close() }
+    override fun close() { interpreter.close(); delegate?.close() }
 }
