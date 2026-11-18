@@ -122,7 +122,8 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var container by remember { mutableStateOf(IntSize.Zero) }
-    var magPos by remember { mutableStateOf<Offset?>(null) }
+    var magPos by remember { mutableStateOf<Offset?>(null) }      // the finger: the magnifier's bottom-right corner sits under it
+    var magSrc by remember { mutableStateOf<Offset?>(null) }      // the point being dragged: what the magnifier shows, centred
     val modelStore = remember { de.uvsight.app.ModelStore(context) }
     val modelInfo = remember { modelStore.info() }
     val hasArrowModel = remember { modelStore.hasArrows && prefs.useArrowModel }
@@ -291,7 +292,10 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
 
         // Image with marks
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black).onSizeChanged { container = it }
-            .magnifier(sourceCenter = { magPos ?: Offset.Unspecified }, magnifierCenter = { magPos?.let { it - Offset(0f, 160.dp.toPx()) } ?: Offset.Unspecified }, zoom = 2.5f, size = DpSize(140.dp, 100.dp))
+            // a square magnifier showing the dragged point itself (not the finger, which holds the point off centre),
+            // placed so that its bottom-right corner sits under the finger: the point stays visible, the finger hides nothing
+            .magnifier(sourceCenter = { magSrc ?: Offset.Unspecified }, magnifierCenter = { magPos?.let { it - Offset(100.dp.toPx(), 100.dp.toPx()) } ?: Offset.Unspecified },
+                zoom = 3f, size = DpSize(200.dp, 200.dp), cornerRadius = 12.dp)
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -320,18 +324,18 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                     val np = m.pos + delta / scale
                                     marks = marks.toMutableList().also { it[dragIdx] = m.copy(pos = np, ringAuto = ringAt(np), ring = if (m.ring == m.ringAuto || m.ringAuto == -1 && m.ring == -1) ringAt(np) else m.ring, moved = true) }
                                     selected = dragIdx; arrowsEdited = true
-                                    if (tool == "finger") magPos = ch.position
+                                    if (tool == "finger") { magPos = ch.position; magSrc = toScreen(np) }
                                 } else if (faceIdx != null) {
                                     if (faceIdx == 0) center = center?.plus(delta / scale)
                                     else edge = edge.toMutableList().also { it[faceIdx - 1] = it[faceIdx - 1] + delta / scale }
                                     faceEdited = true
-                                    if (tool == "finger") magPos = ch.position
+                                    if (tool == "finger") { magPos = ch.position; magSrc = (if (faceIdx == 0) center else edge.getOrNull(faceIdx - 1))?.let { toScreen(it) } }
                                 } else offset += delta
                             }
                             ch.consume()
                         }
                     } while (event.changes.any { it.pressed })
-                    magPos = null
+                    magPos = null; magSrc = null
                     if (!moved && !zoomed) {
                         // a tap
                         if (step == 1) {
