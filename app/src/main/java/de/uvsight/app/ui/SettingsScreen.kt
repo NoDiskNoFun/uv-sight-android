@@ -500,7 +500,14 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                 val modelLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                     uri?.let { u -> scope.launch {
                         val name = u.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.zip"
-                        val res = withContext(Dispatchers.IO) { runCatching { val bytes = context.contentResolver.openInputStream(u)?.use { it.readBytes() } ?: throw IllegalArgumentException("could not read the file"); modelStore.import(bytes, name) } }
+                        val res = withContext(Dispatchers.IO) { runCatching {
+                            // the picked file streams into a temporary copy; nothing of it is held in memory
+                            val tmp = java.io.File(context.cacheDir, "model-import.tmp")
+                            try {
+                                context.contentResolver.openInputStream(u)?.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } } ?: throw IllegalArgumentException("could not read the file")
+                                modelStore.import(tmp, name)
+                            } finally { tmp.delete() }
+                        } }
                         res.onSuccess { vm.toast(tr("Model imported: {name}", "name" to it.name) + (if (it.face != null) "" else " · " + tr("no face model"))); modelVersion++ }.onFailure { vm.toast(it.message ?: tr("Import failed"), true) }
                         if (res.isSuccess) {
                             // the test run: where does each model run on this phone, and how fast

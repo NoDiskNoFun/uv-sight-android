@@ -17,11 +17,9 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.zip.ZipInputStream
 import kotlin.math.roundToInt
 
 /** One TFLite model of the set, as the app read it when it was imported. */
@@ -86,55 +84,61 @@ class ModelStore(context: Context) {
 
     /**
      * Imports a model ZIP from the trainer (arrows.tflite, face.tflite, model.json; replaces everything) or a
-     * single .tflite file (replaces the arrow or the face model, whichever its keypoint count says).
+     * single .tflite file (replaces the arrow or the face model, whichever its keypoint count says). `src` is a
+     * copy of the picked file on disk: everything streams file to file, no model is held in memory (a float32
+     * medium model is 80 MB, more than the app's heap allows twice over).
      * Throws with a plain message when nothing usable is in the file.
      */
-    fun import(bytes: ByteArray, name: String): ModelInfo {
-        val isZip = bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
-        val parts = HashMap<Int, Pair<ByteArray, ModelPart>>()        // keypoints -> model bytes and what the probe read
+    fun import(src: File, name: String): ModelInfo {
+        val head = ByteArray(4); src.inputStream().use { it.read(head) }
+        val isZip = head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()
+        val parts = HashMap<Int, Pair<File, ModelPart>>()        // keypoints -> the model file waiting in dir and what the probe read
         var evalJson: JsonObject? = null
-        if (isZip) {
-            ZipInputStream(ByteArrayInputStream(bytes)).use { z ->
-                while (true) {
-                    val e = z.nextEntry ?: break
-                    val base = e.name.substringAfterLast('/')
-                    when {
-                        e.isDirectory -> {}
-                        base.endsWith(".tflite") -> { val b = z.readBytes(); val part = probe(b, base); parts[part.keypoints] = b to part }
-                        base == "model.json" -> evalJson = runCatching { json.parseToJsonElement(z.readBytes().decodeToString()).jsonObject }.getOrNull()
+        try {
+            if (isZip) {
+                java.util.zip.ZipFile(src).use { z ->
+                    for (e in z.entries()) {
+                        val base = e.name.substringAfterLast('/')
+                        when {
+                            e.isDirectory -> {}
+                            base.endsWith(".tflite") -> {
+                                val tmp = File(dir, "pending-${parts.size}.tflite")
+                                z.getInputStream(e).use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+                                val part = probe(tmp, base); parts[part.keypoints]?.first?.delete(); parts[part.keypoints] = tmp to part
+                            }
+                            base == "model.json" -> evalJson = runCatching { json.parseToJsonElement(z.getInputStream(e).bufferedReader().use { it.readText() }).jsonObject }.getOrNull()
+                        }
                     }
                 }
+                if (parts.isEmpty()) throw IllegalArgumentException("Not a model ZIP: no .tflite file inside")
+            } else {
+                val tmp = File(dir, "pending-0.tflite"); src.copyTo(tmp, overwrite = true)
+                val part = probe(tmp, name); parts[part.keypoints] = tmp to part
             }
-            if (parts.isEmpty()) throw IllegalArgumentException("Not a model ZIP: no .tflite file inside")
-        } else { val part = probe(bytes, name); parts[part.keypoints] = bytes to part }
-        val unknown = parts.keys.filter { it != 1 && it != 5 }
-        if (unknown.isNotEmpty()) throw IllegalArgumentException("Not a usable model: ${unknown.first()} keypoints per object (1 = arrows, 5 = face)")
-        val old = info()
-        if (isZip) { arrowsFile.delete(); faceFile.delete() }
-        parts[1]?.let { arrowsFile.writeBytes(it.first) }
-        parts[5]?.let { faceFile.writeBytes(it.first) }
-        val arrows = if (hasArrows) (parts[1]?.second ?: old?.arrows) else null
-        val face = if (hasFace) (parts[5]?.second ?: old?.face) else null
-        val eval = evalJson?.get("eval")?.let { runCatching { json.decodeFromJsonElement(ModelEval.serializer(), it) }.getOrNull() }
-        val setName = evalJson?.get("name")?.jsonPrimitive?.contentOrNull ?: (if (isZip) name.removeSuffix(".zip") else arrows?.name ?: face?.name ?: name)
-        val info = ModelInfo(
-            name = setName, inputSize = arrows?.inputSize ?: face?.inputSize ?: 0, inputType = arrows?.inputType ?: "", outputShape = arrows?.outputShape ?: emptyList(),
-            imported = System.currentTimeMillis(), face = face, eval = if (isZip) eval else null,
-            trained = evalJson?.get("trained")?.jsonPrimitive?.doubleOrNull?.let { (it * 1000).toLong() }, arrowsPresent = arrows != null,
-        )
-        infoFile.writeText(json.encodeToString(ModelInfo.serializer(), info))
-        return info
+            val unknown = parts.keys.filter { it != 1 && it != 5 }
+            if (unknown.isNotEmpty()) throw IllegalArgumentException("Not a usable model: ${unknown.first()} keypoints per object (1 = arrows, 5 = face)")
+            val old = info()
+            if (isZip) { arrowsFile.delete(); faceFile.delete() }
+            parts[1]?.let { arrowsFile.delete(); it.first.renameTo(arrowsFile) }
+            parts[5]?.let { faceFile.delete(); it.first.renameTo(faceFile) }
+            val arrows = if (hasArrows) (parts[1]?.second ?: old?.arrows) else null
+            val face = if (hasFace) (parts[5]?.second ?: old?.face) else null
+            val eval = evalJson?.get("eval")?.let { runCatching { json.decodeFromJsonElement(ModelEval.serializer(), it) }.getOrNull() }
+            val setName = evalJson?.get("name")?.jsonPrimitive?.contentOrNull ?: (if (isZip) name.removeSuffix(".zip") else arrows?.name ?: face?.name ?: name)
+            val info = ModelInfo(
+                name = setName, inputSize = arrows?.inputSize ?: face?.inputSize ?: 0, inputType = arrows?.inputType ?: "", outputShape = arrows?.outputShape ?: emptyList(),
+                imported = System.currentTimeMillis(), face = face, eval = if (isZip) eval else null,
+                trained = evalJson?.get("trained")?.jsonPrimitive?.doubleOrNull?.let { (it * 1000).toLong() }, arrowsPresent = arrows != null,
+            )
+            infoFile.writeText(json.encodeToString(ModelInfo.serializer(), info))
+            return info
+        } finally { parts.values.forEach { it.first.delete() } }
     }
 
     /** Loads the model once to read its shapes; throws when TFLite cannot or the shapes are not a pose model. */
-    private fun probe(bytes: ByteArray, name: String): ModelPart {
-        val tmp = File(dir, "probe.tflite")
-        try {
-            tmp.writeBytes(bytes)
-            return TflitePoseDetector(tmp).use { it.describe(name) }
-        } catch (e: Exception) {
-            throw IllegalArgumentException("Not a usable model ($name): ${e.message}")
-        } finally { tmp.delete() }
+    private fun probe(file: File, name: String): ModelPart {
+        try { return TflitePoseDetector(file).use { it.describe(name) } }
+        catch (e: Exception) { throw IllegalArgumentException("Not a usable model ($name): ${e.message}") }
     }
 
     fun remove() { arrowsFile.delete(); faceFile.delete(); infoFile.delete() }
