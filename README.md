@@ -4,6 +4,8 @@
 
 > **Disclaimer: AI-generated project.** The app was written with Claude (Anthropic) in a conversation with the project owner. The core logic was tested against the firmware running in a simulator; the app was not yet run on a phone by the AI. Use at your own risk.
 
+**New to it?** [docs/getting-started.md](docs/getting-started.md) takes an archer from the box to the first scored end, in plain words.
+
 ## Structure
 
 | Module | Content |
