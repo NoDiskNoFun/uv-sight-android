@@ -65,6 +65,8 @@ data class ModelInfo(
  */
 class ModelStore(context: Context) {
     private val dir = File(context.filesDir, "model").apply { mkdirs() }
+    /** The GPU's compiled kernels, kept between runs (like a game's shader cache); the code cache dir is what TFLite recommends. */
+    private val gpuCache = File(context.codeCacheDir, "tflite-gpu").apply { mkdirs() }
     val arrowsFile = File(dir, "arrows.tflite")
     val faceFile = File(dir, "face.tflite")
     /** The arrow model, as earlier versions named it. */
@@ -139,7 +141,7 @@ class ModelStore(context: Context) {
     fun measure(): ModelInfo? {
         val info = info() ?: return null
         fun time(file: File, gpu: Boolean): Long {
-            TflitePoseDetector(file, gpu).use { d ->
+            TflitePoseDetector(file, gpu, gpuCache).use { d ->
                 val probe = Bitmap.createBitmap(d.inputSize * 4 / 3, d.inputSize, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(200, 200, 190)) }
                 d.detect(probe, 0.5)                                      // the first run warms up (the GPU compiles its shaders)
                 val t0 = System.nanoTime(); d.detect(probe, 0.5); return (System.nanoTime() - t0) / 1_000_000
@@ -159,7 +161,7 @@ class ModelStore(context: Context) {
     /** A detector for this file on the backend the test run chose; falls back to the CPU if the GPU refuses today. */
     fun detector(file: File): TflitePoseDetector {
         val run = if (file == faceFile) info()?.faceRun else info()?.arrowsRun
-        if (run?.backend == "gpu") runCatching { return TflitePoseDetector(file, true) }
+        if (run?.backend == "gpu") runCatching { return TflitePoseDetector(file, true, gpuCache) }
         return TflitePoseDetector(file, false)
     }
 }
@@ -169,12 +171,15 @@ class ModelStore(context: Context) {
  * ([1, N, N, 3] or channels-first [1, 3, N, N]), tensor types and quantisation are read from the model,
  * so the app adapts to whatever the training produced. Coordinates that come out normalised are scaled up.
  */
-class TflitePoseDetector(file: File, gpu: Boolean = false) : AutoCloseable {
+class TflitePoseDetector(file: File, gpu: Boolean = false, gpuCache: File? = null) : AutoCloseable {
     // The GPU delegate lives on the thread that created it: create and use a detector on one thread.
     private val delegate: org.tensorflow.lite.gpu.GpuDelegate? = if (!gpu) null else {
         val compat = org.tensorflow.lite.gpu.CompatibilityList()
         require(compat.isDelegateSupportedOnThisDevice) { "GPU not supported on this phone" }
-        org.tensorflow.lite.gpu.GpuDelegate(compat.bestOptionsForThisDevice)
+        val opts = compat.bestOptionsForThisDevice
+        // compiled kernels go to disk the first time and come back from there afterwards (OpenCL only; the token names the model's version)
+        if (gpuCache != null) opts.setSerializationParams(gpuCache.path, "${file.name}-${file.length()}-${file.lastModified()}")
+        org.tensorflow.lite.gpu.GpuDelegate(opts)
     }
     val backend: String = if (delegate != null) "gpu" else "cpu"
     private val interpreter = org.tensorflow.lite.Interpreter(file, org.tensorflow.lite.Interpreter.Options().setNumThreads(4).apply { delegate?.let { addDelegate(it) } })
