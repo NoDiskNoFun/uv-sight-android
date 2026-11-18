@@ -556,6 +556,8 @@ Step 2 of 2: Keep the bow level, but aim clearly up, arrow tip up, at least 20 d
 Calibration saved. Check the cant reading in a session: it should stay near 0° with the bubble centred. = Kalibrierung gespeichert. Prüfe die Verkantung in einer Sitzung: sie sollte mit zentrierter Libelle nahe 0° bleiben.
 Measure = Messen
 Done = Fertig
+kernel cache works = Shader-Cache wirkt
+no kernel cache, first run {ms} ms = kein Shader-Cache, erster Lauf {ms} ms
 GPU {ms} ms = GPU {ms} ms
 face = Auflage
 Runs on this phone: = Läuft auf diesem Handy:

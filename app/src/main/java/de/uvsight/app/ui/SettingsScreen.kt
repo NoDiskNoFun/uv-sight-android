@@ -805,7 +805,11 @@ private fun CalCard(state: AppState, ctl: SightController) {
 
 /** "Runs on this phone: arrows GPU, 140 ms · face CPU, 60 ms", or null before the test run. */
 private fun runLine(mi: de.uvsight.app.ModelInfo): String? {
-    fun part(label: String, r: de.uvsight.app.RunInfo?) = r?.let { "$label ${if (it.backend == "gpu") "GPU" else "CPU"}, ${it.ms} ms" + (if (it.backend == "cpu" && it.gpuMs != null) " (" + tr("GPU {ms} ms", "ms" to it.gpuMs) + ")" else "") }
+    fun part(label: String, r: de.uvsight.app.RunInfo?) = r?.let {
+        val cache = when (it.gpuCache) { true -> tr("kernel cache works"); false -> tr("no kernel cache, first run {ms} ms", "ms" to (it.gpuFirstMs ?: 0)); null -> null }
+        "$label ${if (it.backend == "gpu") "GPU" else "CPU"}, ${it.ms} ms" +
+            (if (it.backend == "cpu" && it.gpuMs != null) " (" + tr("GPU {ms} ms", "ms" to it.gpuMs) + (cache?.let { c -> ", $c" } ?: "") + ")" else cache?.let { c -> " ($c)" } ?: "")
+    }
     val parts = listOfNotNull(if (mi.arrows != null) part(tr("arrows"), mi.arrowsRun) else null, if (mi.face != null) part(tr("face"), mi.faceRun) else null)
     return if (parts.isEmpty()) null else tr("Runs on this phone:") + " " + parts.joinToString(" · ")
 }

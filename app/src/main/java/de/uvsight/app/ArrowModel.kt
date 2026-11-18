@@ -39,9 +39,14 @@ data class ModelEval(
     @SerialName("face_center_mm_median") val faceCenterMm: Double? = null, @SerialName("face_ring_accuracy") val faceRingAccuracy: Double? = null,
 )
 
-/** Where a model runs on this phone and how long one photo takes there, measured once after the import. */
+/**
+ * Where a model runs on this phone and how long one photo takes there (loading the model included, as the
+ * app does per photo), measured once after the import. gpuFirstMs is the GPU's first run, with the kernel
+ * compile; gpuMs the second, from the kernel cache: gpuCache says whether that cache made a difference.
+ */
 @Serializable
-data class RunInfo(val backend: String, val ms: Long, val cpuMs: Long? = null, val gpuMs: Long? = null, val gpuError: String? = null)
+data class RunInfo(val backend: String, val ms: Long, val cpuMs: Long? = null, val gpuMs: Long? = null, val gpuError: String? = null,
+                   val gpuFirstMs: Long? = null, val gpuCache: Boolean? = null)
 
 /**
  * What is installed: the arrow detector (the fields name..outputShape, kept flat so model.json files of
@@ -135,23 +140,29 @@ class ModelStore(context: Context) {
     fun remove() { arrowsFile.delete(); faceFile.delete(); infoFile.delete() }
 
     /**
-     * The test run after an import: each model once on the CPU and once on the GPU, on a blank photo. The GPU
-     * is kept when it works and is not slower; the choice and the times land in model.json. Call off the UI thread.
+     * The test run after an import, on a blank photo, timing what the app does per photo: load the model, run it,
+     * close it. The CPU twice (the second counts), the GPU twice: the first run compiles the kernels and fills the
+     * cache, the second shows whether the cache works and what a photo really costs. The GPU is kept when its
+     * second run is not slower than the CPU; the choice and the times land in model.json. Call off the UI thread.
      */
     fun measure(): ModelInfo? {
         val info = info() ?: return null
         fun time(file: File, gpu: Boolean): Long {
+            val t0 = System.nanoTime()
             TflitePoseDetector(file, gpu, gpuCache).use { d ->
                 val probe = Bitmap.createBitmap(d.inputSize * 4 / 3, d.inputSize, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(200, 200, 190)) }
-                d.detect(probe, 0.5)                                      // the first run warms up (the GPU compiles its shaders)
-                val t0 = System.nanoTime(); d.detect(probe, 0.5); return (System.nanoTime() - t0) / 1_000_000
+                d.detect(probe, 0.5)
             }
+            return (System.nanoTime() - t0) / 1_000_000
         }
         fun run(file: File): RunInfo {
-            val cpu = time(file, false)
-            val gpu = runCatching { time(file, true) }
-            val g = gpu.getOrNull()
-            return if (g != null && g <= cpu) RunInfo("gpu", g, cpu, g) else RunInfo("cpu", cpu, cpu, g, gpu.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName })
+            time(file, false); val cpu = time(file, false)
+            val first = runCatching { time(file, true) }
+            val second = if (first.isSuccess) runCatching { time(file, true) } else first
+            val g = second.getOrNull(); val g1 = first.getOrNull()
+            val cache = if (g != null && g1 != null) g < g1 * 0.6 else null       // the compile step gone: the cache works
+            return if (g != null && g <= cpu) RunInfo("gpu", g, cpu, g, null, g1, cache)
+                   else RunInfo("cpu", cpu, cpu, g, second.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }, g1, cache)
         }
         val updated = info.copy(arrowsRun = if (hasArrows) runCatching { run(arrowsFile) }.getOrNull() else null, faceRun = if (hasFace) runCatching { run(faceFile) }.getOrNull() else null)
         infoFile.writeText(json.encodeToString(ModelInfo.serializer(), updated))

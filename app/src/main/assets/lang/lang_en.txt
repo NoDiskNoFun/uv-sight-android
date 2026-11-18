@@ -559,6 +559,8 @@ Step 2 of 2: Keep the bow level, but aim clearly up, arrow tip up, at least 20 d
 Calibration saved. Check the cant reading in a session: it should stay near 0° with the bubble centred. = Calibration saved. Check the cant reading in a session: it should stay near 0° with the bubble centred.
 Measure = Measure
 Done = Done
+kernel cache works = kernel cache works
+no kernel cache, first run {ms} ms = no kernel cache, first run {ms} ms
 GPU {ms} ms = GPU {ms} ms
 face = face
 Runs on this phone: = Runs on this phone:
