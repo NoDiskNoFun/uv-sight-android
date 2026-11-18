@@ -18,6 +18,7 @@ the first and the face finder on the second at the same time. Each model trains 
 own, which reports its epochs through a file in the run folder.
 """
 import argparse
+import copy
 import json
 import math
 import multiprocessing
@@ -73,8 +74,8 @@ class Job:
         self.log.append(f"{time.strftime('%H:%M:%S')} {text}")
         del self.log[:-300]
 
-    def snapshot(self):
-        return {k: getattr(self, k) for k in ("name", "state", "parallel", "stages", "epochs", "log", "error", "started", "result", "params")}
+    def snapshot(self):   # a copy: the training thread keeps changing the job while the page reads it
+        return copy.deepcopy({k: getattr(self, k) for k in ("name", "state", "parallel", "stages", "epochs", "log", "error", "started", "result", "params")})
 
 
 # ----------------------------------------------------------------------------- hardware
@@ -393,16 +394,38 @@ def read_events(job, stage, path, pos):
                 e = json.loads(line)
             except ValueError:
                 continue
-            st = job.stages[stage]
-            if "metrics" in e:
-                st["metrics"].append(e["metrics"]); st["epoch"] = e["metrics"]["epoch"]
-            if "state" in e:
-                st["state"] = e["state"]
-            if "error" in e:
-                st["error"] = e["error"]
-            if "say" in e:
-                job.say(f"{stage}: {e['say']}")
+            with LOCK:
+                st = job.stages[stage]
+                if "metrics" in e:
+                    st["metrics"].append(e["metrics"]); st["epoch"] = e["metrics"]["epoch"]
+                if "state" in e:
+                    st["state"] = e["state"]
+                if "error" in e:
+                    st["error"] = e["error"]
+                if "say" in e:
+                    job.say(f"{stage}: {e['say']}")
     return pos
+
+
+def finite(v, digits=4):
+    """A metric as a rounded float, or None when it is NaN or infinite (Ultralytics reports NaN for some metrics in
+    the first epochs; JSON has no NaN, and the browser refuses the whole state when it meets one)."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return round(f, digits) if math.isfinite(f) else None
+
+
+def json_safe(o):
+    """o with every NaN or infinite float replaced by None, so json.dumps writes valid JSON."""
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [json_safe(v) for v in o]
+    return o
 
 
 class Events:
@@ -465,9 +488,9 @@ def stage_train(cfg, run, ev, export_lock):
             return
         m = {"epoch": trainer.epoch + 1}
         for k, v in (trainer.metrics or {}).items():
-            m[k.replace("metrics/", "").replace("(B)", "").replace("(P)", "_kpt")] = round(float(v), 4)
+            m[k.replace("metrics/", "").replace("(B)", "").replace("(P)", "_kpt")] = finite(v)
         try:
-            m["loss"] = round(float(sum(trainer.tloss)), 4) if hasattr(trainer.tloss, "__iter__") else round(float(trainer.tloss), 4)
+            m["loss"] = finite(sum(trainer.tloss) if hasattr(trainer.tloss, "__iter__") else trainer.tloss)
         except Exception:
             pass
         ev.emit(metrics=m)
@@ -668,7 +691,8 @@ progress{width:100%;height:14px}
 const $=id=>document.getElementById(id);let st=null,prevRun=null,prevIdx=0;const chosen=new Map();
 async function api(p,o){const r=await fetch(p,o);return r.json()}
 function fmt(v){return v==null?'–':v}
-async function refresh(){st=await api('/api/state');
+async function refresh(){try{await update()}catch(e){$('jobmsg').textContent=`page could not read the trainer's state (${e.message}); retrying`;$('jobmsg').className='err'}}
+async function update(){st=await api('/api/state');
 $('gpu').textContent=`GPU: ${st.gpu.name}`+(st.gpu.torch?` · PyTorch ${st.gpu.torch}`:'')+(st.ultralytics?' · Ultralytics ready':' · Ultralytics not installed: pip install -r requirements.txt')+(st.gpu.device==='cuda'?(st.gpu.count>=2?' · the two models train at the same time on GPU 0 and 1':' · the two models train one after the other'):'')+(st.mock?' · MOCK MODE':'')+` · ${st.env}`;
 $('gpu').className=st.export_missing&&st.export_missing.length?'err':'muted';if(st.export_missing&&st.export_missing.length)$('gpu').textContent+=` · export needs ${st.export_missing.join(', ')}: pip install -r requirements.txt in this Python`;
 for(const e of st.exports)if(!chosen.has(e.name))chosen.set(e.name,true);
@@ -721,7 +745,7 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def send_json(self, obj, code=200):
-        data = json.dumps(obj).encode()
+        data = json.dumps(json_safe(obj), allow_nan=False).encode()
         self.send_response(code); self.send_header("content-type", "application/json"); self.send_header("content-length", str(len(data))); self.end_headers()
         self.wfile.write(data)
 
