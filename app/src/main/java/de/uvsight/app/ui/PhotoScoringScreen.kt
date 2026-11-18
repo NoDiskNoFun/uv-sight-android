@@ -390,7 +390,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     FilterChip(selected = environment == "indoor", onClick = { environment = "indoor" }, label = { Text(tr("Indoor")) })
                 }
                 Text(when {
-                    !faceLooked && center == null -> tr("Looking for the face…")
+                    !faceLooked && center == null -> tr("Looking for the face… Tap its centre to mark it yourself; the finder's result is then ignored.")
                     faceFromModel && geometry != null -> tr("Face found by the model. Drag a point to adjust, or Clear to mark anew.")
                     center == null -> tr("Tap the centre of the face.")
                     edge.size < 4 -> tr("Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right.", "edge" to edge.size)
