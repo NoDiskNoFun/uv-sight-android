@@ -573,7 +573,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                     SwitchRow(tr("Use the face finder"), tr("Off: you mark the face yourself and the photo trains the face finder."), ph.useFaceModel) { ctl.setPhotoPrefs(ph.copy(useFaceModel = it)) }
                     if (ph.useFaceModel) Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                         Text(tr("Face confidence: {faceConf} %", "faceConf" to ((ph.faceConf * 100).roundToInt())), color = uv.muted, fontSize = 13.sp)
-                        Text(tr("How sure the face finder has to be; of the faces above it the surest is taken. Lower finds the face in more photos, but may put it on something else."), color = uv.muted, fontSize = 12.sp)
+                        Text(tr("Below this the face is not proposed and you mark it by hand. Lower accepts the finder's face on more photos, higher sends more photos to marking by hand."), color = uv.muted, fontSize = 12.sp)
                         Slider(value = ph.faceConf.toFloat(), onValueChange = { ctl.setPhotoPrefs(ph.copy(faceConf = (it * 20).roundToInt() / 20.0)) }, valueRange = 0.1f..0.9f,
                             colors = SliderDefaults.colors(thumbColor = uv.gold, activeTrackColor = uv.gold))
                     }
