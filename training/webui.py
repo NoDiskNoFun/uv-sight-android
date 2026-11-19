@@ -162,18 +162,22 @@ def env_note():
 
 
 # ----------------------------------------------------------------------------- evaluation
-def evaluate(val_recs, predict, predict_face=None):
+def evaluate(val_recs, predict, predict_face=None, truth="hand"):
     """predict(record, image_path) -> [(x, y, conf)] in upright pixels;
     predict_face(record, image_path) -> (conf, [centre, top, right, bottom, left]) or None.
     Returns archery metrics: arrows found, entry error, rings right; face found, centre error and
-    how often the user's arrows get the same ring with the model's face as with the user's."""
+    how often the user's arrows get the same ring with the model's face as with the user's.
+    truth="hand": only hand-made marks count, the honest measurement. truth="accepted": only the parts an
+    earlier model proposed and the archer accepted untouched count; that is agreement with the old model,
+    not accuracy, and serves as a check that a new model has not fallen behind where the old one was right."""
     found = total = false = ring_ok = ring_n = 0
     px_err = []; mm_err = []
     face_n = face_found = face_ring_ok = face_ring_n = 0; face_mm = []
     per_image = []
     for rec, img in val_recs:
-        # only hand-made marks serve as the truth: a part a model proposed in the app is not compared
-        arrows_hand = prepare_dataset.hand_marked(rec, "arrows"); face_hand = prepare_dataset.hand_marked(rec, "face")
+        # which parts of the record are the truth here (see truth above)
+        arrows_hand = prepare_dataset.hand_marked(rec, "arrows") == (truth == "hand") and bool(rec.get("arrows"))
+        face_hand = prepare_dataset.hand_marked(rec, "face") == (truth == "hand")
         preds = predict(rec, img) if arrows_hand else []
         face_hit = None
         g_user = facegeom.geometry_of_record(rec)
@@ -253,7 +257,9 @@ def run_job(job, mock):
         job.say(f"{len(recs)} photos: arrows marked by hand on {n_arrow_hand}, face on {n_face_hand} (what a model proposed in the app is left out)")
         if n_arrow_hand == 0:
             raise RuntimeError("no photo with hand-marked arrows: switch the arrow detector off in the app to collect some")
-        train, val = prepare_dataset.split_by_session(recs, float(p["val"]))
+        # only photos with a hand-marked part train or validate; the ones accepted untouched are the regression check below
+        usable = [x for x in recs if prepare_dataset.hand_marked(x[0], "arrows") or prepare_dataset.hand_marked(x[0], "face")]
+        train, val = prepare_dataset.split_by_session(usable, float(p["val"]))
         if not val:
             # a single session (or a single photo): the trainer needs a validation set, so the
             # training photos serve as one; the numbers below are then optimistic
@@ -304,6 +310,13 @@ def run_job(job, mock):
             predict_face = make_predict(run / "train_face" / "weights" / "best.pt", imgsz, "face") if train_face and "face" not in failed else None
         ev = evaluate(val, predict, predict_face)
         ev["train_photos"] = len(train); ev["val_photos"] = len(val)
+        # the regression check: the photos whose proposals the archer accepted untouched never train or validate
+        # (they carry the old model's points); the new model should still agree with them where the old one was right
+        accepted = [x for x in recs if not prepare_dataset.hand_marked(x[0], "arrows") or not prepare_dataset.hand_marked(x[0], "face")]
+        if accepted:
+            job.say(f"agreement check on {len(accepted)} photos with accepted proposals")
+            ag = evaluate(accepted, predict, predict_face, truth="accepted")
+            ev["agreement"] = {k: ag.get(k) for k in ("images", "arrows", "found", "false_alarms", "recall", "ring_accuracy", "face_photos", "face_found", "face_ring_accuracy")}
         has_face = (run / "face.tflite").exists()
         info = {"name": job.name, "imgsz": imgsz, "task": "pose", "trained": time.time(), "train_photos": len(train), "val_photos": len(val),
                 "size": p.get("size", "n"), "precision": p.get("precision", "int8"),
@@ -717,10 +730,11 @@ keys.forEach((k,ki)=>{const vs=m.map(x=>x[k]).filter(v=>v!=null);if(!vs.length)r
 m.forEach((x,i)=>{if(x[k]==null)return;const X=30+i*(c.width-40)/Math.max(1,m.length-1),Y=10+(1-(x[k]-lo)/((hi-lo)||1))*(c.height-30);i?g.lineTo(X,Y):g.moveTo(X,Y)});g.stroke();
 g.fillStyle=cols[k]||'#fff';g.font='12px system-ui';g.fillText(`${k}: ${vs[vs.length-1]}`,30+ki*160,c.height-6)});}
 function renderRuns(runs){if(!runs.length){$('runs').textContent='No runs yet.';return}
-$('runs').innerHTML='<table><tr><th>Run</th><th>Photos</th><th>Arrows found</th><th>False alarms</th><th>Entry error</th><th>Rings right</th><th>Face found</th><th>Time</th><th></th></tr>'+runs.slice().reverse().map(r=>{const e=r.eval;
+$('runs').innerHTML='<table><tr><th>Run</th><th>Photos</th><th>Arrows found</th><th>False alarms</th><th>Entry error</th><th>Rings right</th><th>Face found</th><th title="On the photos whose proposals were accepted untouched: how far the new model agrees with the old one. A regression check, not accuracy.">Agreement</th><th>Time</th><th></th></tr>'+runs.slice().reverse().map(r=>{const e=r.eval;const ag=e.agreement;
+const agTxt=ag&&ag.arrows?`${ag.found}/${ag.arrows}${ag.recall!=null?` (${Math.round(ag.recall*100)} %)`:''}, ${ag.false_alarms} false<br><span class="muted" style="font-size:.8rem">rings ${ag.ring_accuracy!=null?Math.round(ag.ring_accuracy*100)+' %':'–'}${ag.face_photos?`, face ${ag.face_found}/${ag.face_photos}`:''} · ${ag.images} photos</span>`:'–';
 const face=e.face_photos?`${e.face_found}/${e.face_photos}`+(e.face_center_mm_median!=null?`<br><span class="muted" style="font-size:.8rem">centre ${e.face_center_mm_median} mm off, rings ${e.face_ring_accuracy!=null?Math.round(e.face_ring_accuracy*100)+' %':'–'} the same</span>`:''):'–';
 const pe=e.per_export||{};const peTxt=Object.keys(pe).length>1?'<br><span class="muted" style="font-size:.8rem">'+Object.entries(pe).map(([k,v])=>`${k}: ${v.found}/${v.arrows}, ${v.false_alarms} false`).join('<br>')+'</span>':'';
-return `<tr><td>${r.name}${r.mock?' <span class="muted">(mock)</span>':''}${peTxt}</td><td>${r.train_photos}+${r.val_photos}</td><td>${e.found}/${e.arrows}${e.recall!=null?` (${Math.round(e.recall*100)} %)`:''}</td><td>${e.false_alarms}</td><td>${e.mm_error_median!=null?e.mm_error_median+' mm median':fmt(e.px_error_mean)+' px'}</td><td>${e.ring_accuracy!=null?Math.round(e.ring_accuracy*100)+' %':'–'}</td><td>${face}</td><td>${Math.round(r.duration_s/60)} min${r.parallel?'<br><span class="muted" style="font-size:.8rem">2 GPUs</span>':''}</td>
+return `<tr><td>${r.name}${r.mock?' <span class="muted">(mock)</span>':''}${peTxt}</td><td>${r.train_photos}+${r.val_photos}</td><td>${e.found}/${e.arrows}${e.recall!=null?` (${Math.round(e.recall*100)} %)`:''}</td><td>${e.false_alarms}</td><td>${e.mm_error_median!=null?e.mm_error_median+' mm median':fmt(e.px_error_mean)+' px'}</td><td>${e.ring_accuracy!=null?Math.round(e.ring_accuracy*100)+' %':'–'}</td><td>${face}</td><td>${agTxt}</td><td>${Math.round(r.duration_s/60)} min${r.parallel?'<br><span class="muted" style="font-size:.8rem">2 GPUs</span>':''}</td>
 <td>${r.model?`<a href="/files/${r.name}/model.zip" download="${r.name}.zip"><button>Download model (.zip)</button></a>`:''} <button class="sec" onclick="openPreview('${r.name}')">Preview</button></td></tr>`}).join('')+'</table>';}
 async function openPreview(run,idx=0){prevRun=run;const p=await api(`/api/preview?run=${encodeURIComponent(run)}&i=${idx}`);if(p.error){alert(p.error);return}prevIdx=p.index;
 $('prevcard').hidden=false;$('pinfo').textContent=`${run}: photo ${p.index+1} of ${p.count} · ${p.id} · ${p.face} · ${p.env||''}`+(p.export?` · from ${p.export}`:'')+(p.stats?` · marks ${p.stats.marks}, found ${p.stats.found}, false ${p.stats.false}`+(p.stats.face==null?'':p.stats.face?', face found':', face missed'):'');
