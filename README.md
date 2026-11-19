@@ -4,6 +4,8 @@
 
 > **Disclaimer: AI-generated project.** The app was written with Claude (Anthropic) in a conversation with the project owner. The core logic was tested against the firmware running in a simulator; the app was not yet run on a phone by the AI. Use at your own risk.
 
+**New to it?** [docs/getting-started.md](docs/getting-started.md) takes an archer from the box to the first scored end, in plain words.
+
 ## Structure
 
 | Module | Content |
@@ -23,7 +25,7 @@ Requirements: JDK 17, Android SDK (platform 35, build-tools). Then:
 ./gradlew :core:test -PskipAndroid   # the same without the Android SDK installed
 ```
 
-Every push builds the APKs on GitHub Actions; download them from the workflow run. `nocked-debug-apk` is the debug build, `nocked-release-apk` the signed release build for everyday use: it installs over the previous release, keeping the phone's data, because every build carries the same signature and a higher version number (the CI run number).
+Every push builds the APKs on GitHub Actions; download them from the workflow run. `nocked-debug-apk` is the debug build, `nocked-release-apk` the signed release build for everyday use: it installs over the previous release, keeping the phone's data, because every build carries the same signature and a higher version number (the CI run number). Every push to `main` also refreshes the release **beta** on the Releases page, so the newest signed APK is always at <https://github.com/NoDiskNoFun/uv-sight-android/releases/latest/download/nocked.apk>.
 
 ### Signing
 
