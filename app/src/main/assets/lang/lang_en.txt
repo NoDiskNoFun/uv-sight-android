@@ -15,6 +15,33 @@ Sight battery low = Sight battery low
 Sight fully charged = Sight fully charged
 You can unplug the USB cable. = You can unplug the USB cable.
 
+# --- app/src/main/java/de/uvsight/app/FirmwareUsb.kt
+Download the firmware = Download the firmware
+Connect the sight to this phone = Connect the sight to this phone
+Switch the sight to update mode = Switch the sight to update mode
+Allow access to the USB drive = Allow access to the USB drive
+Copy the firmware = Copy the firmware
+The sight restarts = The sight restarts
+Downloading firmware {version} = Downloading firmware {version}
+The download failed. = The download failed.
+Plug a USB-C cable into the sight and into this phone. The phone powers the sight and works as the computer. = Plug a USB-C cable into the sight and into this phone. The phone powers the sight and works as the computer.
+Tap Next when the cable is in. = Tap Next when the cable is in.
+No cable was connected. = No cable was connected.
+The app tells the sight to restart in update mode. The light goes off, the Bluetooth connection drops; that is expected. = The app tells the sight to restart in update mode. The light goes off, the Bluetooth connection drops; that is expected.
+No Bluetooth connection to the sight: press the small reset button on the sight twice quickly. It then restarts in update mode. = No Bluetooth connection to the sight: press the small reset button on the sight twice quickly. It then restarts in update mode.
+The sight did not switch to update mode. Check that the cable carries data (some only charge) and try again. Without the app: press the reset button on the sight twice quickly while the cable is in. = The sight did not switch to update mode. Check that the cable carries data (some only charge) and try again. Without the app: press the reset button on the sight twice quickly while the cable is in.
+The sight did not show up as a drive. Check the cable (some only charge) and try again. = The sight did not show up as a drive. Check the cable (some only charge) and try again.
+Android asks whether Nocked may use the USB drive of the sight. Tap Allow (OK). = Android asks whether Nocked may use the USB drive of the sight. Tap Allow (OK).
+Without access to the USB drive the firmware cannot be copied. Start the update again and allow it. = Without access to the USB drive the firmware cannot be copied. Start the update again and allow it.
+Copying the firmware to the sight. Do not unplug the cable. = Copying the firmware to the sight. Do not unplug the cable.
+The drive of the sight has no file system. = The drive of the sight has no file system.
+This USB drive is not a sight in update mode. = This USB drive is not a sight in update mode.
+The copy stopped early. = The copy stopped early.
+The sight restarts with the new firmware and connects again. The cable can come out now. = The sight restarts with the new firmware and connects again. The cable can come out now.
+The firmware was copied. The sight has not connected again yet; it will when it is in reach (or tap Connect on the Status tab). = The firmware was copied. The sight has not connected again yet; it will when it is in reach (or tap Connect on the Status tab).
+Done. The sight reports firmware {version}. = Done. The sight reports firmware {version}.
+The sight is back but reports firmware {version}. The update did not take; try again. = The sight is back but reports firmware {version}. The update did not take; try again.
+
 # --- app/src/main/java/de/uvsight/app/SightService.kt
 Running session = Running session
 Shows the connection to the sight and the running session = Shows the connection to the sight and the running session
@@ -29,6 +56,16 @@ Reconnecting to the sight = Reconnecting to the sight
 Move the bow to wake it = Move the bow to wake it
 Connecting to the sight = Connecting to the sight
 Enter scores = Enter scores
+
+# --- app/src/main/java/de/uvsight/app/Updates.kt
+Updates = Updates
+A new version of the app or of the sight's firmware = A new version of the app or of the sight's firmware
+Nocked {version} is ready to install. = Nocked {version} is ready to install.
+Firmware {version} is ready for the sight. = Firmware {version} is ready for the sight.
+Update available = Update available
+The downloaded file is damaged (checksum). Try again. = The downloaded file is damaged (checksum). Try again.
+app = app
+firmware = firmware
 
 # --- app/src/main/java/de/uvsight/app/ui/App.kt
 Bluetooth permission is needed to find the sight. = Bluetooth permission is needed to find the sight.
@@ -538,9 +575,6 @@ Show console = Show console
 A tab with the raw messages of the sight, for troubleshooting. = A tab with the raw messages of the sight, for troubleshooting.
 Use as the home screen = Use as the home screen
 For a phone that only serves the sight. On: the phone asks whether Nocked becomes its home app; choose Always. Off: the phone's choice of home app opens, so you can pick your old one again. = For a phone that only serves the sight. On: the phone asks whether Nocked becomes its home app; choose Always. Off: the phone's choice of home app opens, so you can pick your old one again.
-Firmware update = Firmware update
-Prepares the sight for new firmware. Connect it to your computer with the USB cable first. = Prepares the sight for new firmware. Connect it to your computer with the USB cable first.
-Start = Start
 Use the app = Use the app
 Photo scoring only: no Bluetooth, no sight. Score from photos and collect training data, for example on a club mate's phone. = Photo scoring only: no Bluetooth, no sight. Score from photos and collect training data, for example on a club mate's phone.
 With the Anchored sight: connection, sessions, settings and history. = With the Anchored sight: connection, sessions, settings and history.
@@ -555,8 +589,6 @@ Restore = Restore
 Reset the sight to factory state? = Reset the sight to factory state?
 Erases everything on the sight: settings, calibration, setups and learned arrow speeds, all sessions, the name, password and trainers, badges and the battery statistics. The sight then restarts as a new sight with a new id, as if freshly built. Everything on this phone is kept; the old sight stays in the history with its sessions. = Erases everything on the sight: settings, calibration, setups and learned arrow speeds, all sessions, the name, password and trainers, badges and the battery statistics. The sight then restarts as a new sight with a new id, as if freshly built. Everything on this phone is kept; the old sight stays in the history with its sessions.
 Erase = Erase
-Prepare a firmware update? = Prepare a firmware update?
-Connect the sight to your computer with the USB cable first. It then shows up there as a drive; copy the new firmware onto it. Until then the sight does nothing else, and the app disconnects. = Connect the sight to your computer with the USB cable first. It then shows up there as a drive; copy the new firmware onto it. Until then the sight does nothing else, and the app disconnects.
 Delete all sessions on the sight? = Delete all sessions on the sight?
 All {loginfo}sessions stored on the sight are deleted. The sessions on this phone are kept. = All {loginfo}sessions stored on the sight are deleted. The sessions on this phone are kept.
 For example the arrow type. Up to 18 characters. = For example the arrow type. Up to 18 characters.
@@ -693,6 +725,35 @@ held steady {v} s = held steady {v} s
 hold ±{v}° = hold ±{v}°
 sank {v}° before the release = sank {v}° before the release
 turned {v}°/s at release = turned {v}°/s at release
+
+# --- app/src/main/java/de/uvsight/app/ui/UpdateDialogs.kt
+Firmware update to {version} = Firmware update to {version}
+Without the app: download anchored.uf2 from the firmware release on GitHub, plug the sight into a computer, press its reset button twice quickly and copy the file onto the drive that appears. = Without the app: download anchored.uf2 from the firmware release on GitHub, plug the sight into a computer, press its reset button twice quickly and copy the file onto the drive that appears.
+Looking for new versions… = Looking for new versions…
+The last check failed: {error} = The last check failed: {error}
+Not checked yet. New builds of the app and of the sight's firmware are published on GitHub by the project. = Not checked yet. New builds of the app and of the sight's firmware are published on GitHub by the project.
+Checked {time}: everything is up to date. = Checked {time}: everything is up to date.
+Checked {time}. = Checked {time}.
+Check now = Check now
+Could not reach GitHub: {error} = Could not reach GitHub: {error}
+Check daily = Check daily
+Once a day, while the app is open, it looks on GitHub for a newer app build and newer firmware and tells you with a notification. Nothing is installed by itself. = Once a day, while the app is open, it looks on GitHub for a newer app build and newer firmware and tells you with a notification. Nothing is installed by itself.
+Nocked {version} is available = Nocked {version} is available
+Downloading… {pct} % = Downloading… {pct} %
+You have {version}. The download opens Android's installer; the app keeps its data. The first time, Android asks you to allow installs from Nocked: switch it on and tap Update again. = You have {version}. The download opens Android's installer; the app keeps its data. The first time, Android asks you to allow installs from Nocked: switch it on and tap Update again.
+Update = Update
+Allow Nocked to install apps, then tap Update again. = Allow Nocked to install apps, then tap Update again.
+Firmware {version} is available for the sight = Firmware {version} is available for the sight
+Firmware {version} = Firmware {version}
+Connect the sight to see whether it has this version. The update itself goes over a USB-C cable between the sight and this phone; the app guides you step by step. = Connect the sight to see whether it has this version. The update itself goes over a USB-C cable between the sight and this phone; the app guides you step by step.
+The sight has {version}. The update goes over a USB-C cable between the sight and this phone; the app guides you step by step. = The sight has {version}. The update goes over a USB-C cable between the sight and this phone; the app guides you step by step.
+The sight already has this version. You can install it again if something is wrong with it. = The sight already has this version. You can install it again if something is wrong with it.
+Install = Install
+No firmware release was found on GitHub. = No firmware release was found on GitHub.
+just now = just now
+{n} min ago = {n} min ago
+{n} h ago = {n} h ago
+{n} days ago = {n} days ago
 
 # --- core/src/main/kotlin/de/uvsight/core/Badges.kt
 Points of an end = Points of an end

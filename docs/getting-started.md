@@ -6,7 +6,7 @@ Anchored is the small box on your bow sight. Nocked is the app on your phone. To
 
 - The Anchored sight, mounted on your bow, with a charged battery. It charges through the USB-C socket with any phone charger; a full charge takes about two hours. The small light near the socket shows charging.
 - An Android phone (Android 8 or newer) with Bluetooth. iPhones are not supported.
-- The Nocked app. Open this link on the phone and tap **nocked.apk**: <https://github.com/NoDiskNoFun/uv-sight-android/releases/latest>. Then open the downloaded file and allow the installation when Android asks; this needs the one-time permission "install unknown apps" for the app you opened the file with, usually your browser or files app. Updates work the same way: download the newer file and open it, the app keeps all its data.
+- The Nocked app. Open this link on the phone and tap **nocked.apk**: <https://github.com/NoDiskNoFun/uv-sight-android/releases/latest>. Then open the downloaded file and allow the installation when Android asks; this needs the one-time permission "install unknown apps" for the app you opened the file with, usually your browser or files app. Later updates come through the app itself, see "Updates" below.
 
 ## 1. Wake the sight
 
@@ -64,6 +64,13 @@ The *History* tab lists every session with its ends, average and X count, and sh
 - **Phone in the pocket**: with the session notification allowed, the connection stays alive and the notification shows the running end.
 - **A second sight, or a club mate's**: *Settings → Sights → Connect a new sight*. The app never connects to a sight it has not been introduced to.
 - **Sharing a sight in the club**: *Settings → Mode* lets several archers use one sight with their own names and lets a trainer see everyone; see the project page for that.
+
+## Updates
+
+The project publishes every new build of the app and of the sight's firmware on GitHub. The app looks there once a day while it is open (*Settings → App and firmware → Check daily*; *Check now* looks right away) and shows a notification when something newer exists. Nothing installs by itself.
+
+- **App**: under *Settings → App and firmware* a line "Nocked … is available" appears with an **Update** button. It downloads the new version and opens Android's installer; the app keeps all its data. The first time, Android asks you to allow Nocked to install apps: switch that on and tap **Update** again.
+- **Firmware** (the program on the sight): the line "Firmware … is available for the sight" has an **Update** button too. Tap it and a window guides you through six steps: the app downloads the firmware, you plug a USB-C cable into the sight and into the phone (the phone powers the sight and acts as the computer), the app switches the sight to update mode, Android asks once whether Nocked may use the USB drive of the sight (allow it), the app copies the firmware, and the sight restarts and connects again. The cable must carry data; some cheap cables only charge. A phone without USB OTG cannot do this; the window then tells you the way with a computer: download `anchored.uf2` from the firmware release, plug the sight into the computer, press its small reset button twice quickly and copy the file onto the drive that appears.
 
 ## Scoring from photos and the arrow detector
 

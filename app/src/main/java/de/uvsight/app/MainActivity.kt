@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
             "training" -> vm.controller.setView(View.TRAINING)
             "history" -> vm.controller.setView(View.HISTORY)
             "status" -> vm.controller.setView(View.STATUS)
+            "settings" -> vm.controller.setView(View.SETTINGS)
         }
     }
 

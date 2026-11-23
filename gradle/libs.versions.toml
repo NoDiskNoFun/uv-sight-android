@@ -9,6 +9,7 @@ lifecycle = "2.8.7"
 composeBom = "2025.06.00"
 junit = "4.13.2"
 tflite = "2.16.1"
+libaums = "0.10.0"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -27,6 +28,7 @@ junit = { module = "junit:junit", version.ref = "junit" }
 tensorflow-lite = { module = "org.tensorflow:tensorflow-lite", version.ref = "tflite" }
 tensorflow-lite-gpu = { module = "org.tensorflow:tensorflow-lite-gpu", version.ref = "tflite" }
 tensorflow-lite-gpu-api = { module = "org.tensorflow:tensorflow-lite-gpu-api", version.ref = "tflite" }
+libaums = { module = "me.jahnen.libaums:core", version.ref = "libaums" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 
 [plugins]

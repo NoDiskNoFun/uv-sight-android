@@ -13,7 +13,7 @@
 | `core` | Pure Kotlin: the JSON protocol of the sight, the archive on the phone, sync with the sight's log, training, CSV export/import, JSON backup. No Android dependencies, unit-tested. |
 | `app` | Android app: Bluetooth LE (Nordic UART Service), Jetpack Compose screens (Status, Training, History, Settings, Console). |
 
-The app needs firmware 5.8 or newer on the sight (protocol 16).
+The app needs firmware 5.8 or newer on the sight (protocol 16). Signed builds: <https://github.com/NoDiskNoFun/uv-sight-android/releases/latest> (`nocked.apk`); installed once, the app updates itself from there, see "Updates" below.
 
 ## Build
 
@@ -124,6 +124,10 @@ Each model has its own switch on the card (*Use the arrow detector*, *Use the fa
 
 ## Nocked as the home screen
 
+### Updates
+
+Both repositories build on every push to `main` and publish the result as the rolling GitHub release `beta` (`releases/latest`): this repository the signed `nocked.apk` with a `version.json` (`build`, `versionName`, `sha256`, `minProto`), the firmware repository `anchored.uf2` with its `version.json` (`firmware`, `proto`, `sha256`). Beta testers and the final version get their updates the same way. The app reads the two files (`Updates.kt`), once a day while it is open when *Settings → App and firmware → Check daily* is on, and on *Check now*; a newer build or firmware is announced with a notification (channel "updates") and shown on the card. The app update downloads the APK into the app's cache, checks the SHA-256 and hands it to Android's package installer through the FileProvider (`REQUEST_INSTALL_PACKAGES`; the first time Android asks to allow installs from Nocked). The firmware update (`FirmwareUsb.kt`, `UpdateDialogs.kt`) runs in one guided window with six steps: download and checksum, USB-C cable between the sight and the phone (the phone is the USB host), `dfu` over Bluetooth so the sight reboots into its UF2 bootloader (without Bluetooth: double-press the reset button), the USB permission dialog, writing `anchored.uf2` onto the bootloader's drive with libaums (no file manager or folder picker; the bootloader flashes each block as it arrives and restarts after the last one, so the drive vanishing under the final write is the normal end), then waiting for the sight to reconnect and report the new version. Phones without USB OTG get the instructions for a computer instead.
+
 For a phone that only serves the sight, *Settings → App and firmware → Use as the home screen* lets Nocked answer the Home button. The switch is off by default and the app cannot be chosen as home app while it is off. Switching it on makes the phone ask whether Nocked becomes the home app (choose *Always*); switching it off removes Nocked from the choice and opens the phone's own choice of home app, so the old launcher can be picked again.
 
 ## Resetting the sight
@@ -147,5 +151,5 @@ Some phones (Xiaomi, Huawei, Samsung with aggressive power saving) stop foregrou
 1. Move the bow so the sight wakes up, then tap **Connect** on the Status tab. The app remembers the sight and reconnects on its own after a lost link.
 2. **Training:** scores of the open end, keypad in target ring colours or scoring from a photo of the face, Save / Skip / End session. Scoring works without a connection; Save reconnects.
 3. **History:** sessions stored on the phone, chart, per-end details, CSV export, JSON backup and import, removal on the phone or on the sight.
-4. **Settings:** shot counter, cant and aiming angle, LED, all settings with slider and description, guided calibration, setups, sync options, notifications and vibration, firmware update mode.
+4. **Settings:** shot counter, cant and aiming angle, LED, all settings with slider and description, guided calibration, setups, sync options, notifications and vibration, updates of the app and of the firmware.
 5. **Console:** raw messages and free command input (enable it under Settings → App and firmware).

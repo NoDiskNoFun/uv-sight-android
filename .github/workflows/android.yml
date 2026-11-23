@@ -75,10 +75,15 @@ jobs:
         run: |
           APK=$(ls app/build/outputs/apk/release/nocked-*.apk | head -1)
           cp "$APK" nocked.apk
+          # version.json: what the app reads to notice a newer build (see Updates.kt)
+          PROTO=$(grep -oP 'PROTO_EXPECTED\s*=\s*\K[0-9]+' core/src/main/kotlin/de/uvsight/core/Protocol.kt | head -1)
+          printf '{"build":%s,"versionName":"1.0.%s","file":"nocked.apk","sha256":"%s","minProto":%s,"commit":"%s","built":"%s"}\n' \
+            "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_NUMBER" "$(sha256sum nocked.apk | cut -d' ' -f1)" "${PROTO:-0}" "${GITHUB_SHA::7}" "$(date -u +%FT%TZ)" > version.json
+          cat version.json
           gh release delete beta --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
-          gh release create beta nocked.apk "$APK" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+          gh release create beta nocked.apk "$APK" version.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
             --title "Nocked beta, build $GITHUB_RUN_NUMBER" \
-            --notes "Signed release APK of commit ${GITHUB_SHA::7}, built by GitHub Actions. Open nocked.apk on the phone to install; it updates an earlier beta in place and keeps the phone's data. A debug build has to be uninstalled first."
+            --notes "Signed release APK of commit ${GITHUB_SHA::7}, built by GitHub Actions. Open nocked.apk on the phone to install; it updates an earlier beta in place and keeps the phone's data. A debug build has to be uninstalled first. Installed once, the app finds later builds itself (Settings → App and firmware)."
       - name: Test reports
         if: always()
         uses: actions/upload-artifact@v4

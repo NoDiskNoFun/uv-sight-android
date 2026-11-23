@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+    <!-- Firmware update: the phone is the USB host of the sight's update drive (phones without OTG can still use the PC way) -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <!-- Android 11 and older -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
@@ -20,6 +22,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Updates: reads the release files on GitHub and hands the new APK to Android's installer -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Lists the installed camera apps for the "Camera app" setting: from Android 11 on, the plain capture
          query returns system cameras only, so each package is asked explicitly (the app is distributed as an APK, not via Play) -->

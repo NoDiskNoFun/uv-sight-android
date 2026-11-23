@@ -10,6 +10,7 @@ class SightViewModel(app: Application) : AndroidViewModel(app) {
     val toasts: SharedFlow<Toast> = rt.toasts
     val ble = rt.ble
     val controller = rt.controller
+    val updates = rt.updates
     val state get() = controller.state
     fun toast(text: String, error: Boolean = false) = rt.toast(text, error)
     /** The gallery picture behind the photo being scored (null when it came from the camera) and whether its scores were used. */

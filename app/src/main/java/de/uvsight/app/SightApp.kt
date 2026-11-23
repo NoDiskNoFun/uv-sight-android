@@ -39,6 +39,7 @@ class SightRuntime private constructor(private val app: Application) {
     var galleryUri: android.net.Uri? = null
     var galleryScored = false
     val alerts = Alerts(app, controller, scope)
+    val updates = UpdateManager(app, controller, prefs, scope)
 
     init {
         Language.apply(app, controller.storedLanguage())

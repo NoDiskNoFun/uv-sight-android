@@ -54,7 +54,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.uvsight.app.SightViewModel
-import de.uvsight.core.APP_VERSION
 import de.uvsight.core.AppState
 import de.uvsight.core.CfgItem
 import de.uvsight.core.ConnState
@@ -123,7 +122,6 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
     val connected = state.conn == ConnState.CONNECTED
     var askDefaults by remember { mutableStateOf(false) }
     var askFactory by remember { mutableStateOf(false) }
-    var askDfu by remember { mutableStateOf(false) }
     var askClear by remember { mutableStateOf(false) }
     var newSetup by remember { mutableStateOf(false) }
     var setupMenu by remember { mutableStateOf<de.uvsight.core.SetupItem?>(null) }
@@ -711,22 +709,13 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                 SwitchRow(tr("Use as the home screen"), tr("For a phone that only serves the sight. On: the phone asks whether Nocked becomes its home app; choose Always. Off: the phone's choice of home app opens, so you can pick your old one again."), launcher, first = true) {
                     launcher = it; de.uvsight.app.Launcher.set(context, it)
                 }
-                if (connected) {
-                    HorizontalDivider(color = uv.line)
-                    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("Firmware update"), color = uv.ink)
-                            Text(tr("Prepares the sight for new firmware. Connect it to your computer with the USB cable first."), color = uv.muted, fontSize = 13.sp)
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        SecondaryButton(tr("Start")) { askDfu = true }
-                    }
-                }
+                HorizontalDivider(color = uv.line)
+                UpdateRows(vm.updates, ctl, connected) { t, err -> vm.toast(t, err) }
                 HorizontalDivider(color = uv.line)
                 SegRow(tr("Use the app"), if (state.photoOnly) tr("Photo scoring only: no Bluetooth, no sight. Score from photos and collect training data, for example on a club mate's phone.")
                     else tr("With the Anchored sight: connection, sessions, settings and history."), if (state.photoOnly) "Photos only" else "With sight", listOf("With sight", "Photos only"), first = true) { ctl.setPhotoOnly(it == "Photos only") }
                 val li = state.loginfo
-                Note(tr("App {APPVERSION}", "APPVERSION" to APP_VERSION) + (state.hello?.let { ", firmware ${it.fw}" } ?: "") +
+                Note(tr("App {APPVERSION}", "APPVERSION" to de.uvsight.app.BuildConfig.VERSION_NAME) + (state.hello?.let { ", firmware ${it.fw}" } ?: "") +
                     (li?.let { if (it.ok) tr(". The sight stores {v} {v2} (room for about {capacity}).", "v" to it.count, "v2" to (if (it.count == 1) tr("session") else tr("sessions")), "capacity" to (it.capacity / 1000 * 1000)) else tr(". The sight's session memory is not working.") } ?: ""))
             }
             Spacer(Modifier.height(if (state.cfgDirty) 90.dp else 24.dp))
@@ -752,10 +741,6 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
         text = { Text(tr("Erases everything on the sight: settings, calibration, setups and learned arrow speeds, all sessions, the name, password and trainers, badges and the battery statistics. The sight then restarts as a new sight with a new id, as if freshly built. Everything on this phone is kept; the old sight stays in the history with its sessions.")) },
         confirmButton = { TextButton(onClick = { askFactory = false; ctl.factoryReset() }) { Text(tr("Erase"), color = uv.red) } },
         dismissButton = { TextButton(onClick = { askFactory = false }) { Text(tr("Cancel")) } })
-    if (askDfu) AlertDialog(onDismissRequest = { askDfu = false }, title = { Text(tr("Prepare a firmware update?")) },
-        text = { Text(tr("Connect the sight to your computer with the USB cable first. It then shows up there as a drive; copy the new firmware onto it. Until then the sight does nothing else, and the app disconnects.")) },
-        confirmButton = { TextButton(onClick = { askDfu = false; ctl.dfu() }) { Text(tr("Start"), color = uv.red) } },
-        dismissButton = { TextButton(onClick = { askDfu = false }) { Text(tr("Cancel")) } })
     if (askClear) AlertDialog(onDismissRequest = { askClear = false }, title = { Text(tr("Delete all sessions on the sight?")) },
         text = { Text(tr("All {loginfo}sessions stored on the sight are deleted. The sessions on this phone are kept.", "loginfo" to (state.loginfo?.let { "${it.count} " } ?: ""))) },
         confirmButton = { TextButton(onClick = { askClear = false; ctl.clearSightLog() }) { Text(tr("Delete"), color = uv.red) } },
