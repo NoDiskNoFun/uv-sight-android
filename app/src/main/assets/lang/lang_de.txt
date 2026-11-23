@@ -19,25 +19,25 @@ Switch the sight to update mode = Visier in den Update-Modus schalten
 Allow access to the USB drive = Zugriff auf das USB-Laufwerk erlauben
 Copy the firmware = Firmware kopieren
 The sight restarts = Das Visier startet neu
+The sight is not connected over Bluetooth. Connect it on the Status tab, then start the update again. = Das Visier ist nicht per Bluetooth verbunden. Verbinde es im Status-Tab und starte das Update dann erneut.
 Downloading firmware {version} = Firmware {version} wird heruntergeladen
 The download failed. = Der Download ist fehlgeschlagen.
 Plug a USB-C cable into the sight and into this phone. The phone powers the sight and works as the computer. = Stecke ein USB-C-Kabel in das Visier und in dieses Handy. Das Handy versorgt das Visier mit Strom und übernimmt die Rolle des Computers.
 Tap Next when the cable is in. = Tippe auf Weiter, wenn das Kabel steckt.
 No cable was connected. = Es wurde kein Kabel angeschlossen.
+The Bluetooth connection to the sight is gone. Connect it again on the Status tab and start the update once more. = Die Bluetooth-Verbindung zum Visier ist weg. Verbinde es im Status-Tab erneut und starte das Update noch einmal.
 The app tells the sight to restart in update mode. The light goes off, the Bluetooth connection drops; that is expected. = Die App weist das Visier an, im Update-Modus neu zu starten. Das Licht geht aus, die Bluetooth-Verbindung bricht ab; das ist so vorgesehen.
-No Bluetooth connection to the sight: press the small reset button on the sight twice quickly. It then restarts in update mode. = Keine Bluetooth-Verbindung zum Visier: Drücke den kleinen Reset-Knopf am Visier zweimal schnell hintereinander. Es startet dann im Update-Modus neu.
-The sight did not switch to update mode. Check that the cable carries data (some only charge) and try again. Without the app: press the reset button on the sight twice quickly while the cable is in. = Das Visier hat nicht in den Update-Modus gewechselt. Prüfe, ob das Kabel Daten überträgt (manche laden nur), und versuche es noch einmal. Ohne App: Drücke bei eingestecktem Kabel den Reset-Knopf am Visier zweimal schnell hintereinander.
-The sight did not show up as a drive. Check the cable (some only charge) and try again. = Das Visier ist nicht als Laufwerk erschienen. Prüfe das Kabel (manche laden nur) und versuche es noch einmal.
+The sight did not switch to update mode. Check that the cable sits firmly in the sight and in the phone and carries data (some cables only charge), then try again. = Das Visier hat nicht in den Update-Modus gewechselt. Prüfe, ob das Kabel fest im Visier und im Handy steckt und Daten überträgt (manche Kabel laden nur), und versuche es dann noch einmal.
 Android asks whether Nocked may use the USB drive of the sight. Tap Allow (OK). = Android fragt, ob Nocked das USB-Laufwerk des Visiers verwenden darf. Tippe auf Zulassen (OK).
 Without access to the USB drive the firmware cannot be copied. Start the update again and allow it. = Ohne Zugriff auf das USB-Laufwerk kann die Firmware nicht kopiert werden. Starte das Update erneut und erlaube den Zugriff.
 Copying the firmware to the sight. Do not unplug the cable. = Die Firmware wird auf das Visier kopiert. Kabel nicht abziehen.
-The drive of the sight has no file system. = Das Laufwerk des Visiers hat kein Dateisystem.
-This USB drive is not a sight in update mode. = Dieses USB-Laufwerk ist kein Visier im Update-Modus.
 The copy stopped early. = Das Kopieren wurde vorzeitig abgebrochen.
 The sight restarts with the new firmware and connects again. The cable can come out now. = Das Visier startet mit der neuen Firmware neu und verbindet sich wieder. Das Kabel kann jetzt abgezogen werden.
 The firmware was copied. The sight has not connected again yet; it will when it is in reach (or tap Connect on the Status tab). = Die Firmware wurde kopiert. Das Visier hat sich noch nicht wieder verbunden; das passiert, sobald es in Reichweite ist (oder tippe im Status-Tab auf Verbinden).
 Done. The sight reports firmware {version}. = Fertig. Das Visier meldet Firmware {version}.
 The sight is back but reports firmware {version}. The update did not take; try again. = Das Visier ist wieder da, meldet aber Firmware {version}. Das Update wurde nicht übernommen; versuche es noch einmal.
+This USB drive is not a sight in update mode. = Dieses USB-Laufwerk ist kein Visier im Update-Modus.
+The downloaded file is damaged (checksum). Try again. = Die heruntergeladene Datei ist beschädigt (Prüfsumme). Versuche es noch einmal.
 
 # --- app/src/main/java/de/uvsight/app/SightService.kt
 Running session = Laufende Sitzung
@@ -62,7 +62,6 @@ Firmware {version} is ready for the sight. = Firmware {version} steht für das V
 Update available = Update verfügbar
 The phone does not let the app reach the internet (github.com could not be looked up). Restart the phone once after this update; if that does not help, allow the app to use Wi-Fi and mobile data in the phone's settings and switch off the data saver for it. = Das Handy lässt die App nicht ins Internet (github.com konnte nicht aufgelöst werden). Starte das Handy nach diesem Update einmal neu; hilft das nicht, erlaube der App in den Handy-Einstellungen WLAN und mobile Daten und schalte den Datensparmodus für sie aus.
 GitHub did not answer in time. Try again later. = GitHub hat nicht rechtzeitig geantwortet. Versuche es später noch einmal.
-The downloaded file is damaged (checksum). Try again. = Die heruntergeladene Datei ist beschädigt (Prüfsumme). Versuche es noch einmal.
 app = App
 firmware = Firmware
 
@@ -727,7 +726,7 @@ turned {v}°/s at release = beim Lösen {v}°/s gedreht
 
 # --- app/src/main/java/de/uvsight/app/ui/UpdateDialogs.kt
 Firmware update to {version} = Firmware-Update auf {version}
-Without the app: download anchored.uf2 from the firmware release on GitHub, plug the sight into a computer, press its reset button twice quickly and copy the file onto the drive that appears. = Ohne App: Lade anchored.uf2 aus dem Firmware-Release auf GitHub herunter, stecke das Visier an einen Computer, drücke seinen Reset-Knopf zweimal schnell hintereinander und kopiere die Datei auf das Laufwerk, das erscheint.
+Keep the sight connected over Bluetooth, check the USB-C cable and start the update again from Settings. = Lass das Visier per Bluetooth verbunden, prüfe das USB-C-Kabel und starte das Update in den Einstellungen erneut.
 Looking for new versions… = Suche nach neuen Versionen…
 The last check failed: {error} = Die letzte Prüfung ist fehlgeschlagen: {error}
 Not checked yet. New builds of the app and of the sight's firmware are published on GitHub by the project. = Noch nicht geprüft. Neue Versionen der App und der Firmware des Visiers veröffentlicht das Projekt auf GitHub.
@@ -743,7 +742,7 @@ Update = Aktualisieren
 Allow Nocked to install apps, then tap Update again. = Erlaube Nocked, Apps zu installieren, und tippe dann erneut auf Aktualisieren.
 Firmware {version} is available for the sight = Firmware {version} ist für das Visier verfügbar
 Firmware {version} = Firmware {version}
-Connect the sight to see whether it has this version. The update itself goes over a USB-C cable between the sight and this phone; the app guides you step by step. = Verbinde das Visier, um zu sehen, ob es diese Version schon hat. Das Update selbst läuft über ein USB-C-Kabel zwischen Visier und diesem Handy; die App führt dich Schritt für Schritt.
+Connect the sight over Bluetooth first (Status tab). The update then goes over a USB-C cable between the sight and this phone; the app guides you step by step. = Verbinde das Visier zuerst per Bluetooth (Status-Tab). Das Update läuft dann über ein USB-C-Kabel zwischen Visier und diesem Handy; die App führt dich Schritt für Schritt.
 The sight has {version}. The update goes over a USB-C cable between the sight and this phone; the app guides you step by step. = Das Visier hat {version}. Das Update läuft über ein USB-C-Kabel zwischen Visier und diesem Handy; die App führt dich Schritt für Schritt.
 The sight already has this version. You can install it again if something is wrong with it. = Das Visier hat diese Version bereits. Du kannst sie erneut installieren, falls etwas damit nicht stimmt.
 Install = Installieren

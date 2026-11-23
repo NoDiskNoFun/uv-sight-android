@@ -75,18 +75,20 @@ class FirmwareFlasher(private val context: Context) {
         .firstOrNull { it.interfaceClass == UsbConstants.USB_CLASS_MASS_STORAGE && it.interfaceSubclass == 6 && it.interfaceProtocol == 80 }
 
     /**
-     * The whole guided update. [download] fetches the file (step 1); [startDfu] tells the sight over Bluetooth
-     * to reboot into update mode (step 3; null when no sight is connected, then the user presses the button);
-     * [reconnected] returns the firmware the sight reports once it is back (step 6), null while it is not.
+     * The whole guided update. [download] fetches the file (step 1); [connected] says whether the sight is on
+     * the Bluetooth link; [startDfu] tells it over that link to reboot into update mode (step 3), the only way
+     * in, no button on the sight; [reconnected] returns the firmware the sight reports once it is back (step 6),
+     * null while it is not.
      */
-    suspend fun run(version: String, download: suspend () -> File, startDfu: (() -> Unit)?, reconnected: () -> String?) {
+    suspend fun run(version: String, download: suspend () -> File, connected: () -> Boolean, startDfu: () -> Unit, reconnected: () -> String?) {
         _state.value = FlashState()
-        try { guided(version, download, startDfu, reconnected) }
+        try { guided(version, download, connected, startDfu, reconnected) }
         catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { fail(_state.value.step, e.message ?: e.javaClass.simpleName) }
     }
 
-    private suspend fun guided(version: String, download: suspend () -> File, startDfu: (() -> Unit)?, reconnected: () -> String?) {
+    private suspend fun guided(version: String, download: suspend () -> File, connected: () -> Boolean, startDfu: () -> Unit, reconnected: () -> String?) {
+        if (!connected()) { fail(1, tr("The sight is not connected over Bluetooth. Connect it on the Status tab, then start the update again.")); return }
         val file = try {
             set(1, tr("Downloading firmware {version}", "version" to version), 0f)
             download()
@@ -98,19 +100,15 @@ class FirmwareFlasher(private val context: Context) {
         withTimeoutOrNull(600_000) { while (sightDevice() == null && uf2Drive() == null && confirmed.value == waitedFor) delay(500) }
         if (sightDevice() == null && uf2Drive() == null && confirmed.value == waitedFor) { fail(2, tr("No cable was connected.")); return }
 
-        // 3: update mode
+        // 3: update mode, always over the Bluetooth link (the sight refuses without USB power, so the cable is checked twice)
         var drive = uf2Drive()
         if (drive == null) {
-            if (startDfu != null) {
-                set(3, tr("The app tells the sight to restart in update mode. The light goes off, the Bluetooth connection drops; that is expected."))
-                startDfu()
-            } else {
-                set(3, tr("No Bluetooth connection to the sight: press the small reset button on the sight twice quickly. It then restarts in update mode."))
-            }
-            drive = withTimeoutOrNull(if (startDfu != null) 45_000 else 600_000) { var d = uf2Drive(); while (d == null) { delay(700); d = uf2Drive() }; d }
+            if (!connected()) { fail(3, tr("The Bluetooth connection to the sight is gone. Connect it again on the Status tab and start the update once more.")); return }
+            set(3, tr("The app tells the sight to restart in update mode. The light goes off, the Bluetooth connection drops; that is expected."))
+            startDfu()
+            drive = withTimeoutOrNull(45_000) { var d = uf2Drive(); while (d == null) { delay(700); d = uf2Drive() }; d }
             if (drive == null) {
-                fail(3, if (startDfu != null) tr("The sight did not switch to update mode. Check that the cable carries data (some only charge) and try again. Without the app: press the reset button on the sight twice quickly while the cable is in.")
-                    else tr("The sight did not show up as a drive. Check the cable (some only charge) and try again."))
+                fail(3, tr("The sight did not switch to update mode. Check that the cable sits firmly in the sight and in the phone and carries data (some cables only charge), then try again."))
                 return
             }
         }

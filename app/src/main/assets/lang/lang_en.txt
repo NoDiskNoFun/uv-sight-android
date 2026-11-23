@@ -22,25 +22,25 @@ Switch the sight to update mode = Switch the sight to update mode
 Allow access to the USB drive = Allow access to the USB drive
 Copy the firmware = Copy the firmware
 The sight restarts = The sight restarts
+The sight is not connected over Bluetooth. Connect it on the Status tab, then start the update again. = The sight is not connected over Bluetooth. Connect it on the Status tab, then start the update again.
 Downloading firmware {version} = Downloading firmware {version}
 The download failed. = The download failed.
 Plug a USB-C cable into the sight and into this phone. The phone powers the sight and works as the computer. = Plug a USB-C cable into the sight and into this phone. The phone powers the sight and works as the computer.
 Tap Next when the cable is in. = Tap Next when the cable is in.
 No cable was connected. = No cable was connected.
+The Bluetooth connection to the sight is gone. Connect it again on the Status tab and start the update once more. = The Bluetooth connection to the sight is gone. Connect it again on the Status tab and start the update once more.
 The app tells the sight to restart in update mode. The light goes off, the Bluetooth connection drops; that is expected. = The app tells the sight to restart in update mode. The light goes off, the Bluetooth connection drops; that is expected.
-No Bluetooth connection to the sight: press the small reset button on the sight twice quickly. It then restarts in update mode. = No Bluetooth connection to the sight: press the small reset button on the sight twice quickly. It then restarts in update mode.
-The sight did not switch to update mode. Check that the cable carries data (some only charge) and try again. Without the app: press the reset button on the sight twice quickly while the cable is in. = The sight did not switch to update mode. Check that the cable carries data (some only charge) and try again. Without the app: press the reset button on the sight twice quickly while the cable is in.
-The sight did not show up as a drive. Check the cable (some only charge) and try again. = The sight did not show up as a drive. Check the cable (some only charge) and try again.
+The sight did not switch to update mode. Check that the cable sits firmly in the sight and in the phone and carries data (some cables only charge), then try again. = The sight did not switch to update mode. Check that the cable sits firmly in the sight and in the phone and carries data (some cables only charge), then try again.
 Android asks whether Nocked may use the USB drive of the sight. Tap Allow (OK). = Android asks whether Nocked may use the USB drive of the sight. Tap Allow (OK).
 Without access to the USB drive the firmware cannot be copied. Start the update again and allow it. = Without access to the USB drive the firmware cannot be copied. Start the update again and allow it.
 Copying the firmware to the sight. Do not unplug the cable. = Copying the firmware to the sight. Do not unplug the cable.
-The drive of the sight has no file system. = The drive of the sight has no file system.
-This USB drive is not a sight in update mode. = This USB drive is not a sight in update mode.
 The copy stopped early. = The copy stopped early.
 The sight restarts with the new firmware and connects again. The cable can come out now. = The sight restarts with the new firmware and connects again. The cable can come out now.
 The firmware was copied. The sight has not connected again yet; it will when it is in reach (or tap Connect on the Status tab). = The firmware was copied. The sight has not connected again yet; it will when it is in reach (or tap Connect on the Status tab).
 Done. The sight reports firmware {version}. = Done. The sight reports firmware {version}.
 The sight is back but reports firmware {version}. The update did not take; try again. = The sight is back but reports firmware {version}. The update did not take; try again.
+This USB drive is not a sight in update mode. = This USB drive is not a sight in update mode.
+The downloaded file is damaged (checksum). Try again. = The downloaded file is damaged (checksum). Try again.
 
 # --- app/src/main/java/de/uvsight/app/SightService.kt
 Running session = Running session
@@ -65,7 +65,6 @@ Firmware {version} is ready for the sight. = Firmware {version} is ready for the
 Update available = Update available
 The phone does not let the app reach the internet (github.com could not be looked up). Restart the phone once after this update; if that does not help, allow the app to use Wi-Fi and mobile data in the phone's settings and switch off the data saver for it. = The phone does not let the app reach the internet (github.com could not be looked up). Restart the phone once after this update; if that does not help, allow the app to use Wi-Fi and mobile data in the phone's settings and switch off the data saver for it.
 GitHub did not answer in time. Try again later. = GitHub did not answer in time. Try again later.
-The downloaded file is damaged (checksum). Try again. = The downloaded file is damaged (checksum). Try again.
 app = app
 firmware = firmware
 
@@ -730,7 +729,7 @@ turned {v}°/s at release = turned {v}°/s at release
 
 # --- app/src/main/java/de/uvsight/app/ui/UpdateDialogs.kt
 Firmware update to {version} = Firmware update to {version}
-Without the app: download anchored.uf2 from the firmware release on GitHub, plug the sight into a computer, press its reset button twice quickly and copy the file onto the drive that appears. = Without the app: download anchored.uf2 from the firmware release on GitHub, plug the sight into a computer, press its reset button twice quickly and copy the file onto the drive that appears.
+Keep the sight connected over Bluetooth, check the USB-C cable and start the update again from Settings. = Keep the sight connected over Bluetooth, check the USB-C cable and start the update again from Settings.
 Looking for new versions… = Looking for new versions…
 The last check failed: {error} = The last check failed: {error}
 Not checked yet. New builds of the app and of the sight's firmware are published on GitHub by the project. = Not checked yet. New builds of the app and of the sight's firmware are published on GitHub by the project.
@@ -746,7 +745,7 @@ Update = Update
 Allow Nocked to install apps, then tap Update again. = Allow Nocked to install apps, then tap Update again.
 Firmware {version} is available for the sight = Firmware {version} is available for the sight
 Firmware {version} = Firmware {version}
-Connect the sight to see whether it has this version. The update itself goes over a USB-C cable between the sight and this phone; the app guides you step by step. = Connect the sight to see whether it has this version. The update itself goes over a USB-C cable between the sight and this phone; the app guides you step by step.
+Connect the sight over Bluetooth first (Status tab). The update then goes over a USB-C cable between the sight and this phone; the app guides you step by step. = Connect the sight over Bluetooth first (Status tab). The update then goes over a USB-C cable between the sight and this phone; the app guides you step by step.
 The sight has {version}. The update goes over a USB-C cable between the sight and this phone; the app guides you step by step. = The sight has {version}. The update goes over a USB-C cable between the sight and this phone; the app guides you step by step.
 The sight already has this version. You can install it again if something is wrong with it. = The sight already has this version. You can install it again if something is wrong with it.
 Install = Install

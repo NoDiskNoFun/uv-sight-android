@@ -47,13 +47,12 @@ fun FirmwareUpdateDialog(rel: FirmwareRelease, updates: UpdateManager, ctl: Sigh
     val flasher = remember { FirmwareFlasher(context) }
     val st by flasher.state.collectAsState()
     val busy by updates.busy.collectAsState()
-    val appState by ctl.state.collectAsState()
 
     LaunchedEffect(rel.firmware) {
-        val connected = appState.conn == ConnState.CONNECTED
         flasher.run(rel.firmware,
             download = { updates.downloadFirmware(rel) },
-            startDfu = if (connected) ({ ctl.dfu() }) else null,
+            connected = { ctl.state.value.conn == ConnState.CONNECTED },
+            startDfu = { ctl.dfu() },
             reconnected = { ctl.state.value.let { s -> if (s.conn == ConnState.CONNECTED) s.hello?.fw else null } })
     }
 
@@ -87,7 +86,7 @@ fun FirmwareUpdateDialog(rel: FirmwareRelease, updates: UpdateManager, ctl: Sigh
                 }
                 if (st.error != null) {
                     Spacer(Modifier.height(8.dp))
-                    Text(tr("Without the app: download anchored.uf2 from the firmware release on GitHub, plug the sight into a computer, press its reset button twice quickly and copy the file onto the drive that appears."), color = uv.muted, fontSize = 13.sp)
+                    Text(tr("Keep the sight connected over Bluetooth, check the USB-C cable and start the update again from Settings."), color = uv.muted, fontSize = 13.sp)
                 }
             }
         },
@@ -155,14 +154,15 @@ fun UpdateRows(updates: UpdateManager, ctl: SightController, connected: Boolean,
             Column(Modifier.weight(1f)) {
                 Text(if (fwNew) tr("Firmware {version} is available for the sight", "version" to fw.firmware) else tr("Firmware {version}", "version" to fw.firmware), color = uv.ink)
                 Text(when {
-                    sightFw == null -> tr("Connect the sight to see whether it has this version. The update itself goes over a USB-C cable between the sight and this phone; the app guides you step by step.")
+                    !connected || sightFw == null -> tr("Connect the sight over Bluetooth first (Status tab). The update then goes over a USB-C cable between the sight and this phone; the app guides you step by step.")
                     fwNew -> tr("The sight has {version}. The update goes over a USB-C cable between the sight and this phone; the app guides you step by step.", "version" to sightFw)
                     else -> tr("The sight already has this version. You can install it again if something is wrong with it.")
                 }, color = uv.muted, fontSize = 13.sp)
             }
             Spacer(Modifier.width(8.dp))
-            if (fwNew) PrimaryButton(tr("Update"), gold = true, enabled = busy == null) { fwDialog = fw }
-            else SecondaryButton(tr("Install"), enabled = busy == null) { fwDialog = fw }
+            val ready = busy == null && connected && sightFw != null
+            if (fwNew) PrimaryButton(tr("Update"), gold = true, enabled = ready) { fwDialog = fw }
+            else SecondaryButton(tr("Install"), enabled = ready) { fwDialog = fw }
         }
     } else if (status.checkedAt != 0L && status.error == null && connected) {
         Row(Modifier.fillMaxWidth().padding(vertical = 12.dp)) { Text(tr("No firmware release was found on GitHub."), color = uv.muted, fontSize = 13.sp) }
