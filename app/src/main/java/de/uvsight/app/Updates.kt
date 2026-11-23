@@ -102,7 +102,7 @@ class UpdateManager(private val context: Context, private val controller: SightC
                 val app = json.decodeFromString(AppRelease.serializer(), fetchText(APP_RELEASE + "version.json"))
                 val fw = runCatching { json.decodeFromString(FirmwareRelease.serializer(), fetchText(FW_RELEASE + "version.json")) }.getOrNull()
                 UpdateStatus(System.currentTimeMillis(), app, fw)
-            }.getOrElse { e -> UpdateStatus(System.currentTimeMillis(), _status.value.app, _status.value.firmware, e.message ?: e.javaClass.simpleName) }
+            }.getOrElse { e -> UpdateStatus(System.currentTimeMillis(), _status.value.app, _status.value.firmware, explain(e)) }
         }
         if (result.error == null) store.put(LAST_KEY, result.checkedAt.toString())
         _status.value = result
@@ -127,6 +127,13 @@ class UpdateManager(private val context: Context, private val controller: SightC
         val n = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_notif).setContentTitle(tr("Update available")).setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text)).setAutoCancel(true).setContentIntent(pi).setCategory(NotificationCompat.CATEGORY_STATUS).build()
         runCatching { context.getSystemService(NotificationManager::class.java).notify(ID_UPDATE, n) }
+    }
+
+    /** A network error in words an archer can act on; a name lookup that fails while the browser works is the phone blocking this app. */
+    private fun explain(e: Throwable): String = when (e) {
+        is java.net.UnknownHostException -> tr("The phone does not let the app reach the internet (github.com could not be looked up). Restart the phone once after this update; if that does not help, allow the app to use Wi-Fi and mobile data in the phone's settings and switch off the data saver for it.")
+        is java.net.SocketTimeoutException -> tr("GitHub did not answer in time. Try again later.")
+        else -> e.message ?: e.javaClass.simpleName
     }
 
     private fun fetchText(url: String): String {

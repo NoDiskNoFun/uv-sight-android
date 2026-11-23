@@ -63,6 +63,8 @@ A new version of the app or of the sight's firmware = A new version of the app o
 Nocked {version} is ready to install. = Nocked {version} is ready to install.
 Firmware {version} is ready for the sight. = Firmware {version} is ready for the sight.
 Update available = Update available
+The phone does not let the app reach the internet (github.com could not be looked up). Restart the phone once after this update; if that does not help, allow the app to use Wi-Fi and mobile data in the phone's settings and switch off the data saver for it. = The phone does not let the app reach the internet (github.com could not be looked up). Restart the phone once after this update; if that does not help, allow the app to use Wi-Fi and mobile data in the phone's settings and switch off the data saver for it.
+GitHub did not answer in time. Try again later. = GitHub did not answer in time. Try again later.
 The downloaded file is damaged (checksum). Try again. = The downloaded file is damaged (checksum). Try again.
 app = app
 firmware = firmware
@@ -735,7 +737,6 @@ Not checked yet. New builds of the app and of the sight's firmware are published
 Checked {time}: everything is up to date. = Checked {time}: everything is up to date.
 Checked {time}. = Checked {time}.
 Check now = Check now
-Could not reach GitHub: {error} = Could not reach GitHub: {error}
 Check daily = Check daily
 Once a day, while the app is open, it looks on GitHub for a newer app build and newer firmware and tells you with a notification. Nothing is installed by itself. = Once a day, while the app is open, it looks on GitHub for a newer app build and newer firmware and tells you with a notification. Nothing is installed by itself.
 Nocked {version} is available = Nocked {version} is available

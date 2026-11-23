@@ -60,6 +60,8 @@ A new version of the app or of the sight's firmware = Eine neue Version der App 
 Nocked {version} is ready to install. = Nocked {version} kann installiert werden.
 Firmware {version} is ready for the sight. = Firmware {version} steht für das Visier bereit.
 Update available = Update verfügbar
+The phone does not let the app reach the internet (github.com could not be looked up). Restart the phone once after this update; if that does not help, allow the app to use Wi-Fi and mobile data in the phone's settings and switch off the data saver for it. = Das Handy lässt die App nicht ins Internet (github.com konnte nicht aufgelöst werden). Starte das Handy nach diesem Update einmal neu; hilft das nicht, erlaube der App in den Handy-Einstellungen WLAN und mobile Daten und schalte den Datensparmodus für sie aus.
+GitHub did not answer in time. Try again later. = GitHub hat nicht rechtzeitig geantwortet. Versuche es später noch einmal.
 The downloaded file is damaged (checksum). Try again. = Die heruntergeladene Datei ist beschädigt (Prüfsumme). Versuche es noch einmal.
 app = App
 firmware = Firmware
@@ -732,7 +734,6 @@ Not checked yet. New builds of the app and of the sight's firmware are published
 Checked {time}: everything is up to date. = Geprüft {time}: alles ist aktuell.
 Checked {time}. = Geprüft {time}.
 Check now = Jetzt prüfen
-Could not reach GitHub: {error} = GitHub war nicht erreichbar: {error}
 Check daily = Täglich prüfen
 Once a day, while the app is open, it looks on GitHub for a newer app build and newer firmware and tells you with a notification. Nothing is installed by itself. = Einmal am Tag, solange die App geöffnet ist, sieht sie auf GitHub nach einer neueren App-Version und neuerer Firmware und meldet sich mit einer Benachrichtigung. Installiert wird nichts von selbst.
 Nocked {version} is available = Nocked {version} ist verfügbar

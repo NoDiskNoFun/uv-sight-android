@@ -130,7 +130,7 @@ fun UpdateRows(updates: UpdateManager, ctl: SightController, connected: Boolean,
         Spacer(Modifier.width(8.dp))
         SecondaryButton(tr("Check now"), enabled = !checking) {
             checking = true
-            scope.launch { val r = updates.check(); checking = false; if (r.error != null) toast(tr("Could not reach GitHub: {error}", "error" to r.error), true) }
+            scope.launch { val r = updates.check(); checking = false; if (r.error != null) toast(r.error, true) }
         }
     }
     SwitchRow(tr("Check daily"), tr("Once a day, while the app is open, it looks on GitHub for a newer app build and newer firmware and tells you with a notification. Nothing is installed by itself."), auto) { auto = it; updates.setAuto(it) }
@@ -164,7 +164,7 @@ fun UpdateRows(updates: UpdateManager, ctl: SightController, connected: Boolean,
             if (fwNew) PrimaryButton(tr("Update"), gold = true, enabled = busy == null) { fwDialog = fw }
             else SecondaryButton(tr("Install"), enabled = busy == null) { fwDialog = fw }
         }
-    } else if (status.checkedAt != 0L && connected) {
+    } else if (status.checkedAt != 0L && status.error == null && connected) {
         Row(Modifier.fillMaxWidth().padding(vertical = 12.dp)) { Text(tr("No firmware release was found on GitHub."), color = uv.muted, fontSize = 13.sp) }
     }
     fwDialog?.let { FirmwareUpdateDialog(it, updates, ctl, onClose = { fwDialog = null }) }
