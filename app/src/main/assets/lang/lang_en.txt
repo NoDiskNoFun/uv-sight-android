@@ -68,6 +68,12 @@ GitHub did not answer in time. Try again later. = GitHub did not answer in time.
 app = app
 firmware = firmware
 
+# --- app/src/main/java/de/uvsight/app/UsbSerial.kt
+Access to the USB device was not allowed. = Access to the USB device was not allowed.
+This USB device is not a sight. = This USB device is not a sight.
+The USB device could not be opened. = The USB device could not be opened.
+The command could not be sent to the sight. = The command could not be sent to the sight.
+
 # --- app/src/main/java/de/uvsight/app/ui/App.kt
 Bluetooth permission is needed to find the sight. = Bluetooth permission is needed to find the sight.
 Status = Status
@@ -397,7 +403,7 @@ Password of this sight = Password of this sight
 Unlock = Unlock
 Not locked: any phone with the app can read this sight. Normally the app locks an own sight by itself; it works the password out from this phone and the sight, so nobody has to remember or type one, and it is worth nothing anywhere else. This sight stays unlocked because the lock was removed; lock it again here. = Not locked: any phone with the app can read this sight. Normally the app locks an own sight by itself; it works the password out from this phone and the sight, so nobody has to remember or type one, and it is worth nothing anywhere else. This sight stays unlocked because the lock was removed; lock it again here.
 Lock this sight = Lock this sight
-Locked: the sight answers only to this phone. The app works the password out itself whenever it connects. A factory reset of the sight, or "group clear" over USB, removes the lock. = Locked: the sight answers only to this phone. The app works the password out itself whenever it connects. A factory reset of the sight, or "group clear" over USB, removes the lock.
+Locked: the sight answers only to this phone. The app works the password out itself whenever it connects. A factory reset of the sight removes the lock as well. = Locked: the sight answers only to this phone. The app works the password out itself whenever it connects. A factory reset of the sight removes the lock as well.
 Remove the lock = Remove the lock
 Locked with a password you typed in an earlier version of the app. The app replaces it with one it works out itself as soon as it may; if that did not happen, tap below. = Locked with a password you typed in an earlier version of the app. The app replaces it with one it works out itself as soon as it may; if that did not happen, tap below.
 Replace with the app's own password = Replace with the app's own password
@@ -772,6 +778,12 @@ just now = just now
 {n} min ago = {n} min ago
 {n} h ago = {n} h ago
 {n} days ago = {n} days ago
+Remove the lock over USB = Remove the lock over USB
+Plug the sight into this phone with a USB-C cable first. = Plug the sight into this phone with a USB-C cable first.
+The sight was not recognised over USB. Check that the cable carries data (some only charge). = The sight was not recognised over USB. Check that the cable carries data (some only charge).
+The lock is removed. Connecting again… = The lock is removed. Connecting again…
+The sight answered: {reply} = The sight answered: {reply}
+nothing = nothing
 
 # --- core/src/main/kotlin/de/uvsight/core/Badges.kt
 Points of an end = Points of an end

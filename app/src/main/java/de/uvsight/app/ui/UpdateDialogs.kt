@@ -181,3 +181,31 @@ private fun ago(t: Long): String {
         else -> tr("{n} days ago", "n" to m / 1440)
     }
 }
+
+/** Remove a sight's lock over a USB-C cable (the firmware's "group clear", which works over USB even when the sight is locked). */
+@Composable
+fun UsbUnlockButton(ctl: SightController, toast: (String, Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val link = androidx.compose.runtime.remember { de.uvsight.app.UsbSerialLink(context) }
+    var busy by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    SecondaryButton(tr("Remove the lock over USB"), modifier, enabled = !busy, danger = true) {
+        val dev = link.sightSerial()
+        when {
+            dev == null && !link.anyUsbDevice() -> toast(tr("Plug the sight into this phone with a USB-C cable first."), true)
+            dev == null -> toast(tr("The sight was not recognised over USB. Check that the cable carries data (some only charge)."), true)
+            else -> {
+                busy = true
+                scope.launch {
+                    val r = runCatching { link.command(dev, "group clear") }
+                    busy = false
+                    r.onSuccess { reply ->
+                        val ok = reply.contains("clear", true) || reply.contains("No password", true) || reply.contains("removed", true)
+                        if (ok) { toast(tr("The lock is removed. Connecting again…"), false); ctl.reconnect() }
+                        else toast(tr("The sight answered: {reply}", "reply" to reply.take(120).ifEmpty { tr("nothing") }), true)
+                    }.onFailure { toast(it.message ?: tr("The command could not be sent to the sight."), true) }
+                }
+            }
+        }
+    }
+}

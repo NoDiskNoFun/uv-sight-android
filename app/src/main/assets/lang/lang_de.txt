@@ -65,6 +65,12 @@ GitHub did not answer in time. Try again later. = GitHub hat nicht rechtzeitig g
 app = App
 firmware = Firmware
 
+# --- app/src/main/java/de/uvsight/app/UsbSerial.kt
+Access to the USB device was not allowed. = Der Zugriff auf das USB-Gerät wurde nicht erlaubt.
+This USB device is not a sight. = Dieses USB-Gerät ist kein Visier.
+The USB device could not be opened. = Das USB-Gerät konnte nicht geöffnet werden.
+The command could not be sent to the sight. = Der Befehl konnte nicht an das Visier gesendet werden.
+
 # --- app/src/main/java/de/uvsight/app/ui/App.kt
 Bluetooth permission is needed to find the sight. = Die Bluetooth-Berechtigung wird gebraucht, um das Visier zu finden.
 Status = Status
@@ -394,7 +400,7 @@ Password of this sight = Passwort dieses Visiers
 Unlock = Entsperren
 Not locked: any phone with the app can read this sight. Normally the app locks an own sight by itself; it works the password out from this phone and the sight, so nobody has to remember or type one, and it is worth nothing anywhere else. This sight stays unlocked because the lock was removed; lock it again here. = Nicht gesperrt: Jedes Handy mit der App kann dieses Visier lesen. Normalerweise sperrt die App ein eigenes Visier von selbst; sie errechnet das Passwort aus diesem Handy und dem Visier, sodass niemand es sich merken oder tippen muss und es anderswo wertlos ist. Dieses Visier bleibt offen, weil die Sperre aufgehoben wurde; hier sperrst du es wieder.
 Lock this sight = Dieses Visier sperren
-Locked: the sight answers only to this phone. The app works the password out itself whenever it connects. A factory reset of the sight, or "group clear" over USB, removes the lock. = Gesperrt: Das Visier antwortet nur diesem Handy. Die App errechnet das Passwort bei jedem Verbinden selbst. Ein Zurücksetzen des Visiers auf Werkseinstellungen oder "group clear" über USB entfernt die Sperre.
+Locked: the sight answers only to this phone. The app works the password out itself whenever it connects. A factory reset of the sight removes the lock as well. = Gesperrt: Das Visier antwortet nur diesem Handy. Die App errechnet das Passwort bei jedem Verbinden selbst. Ein Zurücksetzen des Visiers auf Werkseinstellungen entfernt die Sperre ebenfalls.
 Remove the lock = Sperre aufheben
 Locked with a password you typed in an earlier version of the app. The app replaces it with one it works out itself as soon as it may; if that did not happen, tap below. = Gesperrt mit einem Passwort, das du in einer früheren Version der App eingetippt hast. Die App ersetzt es durch eines, das sie selbst errechnet, sobald sie darf; falls das nicht geschehen ist, tippe unten.
 Replace with the app's own password = Durch das Passwort der App ersetzen
@@ -769,6 +775,12 @@ just now = gerade eben
 {n} min ago = vor {n} min
 {n} h ago = vor {n} h
 {n} days ago = vor {n} Tagen
+Remove the lock over USB = Sperre über USB entfernen
+Plug the sight into this phone with a USB-C cable first. = Verbinde das Visier zuerst per USB-C-Kabel mit diesem Handy.
+The sight was not recognised over USB. Check that the cable carries data (some only charge). = Das Visier wurde über USB nicht erkannt. Prüfe, ob das Kabel Daten überträgt (manche laden nur).
+The lock is removed. Connecting again… = Die Sperre ist entfernt. Verbinde erneut…
+The sight answered: {reply} = Das Visier antwortete: {reply}
+nothing = nichts
 
 # --- core/src/main/kotlin/de/uvsight/core/Badges.kt
 Points of an end = Punkte einer Passe

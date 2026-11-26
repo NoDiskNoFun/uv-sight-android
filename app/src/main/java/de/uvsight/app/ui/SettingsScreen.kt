@@ -193,13 +193,14 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                                             Spacer(Modifier.width(8.dp))
                                             SecondaryButton(tr("Unlock"), enabled = legacyPw.trim().isNotEmpty()) { ctl.unlockWith(legacyPw) }
                                         }
+                                        UsbUnlockButton(ctl, { t, e -> vm.toast(t, e) }, Modifier.fillMaxWidth().padding(top = 6.dp))
                                     }
                                     !h.pw -> {
                                         Text(tr("Not locked: any phone with the app can read this sight. Normally the app locks an own sight by itself; it works the password out from this phone and the sight, so nobody has to remember or type one, and it is worth nothing anywhere else. This sight stays unlocked because the lock was removed; lock it again here."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                                         Row(Modifier.fillMaxWidth().padding(top = 6.dp)) { SecondaryButton(tr("Lock this sight"), Modifier.weight(1f)) { ctl.lockSight() } }
                                     }
                                     own -> {
-                                        Text(tr("Locked: the sight answers only to this phone. The app works the password out itself whenever it connects. A factory reset of the sight, or \"group clear\" over USB, removes the lock."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Text(tr("Locked: the sight answers only to this phone. The app works the password out itself whenever it connects. A factory reset of the sight removes the lock as well."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                                         Row(Modifier.fillMaxWidth().padding(top = 6.dp)) { SecondaryButton(tr("Remove the lock"), Modifier.weight(1f), danger = true) { ctl.unlockSight() } }
                                     }
                                     else -> {
