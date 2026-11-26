@@ -318,6 +318,7 @@ class SightController(
             val st = s
             if (st.distM > 0 && !st.distAuto && st.session?.active == true) send("dist ${st.distM}")
             if (st.role != "locked") replaySettings()
+            autoLock()
             startPolling()
         }
     }
@@ -578,18 +579,19 @@ class SightController(
         if (s.group.role != "single" && (s.game.enabled || s.group.role == "trainer")) send("badge list")
         val g = s.group
         if (g.role == "trainer" && s.role == "user" && !s.rolePending) send("group request")
-        // single mode, a sight still locked with a password the archer typed in an earlier version of the app:
-        // replace it with one the app makes up, so no password of the archer's own travels over the air again
-        if (g.role == "single" && s.hello?.pw == true && s.sight?.autoPw == null && g.password.isNotEmpty() && pendingAutoPw == null) lockSight()
-        autoLock()
     }
     /**
-     * The lock is on by default: an own sight that is not locked gets the app's password as soon as it is
-     * introduced (name and bow given), unless the archer removed the lock from it on purpose.
+     * The lock of an own sight, checked once the link is up (and again after the introduction). On by default:
+     * an introduced sight that is not locked gets the app's password, unless the archer removed the lock from it
+     * on purpose; a sight still locked with a password the archer typed in an earlier version of the app gets it
+     * replaced by one the app makes up, so no password of the archer's own travels over the air again.
      */
     private fun autoLock() {
         val si = s.sight ?: return
-        if (s.group.role == "single" && s.hello?.pw == false && s.role != "locked" && si.introduced && !si.lockOff && pendingAutoPw == null) lockSight()
+        val g = s.group
+        if (g.role != "single" || s.conn != ConnState.CONNECTED || s.role == "locked" || pendingAutoPw != null) return
+        if (s.hello?.pw == true && si.autoPw == null && g.password.isNotEmpty()) lockSight()
+        else if (s.hello?.pw == false && si.introduced && !si.lockOff) lockSight()
     }
 
     // ------------------------------------------------------------------ own sight: the lock
@@ -1455,7 +1457,7 @@ class SightController(
         send("save")
     }
     /** The first-connect dialog dismissed: not asked again for this sight. */
-    fun skipIntroduction() { set { copy(introduceSight = false) }; updateSight { it.copy(introduced = true) }; if (s.conn == ConnState.CONNECTED) autoLock() }
+    fun skipIntroduction() { set { copy(introduceSight = false) }; updateSight { it.copy(introduced = true) }; autoLock() }
     fun restoreDefaults() { expectDefaults = true; send("defaults") }
 
     /** The settings as last saved on the sight (k -> v), taken from the first read after connecting and after every save. */

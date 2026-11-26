@@ -303,9 +303,10 @@ class SightLockTest {
             runBlocking {
                 withContext(dispatcher) { ctl.onLinkUp() }
                 delay(100)
+                withContext(dispatcher) { ctl.onLine(hello(false, "open")) }
+                delay(200)   // the link finishes connecting
                 withContext(dispatcher) {
                     // an introduced own sight that is not locked gets the app's password by itself
-                    ctl.onLine(hello(false, "open"))
                     assertTrue(transport.sent.none { it.startsWith("group set ") }, "not before the introduction")
                     ctl.introduceSight("Hoyt", 0)
                     val cmd = transport.sent.last { it.startsWith("group set ") }
@@ -320,7 +321,12 @@ class SightLockTest {
                     assertEquals(null, ctl.state.value.sight?.autoPw)
                     // removed on purpose: the next connection leaves it unlocked
                     transport.sent.clear()
-                    ctl.onLine(hello(false, "open"))
+                    ctl.onLinkUp()
+                }
+                delay(100)
+                withContext(dispatcher) { ctl.onLine(hello(false, "open")) }
+                delay(200)
+                withContext(dispatcher) {
                     assertTrue(transport.sent.none { it.startsWith("group set ") }, "${transport.sent}")
                     // locked again by hand: locked, and from then on by itself again
                     ctl.lockSight()
@@ -348,6 +354,9 @@ class SightLockTest {
                 withContext(dispatcher) {
                     assertTrue(transport.sent.contains("auth sunflower"), "${transport.sent}")
                     ctl.onLine("""{"t":"auth","ok":true,"role":"open","pending":false}""")
+                }
+                delay(200)   // the link finishes connecting
+                withContext(dispatcher) {
                     // ... and is replaced right away by one the app made up
                     val cmd = transport.sent.last { it.startsWith("group set ") }
                     val pw = cmd.removePrefix("group set ")
