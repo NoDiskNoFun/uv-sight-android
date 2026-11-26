@@ -29,11 +29,37 @@ The page shows which device PyTorch found. It should say `cuda` and your card's 
 
 On the page: upload the ZIP from *Settings → Photo scoring → Export*, choose image size (640 is the default; 320 for a smaller, faster model, 800 for a little more precision at thin shafts), epochs, model size (`nano` is enough to start, `small` and `medium` are more exact and slower, on the phone too), precision (int8 is small and fast; float32 keeps the keypoints a little more exact at a four times larger model, which the phone's GPU runs as float16; the app takes both) and press *Start training*. The loss curve and the log update while it runs; *Stop* aborts the run (nothing is exported, start a new run with fewer epochs instead). Every run trains both models one after the other (the epochs apply to each). When it finishes, the results table shows, in archery terms, how many arrows were found and missed, the false alarms, the median entry-point error in millimetres, how often the ring was right, and for the face finder how many faces were found, how far its centre was off and how many of your arrows keep their ring when scored with its face instead of yours; plus a preview of the validation photos with your marks. *Download model (.zip)* gives `arrows.tflite`, `face.tflite` and `model.json` with these numbers. Copy the ZIP to the phone and import it under *Settings → Photo scoring → Detection models*; the app shows the evaluation on the settings card, and from then on *Score from photo* finds the face and the arrows itself. Each model can be switched off on its own in the app, and only hand-marked parts train: with the face finder on, the photos train the arrow detector, with the arrow detector on, the face finder. The trainer leaves out what a model proposed (`trainArrows` / `trainFace` in the records, or `model` / `faceSource` for older exports) from the datasets and from the evaluation, and says how many photos count for each.
 
+Photos whose proposals the archer accepted untouched never train or validate a model: their points are the earlier model's, not the archer's. They serve as a regression check instead. After the evaluation the trainer runs the new models over them and the results table's *Agreement* column says how far the new model agrees with what was accepted (arrows found, false alarms, rings the same, face found). That is agreement with the old model, not accuracy, and it says nothing about precision; but a sharp drop against an earlier run means the new model has fallen behind where the old one was right, even when the few validation photos do not show it. model.json carries it as `eval.agreement`.
+
 The trainer's own numbers are the ones to look at. Ultralytics' mAP values printed in the console come from its validation split, which with a few photos is one picture and says nothing. The int8 quantisation is calibrated on all photos of the run, not only the validation ones.
 
 Several exports can be uploaded, for example from club mates' phones, and ticked for one run: the records are merged, photo ids and session keys get the export's name as prefix, and the results table lists the hit rate per export when the validation photos come from more than one. `prepare_dataset.py` and `train.sh` take several ZIPs on the command line the same way.
 
-`python3 webui.py --mock` trains stand-in models in seconds, for checking the page without a GPU. `train.sh` does the same as the page from the command line (`IMGSZ` and `EPOCHS` as environment variables) and writes `model.zip`.
+`python3 webui.py --mock` trains stand-in models in seconds, for checking the page without a GPU (`--mock-gpus 2` pretends two GPUs). `train.sh` does the same as the page from the command line (`IMGSZ`, `EPOCHS` and `BATCH` as environment variables) and writes `model.zip`.
+
+## Several GPUs
+
+The page and `train.sh` count the GPUs PyTorch sees. With one, the arrow detector and the face finder train one after the other; with two or more, the arrow detector trains on the first and the face finder on the second at the same time, which roughly halves the time of a run. More than two are not used: with a few hundred photos, spreading one model over several GPUs costs more in synchronisation than it gains. Each model trains in a process of its own; the page shows both with their own progress and curve, and *Stop* ends both. Which GPUs the trainer sees is set by `CUDA_VISIBLE_DEVICES` (or, in Docker, by the GPUs given to the container); `NGPU=1 ./train.sh …` forces turns.
+
+## Docker
+
+```sh
+cd training
+docker compose up -d --build      # then open http://localhost:8000
+```
+
+`docker-compose.yml` gives the container two GPUs (`device_ids`, numbered as `nvidia-smi` shows them) and keeps the page on `127.0.0.1`, because it has no login. Change `device_ids` to the GPUs that are free; next to an Ollama container, give each its own GPUs, otherwise a model Ollama keeps loaded takes the memory a training needs. Uploaded exports land in `training/data`, runs in `training/runs`. Without compose:
+
+```sh
+docker build -t nocked-trainer training/
+docker run --gpus all --ipc=host -p 127.0.0.1:8000:8000 -v "$PWD/trainer-data:/data" -v "$PWD/trainer-runs:/runs" nocked-trainer
+```
+
+The host needs the NVIDIA driver and the NVIDIA Container Toolkit; the CUDA libraries come with the PyTorch wheel, at present CUDA 13, which needs driver 580 or newer. `--ipc=host` (or `--shm-size=8g`) is needed by the data loaders. The image builds on x86_64 and on ARM64; the build exports a small model once to check that the platform's TFLite path works.
+
+## ARM64 (aarch64) Linux
+
+Training on an ARM64 board or server with NVIDIA cards works with the normal PyPI wheels (ARM server boards with UEFI and a PCIe slot, Grace, DGX Spark, Jetson Thor; a Jetson Orin needs NVIDIA's own PyTorch builds for JetPack instead). The TFLite export differs: LiteRT has no Linux ARM64 converter and Ultralytics refuses the LiteRT export there, so on ARM64 `requirements.txt` installs TensorFlow and onnx2tf and the trainer exports through them (Ultralytics' `format=saved_model`). The int8 file it takes is onnx2tf's `*_integer_quant.tflite`: int8 inside, float input and output, calibrated on the run's photos, with the input in NHWC layout; the app takes both layouts. `NOCKED_EXPORT=tensorflow` takes this path on x86_64 too.
 
 The export goes through Ultralytics' LiteRT path (`format=litert`, `quantize=int8`) where available and falls back to the older `format=tflite`, `int8=True` on older versions. LiteRT exports keep the PyTorch input layout `[1, 3, N, N]`; the app takes both layouts.
 

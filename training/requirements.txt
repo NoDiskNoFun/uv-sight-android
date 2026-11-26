@@ -1,8 +1,22 @@
 # Training the arrow detector and the face finder on your own machine (Linux, NVIDIA: the default PyTorch wheel has CUDA).
 # Install into a virtual environment (python3 -m venv .venv && . .venv/bin/activate); Arch and Debian refuse pip installs
 # into the system Python, and Ultralytics would then fail at the export trying to fetch the LiteRT packages itself.
+# The same file serves x86_64 and ARM64 (aarch64) Linux; the markers pick the TFLite export path of each.
 ultralytics>=8.3
 pillow>=10
-# the TFLite (LiteRT) export of Ultralytics 8.4
-litert-torch>=0.9.0
 ai-edge-litert>=2.1.4
+# x86_64 (and macOS): the TFLite (LiteRT) export of Ultralytics 8.4
+litert-torch>=0.9.0; platform_machine != "aarch64"
+# ARM64 Linux: litert-torch needs litert-converter, which has no Linux ARM64 build, and Ultralytics refuses the LiteRT
+# export there. The TFLite then comes from TensorFlow through onnx2tf (Ultralytics' format=saved_model); the versions
+# are the ones Ultralytics asks for at that export.
+tensorflow<=2.19.0; platform_machine == "aarch64" and python_version < "3.13"
+tf_keras<=2.19.0; platform_machine == "aarch64" and python_version < "3.13"
+tensorflow>2.19.0; platform_machine == "aarch64" and python_version >= "3.13"
+tf_keras>2.19.0; platform_machine == "aarch64" and python_version >= "3.13"
+onnx2tf>=1.26.3,<1.29.0; platform_machine == "aarch64"
+sng4onnx>=1.0.1; platform_machine == "aarch64"
+onnx_graphsurgeon>=0.3.26; platform_machine == "aarch64"
+onnx>=1.12.0,<2.0.0; platform_machine == "aarch64"
+onnxslim>=0.1.82; platform_machine == "aarch64"
+onnxruntime; platform_machine == "aarch64"

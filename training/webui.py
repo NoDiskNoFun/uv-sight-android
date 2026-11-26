@@ -12,10 +12,18 @@ millimetres, rings right, face found) and offers a ZIP with both int8 TFLite fil
 the evaluation (model.json) for import into the app.
 
 --mock trains a stand-in model in seconds (for checking the page without a GPU).
+
+With one GPU the two models train one after the other; with two or more, the arrow detector trains on
+the first and the face finder on the second at the same time. Each model trains in a process of its
+own, which reports its epochs through a file in the run folder.
 """
 import argparse
+import copy
 import json
 import math
+import multiprocessing
+import os
+import platform
 import random
 import shutil
 import sys
@@ -32,12 +40,19 @@ import facegeom              # noqa: E402
 import prepare_dataset       # noqa: E402
 
 ROOT = Path(__file__).parent
-DATA = ROOT / "data"
-RUNS = ROOT / "runs"
+DATA = Path(os.environ.get("NOCKED_DATA") or ROOT / "data").resolve()    # uploaded exports
+RUNS = Path(os.environ.get("NOCKED_RUNS") or ROOT / "runs").resolve()    # one folder per run (absolute: Ultralytics
+                                                                          # moves a relative project under runs/pose/)
 MATCH_PX = 40.0              # a prediction within this many pixels of a mark counts as found
+# Linux on ARM64: no LiteRT converter exists there, the TFLite export goes through TensorFlow instead
+ARM64 = sys.platform.startswith("linux") and platform.machine().lower() in ("aarch64", "arm64")
+# NOCKED_EXPORT=tensorflow takes that path elsewhere too (as a fallback, or to check the ARM64 path on a PC)
+TF_EXPORT = ARM64 or os.environ.get("NOCKED_EXPORT", "").lower() == "tensorflow"
+STAGES = ("arrows", "face")
 
 LOCK = threading.Lock()
 JOB = None                   # the running/last job, see Job
+MOCK_GPUS = None             # --mock-gpus: pretend this many CUDA devices exist
 
 
 class Job:
@@ -45,10 +60,10 @@ class Job:
         self.params = params
         self.name = params["name"]
         self.state = "running"     # running / done / failed / stopped
-        self.epoch = 0
         self.epochs = int(params["epochs"])
-        self.metrics = []          # [{epoch, loss, ...}] of the current stage
-        self.stage = "arrows"      # "arrows" / "face": which model is training
+        self.parallel = False      # both models at the same time, each on its own GPU
+        # per model: {state: waiting/training/exporting/done/failed/stopped, device, epoch, metrics: [{epoch, loss, ...}]}
+        self.stages = {}
         self.log = []
         self.error = None
         self.started = time.time()
@@ -59,21 +74,47 @@ class Job:
         self.log.append(f"{time.strftime('%H:%M:%S')} {text}")
         del self.log[:-300]
 
-    def snapshot(self):
-        return {k: getattr(self, k) for k in ("name", "state", "stage", "epoch", "epochs", "metrics", "log", "error", "started", "result", "params")}
+    def snapshot(self):   # a copy: the training thread keeps changing the job while the page reads it
+        return copy.deepcopy({k: getattr(self, k) for k in ("name", "state", "parallel", "stages", "epochs", "log", "error", "started", "result", "params")})
 
 
 # ----------------------------------------------------------------------------- hardware
 def gpu_info():
+    if MOCK_GPUS:
+        return {"torch": "mock", "device": "cuda", "count": MOCK_GPUS, "names": [f"Mock GPU {i}" for i in range(MOCK_GPUS)],
+                "name": f"{MOCK_GPUS}× Mock GPU"}
     try:
         import torch
         if torch.cuda.is_available():
-            return {"torch": torch.__version__, "device": "cuda", "name": torch.cuda.get_device_name(0)}
+            n = torch.cuda.device_count()
+            names = [torch.cuda.get_device_name(i) for i in range(n)]
+            name = names[0] if n == 1 else f"{n} GPUs: " + ", ".join(f"{i}: {x}" for i, x in enumerate(names))
+            return {"torch": torch.__version__, "device": "cuda", "count": n, "names": names, "name": name}
         if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-            return {"torch": torch.__version__, "device": "mps", "name": "Apple GPU"}
-        return {"torch": torch.__version__, "device": "cpu", "name": "CPU only (no CUDA/ROCm device found)"}
+            return {"torch": torch.__version__, "device": "mps", "count": 1, "names": ["Apple GPU"], "name": "Apple GPU"}
+        return {"torch": torch.__version__, "device": "cpu", "count": 0, "names": [], "name": "CPU only (no CUDA/ROCm device found)"}
     except Exception as e:  # torch missing
-        return {"torch": None, "device": "none", "name": f"PyTorch not installed ({e.__class__.__name__})"}
+        return {"torch": None, "device": "none", "count": 0, "names": [], "name": f"PyTorch not installed ({e.__class__.__name__})"}
+
+
+def plan_devices(gi, stages):
+    """Device per model and whether they train at the same time: with two or more CUDA devices the arrow detector
+    takes the first and the face finder the second; otherwise both take turns on the one device there is."""
+    if gi["device"] == "cuda" and gi.get("count", 1) >= 2 and len(stages) >= 2:
+        return {s: i for i, s in enumerate(stages)}, True
+    dev = 0 if gi["device"] == "cuda" else gi["device"] if gi["device"] == "mps" else "cpu"
+    return {s: dev for s in stages}, False
+
+
+def device_label(dev):
+    return f"GPU {dev}" if isinstance(dev, int) else str(dev).upper()
+
+
+def dataloader_workers(parallel):
+    """Ultralytics takes up to 8 loader processes per training; two trainings at once on a 12-core ARM board
+    would otherwise ask for 16 and fight over the cores."""
+    n = os.cpu_count() or 4
+    return max(1, min(8, (n // (2 if parallel else 1)) - 1))
 
 
 def ultralytics_available():
@@ -84,19 +125,28 @@ def ultralytics_available():
         return False
 
 
+def ultralytics_version():
+    from ultralytics import __version__ as v
+    return tuple(int(x) for x in v.split(".")[:2])
+
+
 def export_missing():
     """Names of the packages the TFLite export needs that this Python lacks (Ultralytics 8.4 uses LiteRT; older
     versions bring their own converter). Checked before a run starts, so the hours of training are not wasted
     on an export that fails and that Ultralytics cannot repair by installing into a system Python."""
     try:
-        from ultralytics import __version__ as v
-        major, minor = (int(x) for x in v.split(".")[:2])
+        major, minor = ultralytics_version()
     except Exception:
         return []
-    if (major, minor) < (8, 4):
+    if TF_EXPORT:   # TensorFlow path (format=saved_model), whatever the Ultralytics version
+        need = (("tensorflow", "tensorflow"), ("tf_keras", "tf_keras"), ("onnx2tf", "onnx2tf"), ("onnx", "onnx"),
+                ("onnxruntime", "onnxruntime"), ("onnx_graphsurgeon", "onnx_graphsurgeon"), ("sng4onnx", "sng4onnx"))
+    elif (major, minor) < (8, 4):
         return []
+    else:
+        need = (("litert_torch", "litert-torch"), ("ai_edge_litert", "ai-edge-litert"))
     missing = []
-    for mod, pkg in (("litert_torch", "litert-torch"), ("ai_edge_litert", "ai-edge-litert")):
+    for mod, pkg in need:
         try:
             __import__(mod)
         except Exception:
@@ -107,23 +157,28 @@ def export_missing():
 def env_note():
     """One line about the Python in use, so a run outside the virtual environment is spotted at once."""
     venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-    return f"Python {sys.version.split()[0]} at {sys.executable}" + ("" if venv else " (no virtual environment)")
+    docker = Path("/.dockerenv").exists()
+    return f"Python {sys.version.split()[0]} at {sys.executable}" + (" (Docker)" if docker else "" if venv else " (no virtual environment)")
 
 
 # ----------------------------------------------------------------------------- evaluation
-def evaluate(val_recs, predict, predict_face=None):
+def evaluate(val_recs, predict, predict_face=None, truth="hand"):
     """predict(record, image_path) -> [(x, y, conf)] in upright pixels;
     predict_face(record, image_path) -> [(conf, [centre, top, right, bottom, left])], best first, [] for none.
     Returns archery metrics: arrows found, entry error, rings right; faces found (every marked face
     counts, so a spot face counts three), centre error and how often the user's arrows get the same
-    ring with the model's face as with the user's."""
+    ring with the model's face as with the user's.
+    truth="hand": only hand-made marks count, the honest measurement. truth="accepted": only the parts an
+    earlier model proposed and the archer accepted untouched count; that is agreement with the old model,
+    not accuracy, and serves as a check that a new model has not fallen behind where the old one was right."""
     found = total = false = ring_ok = ring_n = 0
     px_err = []; mm_err = []
     face_n = face_found = face_ring_ok = face_ring_n = 0; face_mm = []
     per_image = []
     for rec, img in val_recs:
-        # only hand-made marks serve as the truth: a part a model proposed in the app is not compared
-        arrows_hand = prepare_dataset.hand_marked(rec, "arrows"); face_hand = prepare_dataset.hand_marked(rec, "face")
+        # which parts of the record are the truth here (see truth above)
+        arrows_hand = prepare_dataset.hand_marked(rec, "arrows") == (truth == "hand") and bool(rec.get("arrows"))
+        face_hand = prepare_dataset.hand_marked(rec, "face") == (truth == "hand")
         preds = predict(rec, img) if arrows_hand else []
         face_hit = None
         g_users = facegeom.geometries_of_record(rec)
@@ -204,6 +259,7 @@ def run_job(job, mock):
     run = RUNS / job.name
     try:
         run.mkdir(parents=True, exist_ok=True)
+        (run / "STOP").unlink(missing_ok=True)
         job.say("unpacking export and preparing the dataset")
         exports = p.get("exports") or [p["export"]]
         recs = prepare_dataset.load_many([DATA / n for n in exports], run / "export")
@@ -215,7 +271,9 @@ def run_job(job, mock):
         job.say(f"{len(recs)} photos: arrows marked by hand on {n_arrow_hand}, face on {n_face_hand} (what a model proposed in the app is left out)")
         if n_arrow_hand == 0:
             raise RuntimeError("no photo with hand-marked arrows: switch the arrow detector off in the app to collect some")
-        train, val = prepare_dataset.split_by_session(recs, float(p["val"]))
+        # only photos with a hand-marked part train or validate; the ones accepted untouched are the regression check below
+        usable = [x for x in recs if prepare_dataset.hand_marked(x[0], "arrows") or prepare_dataset.hand_marked(x[0], "face")]
+        train, val = prepare_dataset.split_by_session(usable, float(p["val"]))
         if not val:
             # a single session (or a single photo): the trainer needs a validation set, so the
             # training photos serve as one; the numbers below are then optimistic
@@ -236,16 +294,43 @@ def run_job(job, mock):
         train_face = f_tr > 0 and f_va > 0
         job.say(f"face marked on {f_tr} training and {f_va} validation photos" + ("" if train_face else ": no face model this run"))
         imgsz = int(p["imgsz"])
-        if mock:
-            predict, predict_face = mock_train(job, run, imgsz, train_face)
-        else:
-            predict = real_train(job, run, ds, imgsz, "arrows")
-            predict_face = real_train(job, run, dsf, imgsz, "face") if train_face and not job.stop else None
+        stages = ["arrows", "face"] if train_face else ["arrows"]
+        devices, parallel = plan_devices(gpu_info(), stages)
+        job.parallel = parallel
+        job.stages = {s: {"state": "waiting", "device": device_label(devices[s]), "epoch": 0, "metrics": []} for s in stages}
+        job.say(("both models at the same time: " if parallel else "one model after the other: ")
+                + ", ".join(f"{s} on {device_label(devices[s])}" for s in stages))
+        if not mock:
+            fetch_weights(job, p.get("size", "n"))
+        datasets = {"arrows": ds, "face": dsf}
+        workers = dataloader_workers(parallel)
+        jobs = [{"stage": s, "run": str(run), "ds": str(datasets[s]), "imgsz": imgsz, "epochs": job.epochs, "batch": int(p["batch"]),
+                 "size": p.get("size", "n"), "precision": p.get("precision", "int8"), "device": devices[s], "workers": workers, "mock": mock}
+                for s in stages]
+        run_stages(job, run, [jobs] if parallel else [[j] for j in jobs])
         if job.stop:
             job.state = "stopped"; job.say("stopped"); return
+        failed = [s for s in stages if job.stages[s]["state"] != "done"]
+        if "arrows" in failed:
+            raise RuntimeError("the arrow detector did not finish: " + (job.stages["arrows"].get("error") or "see the log"))
+        if failed:   # the face finder failed but the arrow detector is fine: keep the run, without a face model
+            job.say("the face finder did not finish, the model has the arrow detector only")
+            (run / "face.tflite").unlink(missing_ok=True)
         job.say("evaluating on the validation photos")
+        if mock:
+            predict, predict_face = mock_predictors(train_face and "face" not in failed)
+        else:
+            predict = make_predict(run / "train_arrows" / "weights" / "best.pt", imgsz, "arrows")
+            predict_face = make_predict(run / "train_face" / "weights" / "best.pt", imgsz, "face") if train_face and "face" not in failed else None
         ev = evaluate(val, predict, predict_face)
         ev["train_photos"] = len(train); ev["val_photos"] = len(val)
+        # the regression check: the photos whose proposals the archer accepted untouched never train or validate
+        # (they carry the old model's points); the new model should still agree with them where the old one was right
+        accepted = [x for x in recs if not prepare_dataset.hand_marked(x[0], "arrows") or not prepare_dataset.hand_marked(x[0], "face")]
+        if accepted:
+            job.say(f"agreement check on {len(accepted)} photos with accepted proposals")
+            ag = evaluate(accepted, predict, predict_face, truth="accepted")
+            ev["agreement"] = {k: ag.get(k) for k in ("images", "arrows", "found", "false_alarms", "recall", "ring_accuracy", "face_photos", "face_found", "face_ring_accuracy")}
         has_face = (run / "face.tflite").exists()
         info = {"name": job.name, "imgsz": imgsz, "task": "pose", "trained": time.time(), "train_photos": len(train), "val_photos": len(val),
                 "size": p.get("size", "n"), "precision": p.get("precision", "int8"),
@@ -258,30 +343,204 @@ def run_job(job, mock):
             if has_face:
                 z.write(run / "face.tflite", "face.tflite")
             z.write(run / "model.json", "model.json")
+        last = job.stages["arrows"]["metrics"]
         summary = {"name": job.name, "params": p, "finished": time.time(), "duration_s": round(time.time() - job.started),
                    "train_photos": len(train), "val_photos": len(val), "eval": ev, "model": "model.zip", "face_model": has_face, "mock": mock,
-                   "final_metrics": job.metrics[-1] if job.metrics else None}
+                   "parallel": parallel, "devices": {s: device_label(devices[s]) for s in stages},
+                   "final_metrics": last[-1] if last else None}
         (run / "summary.json").write_text(json.dumps(summary, indent=1))
         job.result = summary
         job.state = "done"
         job.say("done")
     except Exception as e:
+        job.stop = True   # a stage process still running is told to end
+        (run / "STOP").touch() if run.exists() else None
         job.state = "failed"; job.error = f"{e}"; job.say("failed: " + "".join(traceback.format_exception_only(type(e), e)).strip())
 
 
-def mock_train(job, run, imgsz, train_face):
-    for stage in (["arrows", "face"] if train_face else ["arrows"]):
-        job.stage = stage; job.metrics = []
-        job.say(f"--- {stage} model ---")
-        for ep in range(1, job.epochs + 1):
-            if job.stop:
-                return None, None
-            time.sleep(0.02)
-            job.epoch = ep
-            job.metrics.append({"epoch": ep, "loss": round(3.0 / (1 + ep * 0.3), 3), "mAP50": round(min(0.95, 0.2 + ep * 0.04), 3)})
-            if ep % 5 == 0 or ep == job.epochs:
-                job.say(f"epoch {ep}/{job.epochs} loss {job.metrics[-1]['loss']}")
-        (run / f"{stage}.tflite").write_bytes(b"TFL3-mock-" + str(time.time()).encode())
+def fetch_weights(job, size):
+    """Downloads the pretrained weights once, before two processes would race for the same file."""
+    name = f"yolo11{size}-pose.pt"
+    if not Path(name).exists():
+        job.say(f"fetching the pretrained {name}")
+        from ultralytics import YOLO
+        YOLO(name)
+
+
+def run_stages(job, run, waves):
+    """Starts each wave of stage processes together and waits for it before the next: [[a, b]] trains a and b at
+    the same time, [[a], [b]] one after the other. The processes report through run/<stage>.events.jsonl;
+    Stop on the page creates run/STOP, which they look for after every epoch."""
+    ctx = multiprocessing.get_context("spawn")   # a fresh interpreter per model: no CUDA or Ultralytics state is shared
+    export_lock = ctx.Lock()                     # one TFLite conversion at a time: they share files and are heavy on memory
+    for wave in waves:
+        if job.stop:
+            return
+        procs = {}
+        for cfg in wave:
+            ev = run / f"{cfg['stage']}.events.jsonl"
+            ev.unlink(missing_ok=True)
+            pr = ctx.Process(target=stage_main, args=(cfg, export_lock), name=f"train-{cfg['stage']}", daemon=False)
+            pr.start()
+            procs[cfg["stage"]] = [pr, ev, 0]
+            job.stages[cfg["stage"]]["state"] = "training"
+        while procs:
+            if job.stop and not (run / "STOP").exists():
+                (run / "STOP").touch()
+            for stage, entry in list(procs.items()):
+                pr, ev, pos = entry
+                alive = pr.is_alive()
+                entry[2] = read_events(job, stage, ev, pos)
+                if not alive:
+                    pr.join()
+                    st = job.stages[stage]
+                    if st["state"] not in ("done", "stopped", "failed"):
+                        st["state"] = "failed"; st["error"] = st.get("error") or f"process ended with code {pr.exitcode}"
+                    if st["state"] == "failed":
+                        job.say(f"{stage} failed: {st.get('error')}")
+                        if stage == "arrows":   # without the arrow detector there is no model: end the face finder too
+                            (run / "STOP").touch()
+                    del procs[stage]
+            time.sleep(0.5)
+        if any(job.stages[c["stage"]]["state"] != "done" for c in wave if c["stage"] == "arrows"):
+            return   # no point in the face finder after a failed arrow detector
+
+
+def read_events(job, stage, path, pos):
+    """Takes the new lines of a stage's event file into the job; returns the new read position."""
+    if not path.exists():
+        return pos
+    with path.open() as f:
+        f.seek(pos)
+        while True:
+            line = f.readline()
+            if not line.endswith("\n"):   # nothing more, or a line still being written
+                break
+            pos = f.tell()
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            with LOCK:
+                st = job.stages[stage]
+                if "metrics" in e:
+                    st["metrics"].append(e["metrics"]); st["epoch"] = e["metrics"]["epoch"]
+                if "state" in e:
+                    st["state"] = e["state"]
+                if "error" in e:
+                    st["error"] = e["error"]
+                if "say" in e:
+                    job.say(f"{stage}: {e['say']}")
+    return pos
+
+
+def finite(v, digits=4):
+    """A metric as a rounded float, or None when it is NaN or infinite (Ultralytics reports NaN for some metrics in
+    the first epochs; JSON has no NaN, and the browser refuses the whole state when it meets one)."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return round(f, digits) if math.isfinite(f) else None
+
+
+def json_safe(o):
+    """o with every NaN or infinite float replaced by None, so json.dumps writes valid JSON."""
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [json_safe(v) for v in o]
+    return o
+
+
+class Events:
+    """The stage process's side of the event file: one JSON object per line."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+
+    def emit(self, **kw):
+        with self.path.open("a") as f:
+            f.write(json.dumps(kw) + "\n")
+
+    def say(self, text):
+        self.emit(say=text)
+
+
+def stage_main(cfg, export_lock):
+    """Entry of a stage process: trains one pose model ("arrows": 1 keypoint, "face": 5) on cfg["device"] and exports
+    it as run/<stage>.tflite."""
+    run = Path(cfg["run"]); stage = cfg["stage"]
+    ev = Events(run / f"{stage}.events.jsonl")
+    try:
+        if cfg["mock"]:
+            stage_mock(cfg, run, ev, export_lock)
+        else:
+            stage_train(cfg, run, ev, export_lock)
+    except BaseException as e:   # noqa: BLE001  report everything, also KeyboardInterrupt, then fail the process
+        ev.emit(state="failed", error=f"{e.__class__.__name__}: {str(e)[:300]}")
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def stage_mock(cfg, run, ev, export_lock):
+    ev.say(f"--- {cfg['stage']} model (mock) on {device_label(cfg['device'])} ---")
+    for ep in range(1, cfg["epochs"] + 1):
+        if (run / "STOP").exists():
+            ev.emit(state="stopped"); return
+        time.sleep(0.05)
+        ev.emit(metrics={"epoch": ep, "loss": round(3.0 / (1 + ep * 0.3), 3), "mAP50": round(min(0.95, 0.2 + ep * 0.04), 3)})
+        if ep % 5 == 0 or ep == cfg["epochs"]:
+            ev.say(f"epoch {ep}/{cfg['epochs']}")
+    ev.emit(state="exporting")
+    with export_lock:
+        time.sleep(0.3)
+        (run / f"{cfg['stage']}.tflite").write_bytes(b"TFL3-mock-" + str(time.time()).encode())
+    ev.emit(state="done")
+
+
+def stage_train(cfg, run, ev, export_lock):
+    from ultralytics import YOLO
+    stage = cfg["stage"]
+    ev.say(f"--- {stage} model on {device_label(cfg['device'])} ---")
+    model = YOLO(f"yolo11{cfg['size']}-pose.pt")
+    stop_file = run / "STOP"
+
+    def on_fit_epoch_end(trainer):
+        if stop_file.exists():
+            trainer.stop = True
+        if trainer.epoch + 1 > cfg["epochs"]:   # Ultralytics calls this once more for its final validation
+            return
+        m = {"epoch": trainer.epoch + 1}
+        for k, v in (trainer.metrics or {}).items():
+            m[k.replace("metrics/", "").replace("(B)", "").replace("(P)", "_kpt")] = finite(v)
+        try:
+            m["loss"] = finite(sum(trainer.tloss) if hasattr(trainer.tloss, "__iter__") else trainer.tloss)
+        except Exception:
+            pass
+        ev.emit(metrics=m)
+        ev.say(f"epoch {m['epoch']}/{cfg['epochs']} " + " ".join(f"{k} {v}" for k, v in m.items() if k != "epoch")[:160])
+    model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
+    model.train(data=str(Path(cfg["ds"]) / "data.yaml"), imgsz=cfg["imgsz"], epochs=cfg["epochs"], batch=cfg["batch"], project=str(run),
+                name=f"train_{stage}", exist_ok=True, device=cfg["device"], workers=cfg["workers"], verbose=False, plots=False)
+    if stop_file.exists():
+        ev.emit(state="stopped"); return
+    ev.emit(state="exporting")
+    if not export_lock.acquire(block=False):
+        ev.say("waiting for the other model's export to finish")
+        export_lock.acquire()
+    ev.say(f"exporting {cfg['precision']} TFLite")
+    best = run / f"train_{stage}" / "weights" / "best.pt"
+    try:
+        export_model(ev.say, YOLO(str(best)), cfg["imgsz"], Path(cfg["ds"]), run / f"{stage}.tflite", cfg["precision"])
+    finally:
+        export_lock.release()
+    ev.emit(state="done")
+
+
+def mock_predictors(train_face):
     rnd = random.Random(1)
 
     def predict(rec, img):
@@ -299,63 +558,61 @@ def mock_train(job, run, imgsz, train_face):
     return predict, (predict_face if train_face else None)
 
 
-def export_model(job, trained, imgsz, ds, dest, precision="int8"):
+def pick_tflite(folder, int8):
+    """The TFLite file of an export folder. LiteRT names its int8 file *int8*; onnx2tf (the TensorFlow path) writes
+    *_integer_quant.tflite (int8 inside, float input and output, calibrated), *_full_integer_quant.tflite (int8 also
+    at input and output), *_int8.tflite (int8 weights only, float activations) and *_float32/16.tflite."""
+    names = sorted(folder.glob("*.tflite"))
+    if int8:
+        order = [lambda n: n.endswith("_integer_quant.tflite") and "full_integer" not in n and "int16" not in n,
+                 lambda n: "full_integer_quant" in n and "int16" not in n,
+                 lambda n: "int8" in n]
+    else:
+        order = [lambda n: "float32" in n,
+                 lambda n: "int8" not in n and "w8a" not in n and "quant" not in n and "float16" not in n]
+    for test in order:
+        hit = [f for f in names if test(f.name)]
+        if hit:
+            return hit[0]
+    if names:
+        return names[0]
+    raise RuntimeError(f"no .tflite in {folder}")
+
+
+def export_model(say, trained, imgsz, ds, dest, precision="int8"):
     """TFLite of a trained model. int8 is calibrated on all photos of the run (not only the few validation ones) and
     is the smallest and fastest; float32 keeps the keypoints a little more exact at a larger model (the phone's GPU
     delegate runs it as float16; LiteRT has no separate float16 file). Ultralytics 8.4 calls the format "litert"
-    and takes quantize=8 or 32; older versions take tflite with int8=True."""
+    and takes quantize=8 or 32; older versions take tflite with int8=True. On Linux ARM64 there is no LiteRT
+    converter: the TFLite comes from TensorFlow through onnx2tf (format saved_model), in NHWC layout, which the app
+    takes as well."""
     int8 = precision == "int8"
     calib = ds / "calib.yaml"
     calib.write_text((ds / "data.yaml").read_text().replace("val: images/val", "val: [images/train, images/val]"))
     kw = {"imgsz": imgsz}
     if int8: kw["data"] = str(calib)
-    try:
-        out = trained.export(format="litert", quantize=8 if int8 else 32, **kw)
-    except Exception as e:
-        job.say(f"litert export not available ({e.__class__.__name__}: {str(e)[:120]}), using the tflite export of older Ultralytics")
-        out = trained.export(format="tflite", int8=int8, **kw)
-    src = Path(out)
-    if src.is_dir():
-        cands = (sorted(src.glob("*int8*.tflite")) if int8 else [f for f in sorted(src.glob("*.tflite")) if "int8" not in f.name and "w8a" not in f.name]) or sorted(src.glob("*.tflite"))
-        src = cands[0]
-    shutil.copy(src, dest)
-    job.say(f"{dest.name}: {dest.stat().st_size // 1024} kB")
-
-
-def real_train(job, run, ds, imgsz, stage):
-    """Trains one pose model ("arrows": 1 keypoint, "face": 5) and exports it as run/<stage>.tflite.
-    Returns the prediction function used by the evaluation."""
-    from ultralytics import YOLO
-    p = job.params
-    job.stage = stage; job.metrics = []
-    job.say(f"--- {stage} model ---")
-    model = YOLO(f"yolo11{p['size']}-pose.pt")
-
-    def on_fit_epoch_end(trainer):
-        job.epoch = trainer.epoch + 1
-        m = {"epoch": job.epoch}
-        for k, v in (trainer.metrics or {}).items():
-            m[k.replace("metrics/", "").replace("(B)", "").replace("(P)", "_kpt")] = round(float(v), 4)
+    if TF_EXPORT:
+        say("TFLite through TensorFlow (onnx2tf)" + (": LiteRT has no Linux ARM64 build" if ARM64 else ""))
+        # on the CPU: the GPU would ask for onnxruntime-gpu, which has no ARM64 wheel on PyPI
+        q = ({"quantize": 8} if ultralytics_version() >= (8, 4) else {"int8": True}) if int8 else {}
+        out = trained.export(format="saved_model", device="cpu", **q, **kw)
+    else:
         try:
-            m["loss"] = round(float(sum(trainer.tloss)), 4) if hasattr(trainer.tloss, "__iter__") else round(float(trainer.tloss), 4)
-        except Exception:
-            pass
-        job.metrics.append(m)
-        job.say(f"epoch {job.epoch}/{job.epochs} " + " ".join(f"{k} {v}" for k, v in m.items() if k != "epoch")[:160])
-        if job.stop:
-            trainer.stop = True
-    model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
-    gi = gpu_info()
-    device = 0 if gi["device"] == "cuda" else gi["device"] if gi["device"] == "mps" else "cpu"
-    job.say(f"training on {gi['name']}")
-    model.train(data=str(ds / "data.yaml"), imgsz=imgsz, epochs=job.epochs, batch=int(p["batch"]), project=str(run), name=f"train_{stage}",
-                exist_ok=True, device=device, verbose=False, plots=False)
-    if job.stop:
-        return None
-    best = run / f"train_{stage}" / "weights" / "best.pt"
-    job.say(f"exporting {p.get('precision', 'int8')} TFLite")
+            out = trained.export(format="litert", quantize=8 if int8 else 32, **kw)
+        except Exception as e:
+            say(f"litert export not available ({e.__class__.__name__}: {str(e)[:120]}), using the tflite export of older Ultralytics")
+            out = trained.export(format="tflite", int8=int8, **kw)
+    src = Path(out[0] if isinstance(out, (tuple, list)) else out)
+    if src.is_dir():
+        src = pick_tflite(src, int8)
+    shutil.copy(src, dest)
+    say(f"{dest.name}: {dest.stat().st_size // 1024} kB (from {src.name})")
+
+
+def make_predict(best, imgsz, stage):
+    """The prediction function the evaluation uses, from the trained PyTorch weights (in this process, on the first GPU)."""
+    from ultralytics import YOLO
     trained = YOLO(str(best))
-    export_model(job, trained, imgsz, ds, run / f"{stage}.tflite", p.get("precision", "int8"))
 
     def predict(rec, img):
         res = trained.predict(str(img), imgsz=imgsz, conf=0.25, verbose=False)[0]
@@ -385,7 +642,7 @@ def runs_list():
             out.append({"name": s["name"], "finished": s["finished"], "duration_s": s["duration_s"], "train_photos": s["train_photos"],
                         "val_photos": s["val_photos"], "eval": {k: v for k, v in s["eval"].items() if k != "per_image"},
                         "params": s["params"], "exports": s["params"].get("exports") or [s["params"].get("export")],
-                        "mock": s.get("mock", False), "model": (d.parent / "model.zip").exists(), "face_model": s.get("face_model", False)})
+                        "mock": s.get("mock", False), "parallel": s.get("parallel", False), "model": (d.parent / "model.zip").exists(), "face_model": s.get("face_model", False)})
         except Exception:
             pass
     return out
@@ -448,8 +705,7 @@ progress{width:100%;height:14px}
 <label>Run name<input id="name" placeholder="auto"></label>
 </div>
 <div class="row"><button id="start">Start training</button><button class="sec" id="stop" disabled>Stop</button><span id="jobmsg" class="muted"></span></div>
-<progress id="prog" value="0" max="1" hidden></progress>
-<canvas id="curve" width="900" height="160" hidden></canvas>
+<div id="stages"></div>
 <pre id="log" hidden></pre></div>
 <div class="card"><h2>3. Results</h2><div id="runs" class="muted">No runs yet.</div></div>
 <div class="card" id="prevcard" hidden><h2>Preview</h2>
@@ -460,28 +716,37 @@ progress{width:100%;height:14px}
 const $=id=>document.getElementById(id);let st=null,prevRun=null,prevIdx=0;const chosen=new Map();
 async function api(p,o){const r=await fetch(p,o);return r.json()}
 function fmt(v){return v==null?'–':v}
-async function refresh(){st=await api('/api/state');
-$('gpu').textContent=`GPU: ${st.gpu.name}`+(st.gpu.torch?` · PyTorch ${st.gpu.torch}`:'')+(st.ultralytics?' · Ultralytics ready':' · Ultralytics not installed: pip install -r requirements.txt')+(st.mock?' · MOCK MODE':'')+` · ${st.env}`;
+async function refresh(){try{await update()}catch(e){$('jobmsg').textContent=`page could not read the trainer's state (${e.message}); retrying`;$('jobmsg').className='err'}}
+async function update(){st=await api('/api/state');
+$('gpu').textContent=`GPU: ${st.gpu.name}`+(st.gpu.torch?` · PyTorch ${st.gpu.torch}`:'')+(st.ultralytics?' · Ultralytics ready':' · Ultralytics not installed: pip install -r requirements.txt')+(st.gpu.device==='cuda'?(st.gpu.count>=2?' · the two models train at the same time on GPU 0 and 1':' · the two models train one after the other'):'')+(st.mock?' · MOCK MODE':'')+` · ${st.env}`;
 $('gpu').className=st.export_missing&&st.export_missing.length?'err':'muted';if(st.export_missing&&st.export_missing.length)$('gpu').textContent+=` · export needs ${st.export_missing.join(', ')}: pip install -r requirements.txt in this Python`;
 for(const e of st.exports)if(!chosen.has(e.name))chosen.set(e.name,true);
 $('exports').innerHTML=st.exports.length?st.exports.map(e=>`<label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-n="${e.name}" ${chosen.get(e.name)?'checked':''}> ${e.name} <span class="muted">(${(e.size/1048576).toFixed(1)} MB)</span></label>`).join('<br>'):'<span class="muted">No export uploaded yet.</span>';
 for(const cb of $('exports').querySelectorAll('input'))cb.onchange=()=>{chosen.set(cb.dataset.n,cb.checked);refresh()};
 const j=st.job;const running=j&&j.state==='running';
 $('start').disabled=running||!st.exports.some(e=>chosen.get(e.name))||!(st.ultralytics||st.mock)||(!st.mock&&st.export_missing&&st.export_missing.length>0);$('stop').disabled=!running;
-if(j){$('jobmsg').textContent=`${j.name}: ${j.state}`+(j.error?` – ${j.error}`:'')+(running?` · ${j.stage} model, epoch ${j.epoch}/${j.epochs}`:'');
+if(j){$('jobmsg').textContent=`${j.name}: ${j.state}`+(j.error?` – ${j.error}`:'')+(running&&Object.keys(j.stages||{}).length?(j.parallel?' · both models at the same time':' · one model after the other'):'');
 $('jobmsg').className=j.state==='failed'?'err':j.state==='done'?'ok':'muted';
-$('prog').hidden=false;$('prog').value=j.epoch/j.epochs;$('log').hidden=false;$('log').textContent=j.log.join('\n');$('log').scrollTop=1e9;drawCurve(j.metrics)}
+$('log').hidden=false;$('log').textContent=j.log.join('\n');$('log').scrollTop=1e9;renderStages(j)}
 renderRuns(st.runs);}
-function drawCurve(m){const c=$('curve');if(!m.length){c.hidden=true;return}c.hidden=false;const g=c.getContext('2d');g.clearRect(0,0,c.width,c.height);
+function renderStages(j){const box=$('stages');const ss=j.stages||{};
+for(const el of [...box.children])if(!ss[el.dataset.s])el.remove();
+for(const [s,v] of Object.entries(ss)){let el=box.querySelector(`[data-s="${s}"]`);
+if(!el){el=document.createElement('div');el.dataset.s=s;el.style.margin='8px 0';el.innerHTML='<div class="muted lbl"></div><progress value="0" max="1"></progress><canvas width="900" height="120" hidden></canvas>';box.appendChild(el)}
+el.querySelector('.lbl').textContent=`${s==='arrows'?'Arrow detector':'Face finder'} · ${v.device} · ${v.state}`+(v.epoch?` · epoch ${v.epoch}/${j.epochs}`:'')+(v.error?` – ${v.error}`:'');
+el.querySelector('.lbl').className='lbl '+(v.state==='failed'?'err':v.state==='done'?'ok':'muted');
+el.querySelector('progress').value=v.state==='done'?1:v.epoch/j.epochs;drawCurve(el.querySelector('canvas'),v.metrics)}}
+function drawCurve(c,m){if(!m.length){c.hidden=true;return}c.hidden=false;const g=c.getContext('2d');g.clearRect(0,0,c.width,c.height);
 const keys=['loss','mAP50','pose_mAP50','mAP50_kpt'].filter(k=>m.some(x=>k in x));const cols={loss:'#F2C230',mAP50:'#5B93D6',pose_mAP50:'#58B27E',mAP50_kpt:'#58B27E'};
 keys.forEach((k,ki)=>{const vs=m.map(x=>x[k]).filter(v=>v!=null);if(!vs.length)return;const lo=Math.min(...vs),hi=Math.max(...vs)||1;g.strokeStyle=cols[k]||'#fff';g.lineWidth=2;g.beginPath();
 m.forEach((x,i)=>{if(x[k]==null)return;const X=30+i*(c.width-40)/Math.max(1,m.length-1),Y=10+(1-(x[k]-lo)/((hi-lo)||1))*(c.height-30);i?g.lineTo(X,Y):g.moveTo(X,Y)});g.stroke();
 g.fillStyle=cols[k]||'#fff';g.font='12px system-ui';g.fillText(`${k}: ${vs[vs.length-1]}`,30+ki*160,c.height-6)});}
 function renderRuns(runs){if(!runs.length){$('runs').textContent='No runs yet.';return}
-$('runs').innerHTML='<table><tr><th>Run</th><th>Photos</th><th>Arrows found</th><th>False alarms</th><th>Entry error</th><th>Rings right</th><th>Face found</th><th>Time</th><th></th></tr>'+runs.slice().reverse().map(r=>{const e=r.eval;
+$('runs').innerHTML='<table><tr><th>Run</th><th>Photos</th><th>Arrows found</th><th>False alarms</th><th>Entry error</th><th>Rings right</th><th>Face found</th><th title="On the photos whose proposals were accepted untouched: how far the new model agrees with the old one. A regression check, not accuracy.">Agreement</th><th>Time</th><th></th></tr>'+runs.slice().reverse().map(r=>{const e=r.eval;const ag=e.agreement;
+const agTxt=ag&&ag.arrows?`${ag.found}/${ag.arrows}${ag.recall!=null?` (${Math.round(ag.recall*100)} %)`:''}, ${ag.false_alarms} false<br><span class="muted" style="font-size:.8rem">rings ${ag.ring_accuracy!=null?Math.round(ag.ring_accuracy*100)+' %':'–'}${ag.face_photos?`, face ${ag.face_found}/${ag.face_photos}`:''} · ${ag.images} photos</span>`:'–';
 const face=e.face_photos?`${e.face_found}/${e.face_photos}`+(e.face_center_mm_median!=null?`<br><span class="muted" style="font-size:.8rem">centre ${e.face_center_mm_median} mm off, rings ${e.face_ring_accuracy!=null?Math.round(e.face_ring_accuracy*100)+' %':'–'} the same</span>`:''):'–';
 const pe=e.per_export||{};const peTxt=Object.keys(pe).length>1?'<br><span class="muted" style="font-size:.8rem">'+Object.entries(pe).map(([k,v])=>`${k}: ${v.found}/${v.arrows}, ${v.false_alarms} false`).join('<br>')+'</span>':'';
-return `<tr><td>${r.name}${r.mock?' <span class="muted">(mock)</span>':''}${peTxt}</td><td>${r.train_photos}+${r.val_photos}</td><td>${e.found}/${e.arrows}${e.recall!=null?` (${Math.round(e.recall*100)} %)`:''}</td><td>${e.false_alarms}</td><td>${e.mm_error_median!=null?e.mm_error_median+' mm median':fmt(e.px_error_mean)+' px'}</td><td>${e.ring_accuracy!=null?Math.round(e.ring_accuracy*100)+' %':'–'}</td><td>${face}</td><td>${Math.round(r.duration_s/60)} min</td>
+return `<tr><td>${r.name}${r.mock?' <span class="muted">(mock)</span>':''}${peTxt}</td><td>${r.train_photos}+${r.val_photos}</td><td>${e.found}/${e.arrows}${e.recall!=null?` (${Math.round(e.recall*100)} %)`:''}</td><td>${e.false_alarms}</td><td>${e.mm_error_median!=null?e.mm_error_median+' mm median':fmt(e.px_error_mean)+' px'}</td><td>${e.ring_accuracy!=null?Math.round(e.ring_accuracy*100)+' %':'–'}</td><td>${face}</td><td>${agTxt}</td><td>${Math.round(r.duration_s/60)} min${r.parallel?'<br><span class="muted" style="font-size:.8rem">2 GPUs</span>':''}</td>
 <td>${r.model?`<a href="/files/${r.name}/model.zip" download="${r.name}.zip"><button>Download model (.zip)</button></a>`:''} <button class="sec" onclick="openPreview('${r.name}')">Preview</button></td></tr>`}).join('')+'</table>';}
 async function openPreview(run,idx=0){prevRun=run;const p=await api(`/api/preview?run=${encodeURIComponent(run)}&i=${idx}`);if(p.error){alert(p.error);return}prevIdx=p.index;
 $('prevcard').hidden=false;$('pinfo').textContent=`${run}: photo ${p.index+1} of ${p.count} · ${p.id} · ${p.face} · ${p.env||''}`+(p.export?` · from ${p.export}`:'')+(p.stats?` · marks ${p.stats.marks}, found ${p.stats.found}, false ${p.stats.false}`+(p.stats.face==null?'':p.stats.face?', face found':', face missed'):'');
@@ -506,7 +771,7 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def send_json(self, obj, code=200):
-        data = json.dumps(obj).encode()
+        data = json.dumps(json_safe(obj), allow_nan=False).encode()
         self.send_response(code); self.send_header("content-type", "application/json"); self.send_header("content-length", str(len(data))); self.end_headers()
         self.wfile.write(data)
 
@@ -596,12 +861,16 @@ def main():
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to reach it from another machine")
     ap.add_argument("--mock", action="store_true", help="fake trainer, for checking the page without a GPU")
+    ap.add_argument("--mock-gpus", type=int, default=0, help="with --mock: pretend this many GPUs (2 trains both models at the same time)")
     a = ap.parse_args()
+    global MOCK_GPUS
     Handler.mock = a.mock
+    MOCK_GPUS = a.mock_gpus if a.mock else None
     DATA.mkdir(exist_ok=True); RUNS.mkdir(exist_ok=True)
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     print(f"Nocked trainer at http://{'localhost' if a.host == '127.0.0.1' else a.host}:{a.port}" + ("  (mock)" if a.mock else ""))
     print(env_note())
+    print("GPU: " + gpu_info()["name"])
     miss = export_missing()
     if miss and not a.mock:
         print("the TFLite export needs " + ", ".join(miss) + ": pip install -r requirements.txt (with this Python; use the virtual environment, a system Python refuses)")

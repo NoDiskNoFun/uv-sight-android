@@ -1,0 +1,10 @@
+.venv/
+data/
+runs/
+dataset/
+dataset_face/
+__pycache__/
+*.pt
+*.tflite
+*.zip
+*.log

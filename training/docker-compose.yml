@@ -1,0 +1,25 @@
+# The trainer next to other GPU containers (an Ollama container, say): each one gets its own GPUs, so a model
+# Ollama keeps in memory cannot take the memory a training needs.
+#
+#   cd training && docker compose up -d --build      then open http://localhost:8000
+#
+# device_ids picks the host's GPUs (numbers as nvidia-smi shows them). Inside the container they count from 0
+# again: two of them and the arrow detector and the face finder train at the same time, one and they take turns.
+services:
+  trainer:
+    build: .
+    image: nocked-trainer
+    restart: unless-stopped
+    ipc: host                                 # shared memory for the data loaders
+    ports:
+      - "127.0.0.1:8000:8000"                 # the page has no login: only this machine
+    volumes:
+      - ./data:/data                          # uploaded exports
+      - ./runs:/runs                          # one folder per run, with model.zip
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1", "2"]
+              capabilities: [gpu]
