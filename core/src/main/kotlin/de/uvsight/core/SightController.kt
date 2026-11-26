@@ -151,6 +151,7 @@ class SightController(
         const val LANG_KEY = "uvsight.lang"
         const val PHOTO_KEY = "uvsight.photo"
         const val GROUP_KEY = "uvsight.group"
+        const val LOCK_SECRET_KEY = "uvsight.lockSecret"
         const val GAME_KEY = "uvsight.game"
         const val BADGES_KEY = "uvsight.badges.defs"
         const val EARNED_KEY = "uvsight.badges.earned"
@@ -590,46 +591,69 @@ class SightController(
         val si = s.sight ?: return
         val g = s.group
         if (g.role != "single" || s.conn != ConnState.CONNECTED || s.role == "locked" || pendingAutoPw != null) return
+        // locked with a password this app does not derive (typed in an earlier version, or just accepted): move it to the derived one
         if (s.hello?.pw == true && si.autoPw == null && g.password.isNotEmpty()) lockSight()
+        // not locked yet and set up: lock by default, unless the lock was removed on purpose
         else if (s.hello?.pw == false && si.introduced && !si.lockOff) lockSight()
     }
 
     // ------------------------------------------------------------------ own sight: the lock
-    /** The password for the connected sight: in single mode the one this app made up for it, else the group's. */
-    private fun passwordFor(): String = (if (s.group.role == "single") s.sight?.autoPw else null) ?: s.group.password
+    //
+    // In single mode the sight is locked with a password the app derives from a secret kept once on this phone
+    // and the sight's own id. The app never stores the password itself: it recomputes it whenever it needs it, so
+    // a sight the app locked can always be opened again, even if a write was lost. (Sights locked by an earlier
+    // version with a random, stored password still open through that stored value, and are moved to the derived
+    // one the next time they are locked.) A sight locked by another phone, or whose derived password no longer
+    // fits, asks for the old password once, or is cleared over USB with "group clear".
+    private val lockAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    /** This phone's lock secret (32 bytes, hex), made once and kept; a reinstall makes a new one. */
+    private fun lockSecret(): ByteArray {
+        val hex = store.get(LOCK_SECRET_KEY) ?: run {
+            val b = ByteArray(32); java.security.SecureRandom().nextBytes(b)
+            val h = b.joinToString("") { "%02x".format(it) }; store.put(LOCK_SECRET_KEY, h); h
+        }
+        return ByteArray(hex.length / 2) { ((Character.digit(hex[it * 2], 16) shl 4) + Character.digit(hex[it * 2 + 1], 16)).toByte() }
+    }
+    /** The lock password for a sight: the same every time for this phone and this sight, never sent or stored. */
+    private fun deriveLockPw(sightId: String): String {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(lockSecret(), "HmacSHA256"))
+        val d = mac.doFinal(sightId.toByteArray(Charsets.UTF_8))
+        return (0 until 20).map { lockAlphabet[(d[it].toInt() and 0xFF) % lockAlphabet.length] }.joinToString("")
+    }
+    /** The password to give the connected sight: in single mode the one for it (an old stored one, else the derived one), else the group's. */
+    private fun passwordFor(): String {
+        if (s.group.role != "single") return s.group.password
+        val si = s.sight ?: return ""
+        return si.autoPw ?: deriveLockPw(si.id)
+    }
     /** The password being set on the sight ("-" = being removed), until the sight confirms it. */
     private var pendingAutoPw: String? = null
     /**
-     * Lock the connected sight with a password this app makes up and keeps for it: nobody types it, nobody can
-     * reuse it elsewhere, and the sight then answers only to this phone. On a sight already locked with a typed
-     * password this replaces it (the sight lets whoever gave the current password change it while it has no trainers).
+     * Lock the connected sight so that it answers only to this phone, with the derived password. On a sight
+     * already locked with a password this phone knows (an old stored one, or a typed one just accepted) this
+     * replaces it with the derived one.
      */
     fun lockSight() {
         if (s.conn != ConnState.CONNECTED) { toast(tr("Connect to the sight first."), true); return }
-        if (s.sight == null) return
-        val pw = newPassword()
-        pendingAutoPw = pw
+        val si = s.sight ?: return
+        pendingAutoPw = deriveLockPw(si.id)
         updateSight { it.copy(lockOff = false) }
-        send("group set $pw")
+        send("group set ${pendingAutoPw}")
     }
-    /** Remove the lock from the connected sight; the password this app made up is forgotten with it, and the sight stays unlocked until you lock it again. */
+    /** Remove the lock from the connected sight; the sight stays unlocked until you lock it again. */
     fun unlockSight() {
         if (s.conn != ConnState.CONNECTED) { toast(tr("Connect to the sight first."), true); return }
         pendingAutoPw = "-"
         updateSight { it.copy(lockOff = true) }
         send("group set -")
     }
-    /** Single mode, a sight locked with a password from an earlier version: give it once, the app then replaces it. */
+    /** A sight locked with a password this app does not derive (an earlier version, or another phone): give it once; the app then replaces it with its own. */
     fun unlockWith(pw: String) {
         val p = pw.trim()
         if (p.isEmpty()) return
         setGroup(s.group.copy(password = p))
         if (s.conn == ConnState.CONNECTED && s.role == "locked") send("auth $p")
-    }
-    private fun newPassword(): String {
-        val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
-        val rnd = java.security.SecureRandom()
-        return (1..20).map { alphabet[rnd.nextInt(alphabet.length)] }.joinToString("")
     }
 
     // ------------------------------------------------------------------ shared sight
@@ -739,10 +763,10 @@ class SightController(
                         val pending = pendingAutoPw; pendingAutoPw = null
                         val locked = m.bool("pw") == true
                         if (pending != null && s.sight != null) {
-                            // the app's own password: remembered with the sight; a typed one from an earlier version is forgotten now
-                            updateSight { it.copy(autoPw = if (locked && pending != "-") pending else null) }
+                            // the lock password is derived from now on, so nothing is kept here; an old stored one is dropped
+                            updateSight { it.copy(autoPw = null) }
                             if (s.group.role == "single" && s.group.password.isNotEmpty()) setGroup(s.group.copy(password = ""))
-                            toast(if (locked) tr("The sight is locked. The app keeps the password for it.") else tr("The lock is removed from the sight."))
+                            toast(if (locked) tr("The sight is locked to this phone. The app can open it again by itself.") else tr("The lock is removed from the sight."))
                         } else toast(if (locked) tr("Password set on the sight.") else tr("Password removed from the sight."))
                     }
                     "request" -> toast(if (m.bool("pending") == true) tr("Trainer access requested. A trainer has to approve it.") else tr("You are a trainer on this sight."))

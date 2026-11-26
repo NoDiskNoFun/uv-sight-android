@@ -139,7 +139,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                     SegRow(tr("Use the sight as"), when (g.role) {
                         "user" -> tr("One archer of several: your sessions carry your name, a shared sight shows you only yours, and your settings go to the sight when you connect.")
                         "trainer" -> tr("Trainer: the Training tab becomes the board of all sights in range, you see every session and approve other trainers.")
-                        else -> tr("Your own sight, just you: no name needed. The app locks the sight so that only this phone reads it, with a password it makes up itself.")
+                        else -> tr("Your own sight, just you: no name needed. The app locks the sight so that only this phone reads it, with a password it works out itself.")
                     }, when (g.role) { "user" -> "User"; "trainer" -> "Trainer"; else -> "Single" }, listOf("Single", "User", "Trainer"), first = true) {
                         ctl.setGroup(g.copy(role = when (it) { "User" -> "user"; "Trainer" -> "trainer"; else -> "single" }))
                     }
@@ -186,7 +186,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                                 var legacyPw by remember(state.sight?.id) { mutableStateOf("") }
                                 when {
                                     state.role == "locked" -> {
-                                        Text(tr("This sight is locked with a password this app does not know: one you typed in an earlier version of the app, or set from another phone. Enter it once; the app then replaces it with a password of its own and forgets the typed one."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Text(tr("This sight is locked with a password this app cannot work out: one you typed in an earlier version of the app, or set from another phone. Enter it once; the app then replaces it with one it can work out itself. If you do not have it any more, connect the sight to a computer by USB and send \"group clear\" in a serial terminal (115200 baud) to remove the lock; the sight keeps its settings and sessions."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                                         Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                             OutlinedTextField(value = legacyPw, onValueChange = { legacyPw = it.take(32) }, singleLine = true, modifier = Modifier.weight(1f), visualTransformation = PasswordVisualTransformation(), label = { Text(tr("Password of this sight")) },
                                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { ctl.unlockWith(legacyPw) }))
@@ -195,15 +195,15 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                                         }
                                     }
                                     !h.pw -> {
-                                        Text(tr("Not locked: any phone with the app can read this sight. Normally the app locks an own sight by itself, with a password it makes up, keeps and gives when connecting; nobody has to remember or type it, and it is worth nothing anywhere else. This sight stays unlocked because the lock was removed; lock it again here."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Text(tr("Not locked: any phone with the app can read this sight. Normally the app locks an own sight by itself; it works the password out from this phone and the sight, so nobody has to remember or type one, and it is worth nothing anywhere else. This sight stays unlocked because the lock was removed; lock it again here."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                                         Row(Modifier.fillMaxWidth().padding(top = 6.dp)) { SecondaryButton(tr("Lock this sight"), Modifier.weight(1f)) { ctl.lockSight() } }
                                     }
                                     own -> {
-                                        Text(tr("Locked: the sight answers only to this phone. The password was made up by the app and is kept here; a factory reset of the sight removes it too."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Text(tr("Locked: the sight answers only to this phone. The app works the password out itself whenever it connects. A factory reset of the sight, or \"group clear\" over USB, removes the lock."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                                         Row(Modifier.fillMaxWidth().padding(top = 6.dp)) { SecondaryButton(tr("Remove the lock"), Modifier.weight(1f), danger = true) { ctl.unlockSight() } }
                                     }
                                     else -> {
-                                        Text(tr("Locked with a password you typed in an earlier version of the app. The app replaces it with one of its own as soon as it may; if that did not happen, tap below."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Text(tr("Locked with a password you typed in an earlier version of the app. The app replaces it with one it works out itself as soon as it may; if that did not happen, tap below."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                                         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             SecondaryButton(tr("Replace with the app's own password"), Modifier.weight(1f)) { ctl.lockSight() }
                                             SecondaryButton(tr("Remove the lock"), Modifier.weight(1f), danger = true) { ctl.unlockSight() }

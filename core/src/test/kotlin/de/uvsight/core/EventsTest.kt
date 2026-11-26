@@ -283,7 +283,7 @@ class SightDistanceTest {
     }
 }
 
-/** The lock of an own sight: a password the app makes up, and the replacement of a typed one from an earlier version. */
+/** The lock of an own sight: a password the app derives (so it can always open its sight again) and the legacy replacement. */
 class SightLockTest {
     private class FakeTransport : Transport {
         val sent = ArrayList<String>()
@@ -294,44 +294,71 @@ class SightLockTest {
     }
     private fun hello(pw: Boolean, role: String) = """{"t":"hello","proto":24,"fw":"7.7","name":"Anchored","imu":true,"log":true,"id":"AAAA000000000009","sname":"Hoyt","bow":0,"pw":$pw,"role":"$role"}"""
 
-    @Test fun lockWithAnAppMadePassword() {
+    @Test fun lockedSightCanAlwaysBeReopened() {
+        val store = MemoryStore()
+        var lockPw = ""
+        // first app instance: introduce the sight, which locks it
+        run {
+            val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+            val scope = CoroutineScope(SupervisorJob() + dispatcher)
+            val transport = FakeTransport()
+            val ctl = SightController(scope, store, transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
+            try {
+                runBlocking {
+                    withContext(dispatcher) { ctl.onLinkUp() }; delay(100)
+                    withContext(dispatcher) { ctl.onLine(hello(false, "open")) }; delay(200)
+                    withContext(dispatcher) {
+                        assertTrue(transport.sent.none { it.startsWith("group set ") }, "not before the introduction")
+                        ctl.introduceSight("Hoyt", 0)
+                        val cmd = transport.sent.last { it.startsWith("group set ") }
+                        lockPw = cmd.removePrefix("group set ")
+                        assertEquals(20, lockPw.length)
+                        ctl.onLine("""{"t":"ack","cmd":"group","what":"set","pw":true}""")
+                        // the password is not kept with the sight: it is derived, so nothing can be lost
+                        assertEquals(null, ctl.state.value.sight?.autoPw)
+                    }
+                }
+            } finally { scope.cancel(); dispatcher.close() }
+        }
+        // a fresh app instance (same phone, same store) must open the locked sight again, even though nothing was stored
+        run {
+            val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+            val scope = CoroutineScope(SupervisorJob() + dispatcher)
+            val transport = FakeTransport()
+            val ctl = SightController(scope, store, transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
+            try {
+                runBlocking {
+                    withContext(dispatcher) { ctl.onLinkUp() }; delay(100)
+                    withContext(dispatcher) { ctl.onLine(hello(true, "locked")) }; delay(300)
+                    assertTrue(transport.sent.contains("auth $lockPw"), "the derived password is given: ${transport.sent}")
+                }
+            } finally { scope.cancel(); dispatcher.close() }
+        }
+    }
+
+    @Test fun removingTheLockKeepsItOff() {
         val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val transport = FakeTransport()
         val ctl = SightController(scope, MemoryStore(), transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
         try {
             runBlocking {
-                withContext(dispatcher) { ctl.onLinkUp() }
-                delay(100)
-                withContext(dispatcher) { ctl.onLine(hello(false, "open")) }
-                delay(200)   // the link finishes connecting
+                withContext(dispatcher) { ctl.onLinkUp() }; delay(100)
+                withContext(dispatcher) { ctl.onLine(hello(false, "open")) }; delay(200)
                 withContext(dispatcher) {
-                    // an introduced own sight that is not locked gets the app's password by itself
-                    assertTrue(transport.sent.none { it.startsWith("group set ") }, "not before the introduction")
                     ctl.introduceSight("Hoyt", 0)
-                    val cmd = transport.sent.last { it.startsWith("group set ") }
-                    val pw = cmd.removePrefix("group set ")
-                    assertEquals(20, pw.length)
+                    assertTrue(transport.sent.any { it.startsWith("group set ") })
                     ctl.onLine("""{"t":"ack","cmd":"group","what":"set","pw":true}""")
-                    assertEquals(pw, ctl.state.value.sight?.autoPw)
-                    // the lock is removed: the password is forgotten
+                    // removed on purpose
                     ctl.unlockSight()
                     assertEquals("group set -", transport.sent.last { it.startsWith("group set") })
                     ctl.onLine("""{"t":"ack","cmd":"group","what":"set","pw":false}""")
-                    assertEquals(null, ctl.state.value.sight?.autoPw)
-                    // removed on purpose: the next connection leaves it unlocked
-                    transport.sent.clear()
-                    ctl.onLinkUp()
+                    // a later connection leaves it unlocked
+                    transport.sent.clear(); ctl.onLinkUp()
                 }
                 delay(100)
-                withContext(dispatcher) { ctl.onLine(hello(false, "open")) }
-                delay(200)
-                withContext(dispatcher) {
-                    assertTrue(transport.sent.none { it.startsWith("group set ") }, "${transport.sent}")
-                    // locked again by hand: locked, and from then on by itself again
-                    ctl.lockSight()
-                    assertTrue(transport.sent.any { it.startsWith("group set ") })
-                }
+                withContext(dispatcher) { ctl.onLine(hello(false, "open")) }; delay(200)
+                assertTrue(transport.sent.none { it.startsWith("group set ") }, "${transport.sent}")
             }
         } finally { scope.cancel(); dispatcher.close() }
     }
@@ -346,23 +373,18 @@ class SightLockTest {
             runBlocking {
                 withContext(dispatcher) { ctl.setGroup(ctl.state.value.group.copy(role = "single", password = "sunflower")); ctl.onLinkUp() }
                 delay(100)
-                withContext(dispatcher) {
-                    // locked sight: the typed password of the earlier version unlocks it ...
-                    ctl.onLine(hello(true, "locked"))
-                }
-                delay(200)
+                withContext(dispatcher) { ctl.onLine(hello(true, "locked")) }
+                delay(300)
                 withContext(dispatcher) {
                     assertTrue(transport.sent.contains("auth sunflower"), "${transport.sent}")
                     ctl.onLine("""{"t":"auth","ok":true,"role":"open","pending":false}""")
                 }
-                delay(200)   // the link finishes connecting
+                delay(300)
                 withContext(dispatcher) {
-                    // ... and is replaced right away by one the app made up
                     val cmd = transport.sent.last { it.startsWith("group set ") }
-                    val pw = cmd.removePrefix("group set ")
-                    assertEquals(20, pw.length)
+                    assertEquals(20, cmd.removePrefix("group set ").length)
                     ctl.onLine("""{"t":"ack","cmd":"group","what":"set","pw":true}""")
-                    assertEquals(pw, ctl.state.value.sight?.autoPw)
+                    assertEquals(null, ctl.state.value.sight?.autoPw)
                     assertEquals("", ctl.state.value.group.password)
                     assertTrue(store.get(SightController.GROUP_KEY)?.contains("sunflower") != true, "the typed password is gone from storage")
                 }
