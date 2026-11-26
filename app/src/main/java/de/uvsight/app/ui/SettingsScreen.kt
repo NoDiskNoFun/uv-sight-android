@@ -139,7 +139,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                     SegRow(tr("Use the sight as"), when (g.role) {
                         "user" -> tr("One archer of several: your sessions carry your name, a shared sight shows you only yours, and your settings go to the sight when you connect.")
                         "trainer" -> tr("Trainer: the Training tab becomes the board of all sights in range, you see every session and approve other trainers.")
-                        else -> tr("Your own sight, just you: no name needed, a password only if you want one.")
+                        else -> tr("Your own sight, just you: no name needed. The sight can be locked so that only this phone reads it; the app makes up the password for that itself.")
                     }, when (g.role) { "user" -> "User"; "trainer" -> "Trainer"; else -> "Single" }, listOf("Single", "User", "Trainer"), first = true) {
                         ctl.setGroup(g.copy(role = when (it) { "User" -> "user"; "Trainer" -> "trainer"; else -> "single" }))
                     }
@@ -156,38 +156,71 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                             OutlinedTextField(value = nameText, onValueChange = { nameText = it.take(12) }, singleLine = true, modifier = Modifier.width(130.dp),
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { save() }))
                         }
-                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // the group's password is typed (the trainer hands it out); in single mode the app makes one up, see "On this sight"
+                        if (g.role != "single") Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(if (g.role == "single") tr("Sight password") else tr("Group password"), color = uv.ink)
-                                Text(if (g.role == "single") tr("Optional: locks your sight so nobody else reads it. The app gives it when connecting.") else tr("The trainer hands it out; it unlocks every sight of the group."), color = uv.muted, fontSize = 13.sp)
+                                Text(tr("Group password"), color = uv.ink)
+                                Text(tr("The trainer hands it out; it unlocks every sight of the group."), color = uv.muted, fontSize = 13.sp)
                             }
                             Spacer(Modifier.width(8.dp))
                             OutlinedTextField(value = pwText, onValueChange = { pwText = it.take(32) }, singleLine = true, modifier = Modifier.width(130.dp), visualTransformation = PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { save() }))
                         }
-                        if (nameText.trim() != g.name || pwText.trim() != g.password) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { SecondaryButton(tr("Save")) { save() } }
+                        if (g.role != "single" && (nameText.trim() != g.name || pwText.trim() != g.password)) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { SecondaryButton(tr("Save")) { save() } }
                         if (g.role != "single" && g.name.isEmpty()) Text(tr("Enter your name; without it the sight calls you Archer."), color = uv.red, fontSize = 12.sp)
                         if (g.role != "single") Text(tr("This app's id: {id}", "id" to g.id), color = uv.muted, fontSize = 12.sp)
                         val h = state.hello
                         if (connected && h != null) {
                             HorizontalDivider(color = uv.line)
                             Text(tr("On this sight"), color = uv.ink, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                            Text((if (h.pw) tr("Password set.") else tr("No password yet.")) + " " + when (state.role) {
+                            Text((if (h.pw) (if (g.role == "single") tr("Locked.") else tr("Password set.")) else (if (g.role == "single") tr("Not locked.") else tr("No password yet."))) + " " + when (state.role) {
                                 "trainer" -> tr("You are a trainer here.")
-                                "locked" -> tr("Locked: your password does not fit.")
+                                "locked" -> if (g.role == "single") tr("This phone cannot read it.") else tr("Locked: your password does not fit.")
                                 "user" -> if (state.rolePending) tr("You are an archer here; trainer access requested.") else tr("You are an archer here.")
                                 "open" -> tr("You are an archer here.")
                                 else -> ""
                             }, color = uv.muted, fontSize = 13.sp)
-                            Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (!h.pw) SecondaryButton(tr("Set password on this sight"), Modifier.weight(1f), enabled = g.password.length >= 4) { ctl.groupSetPassword(g.password) }
-                                if (h.pw && (state.role == "trainer" || (g.role == "single" && state.role != "locked" && (state.groupInfo?.trainers ?: 0) == 0))) {
-                                    SecondaryButton(tr("Change password"), Modifier.weight(1f), enabled = g.password.length >= 4) { ctl.groupSetPassword(g.password) }
-                                    SecondaryButton(tr("Remove password"), Modifier.weight(1f), danger = true) { ctl.groupSetPassword("-") }
+                            if (g.role == "single") {
+                                // the lock of your own sight: a password the app makes up and keeps, never typed, never shown
+                                val own = state.sight?.autoPw != null
+                                var legacyPw by remember(state.sight?.id) { mutableStateOf("") }
+                                when {
+                                    state.role == "locked" -> {
+                                        Text(tr("This sight is locked with a password this app does not know: one you typed in an earlier version of the app, or set from another phone. Enter it once; the app then replaces it with a password of its own and forgets the typed one."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            OutlinedTextField(value = legacyPw, onValueChange = { legacyPw = it.take(32) }, singleLine = true, modifier = Modifier.weight(1f), visualTransformation = PasswordVisualTransformation(), label = { Text(tr("Password of this sight")) },
+                                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { ctl.unlockWith(legacyPw) }))
+                                            Spacer(Modifier.width(8.dp))
+                                            SecondaryButton(tr("Unlock"), enabled = legacyPw.trim().isNotEmpty()) { ctl.unlockWith(legacyPw) }
+                                        }
+                                    }
+                                    !h.pw -> {
+                                        Text(tr("Not locked: any phone with the app can read this sight. Locking it lets the app make up a password, keep it and give it when connecting; nobody has to remember or type it, and it is worth nothing anywhere else."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Row(Modifier.fillMaxWidth().padding(top = 6.dp)) { SecondaryButton(tr("Lock this sight"), Modifier.weight(1f)) { ctl.lockSight() } }
+                                    }
+                                    own -> {
+                                        Text(tr("Locked: the sight answers only to this phone. The password was made up by the app and is kept here; a factory reset of the sight removes it too."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Row(Modifier.fillMaxWidth().padding(top = 6.dp)) { SecondaryButton(tr("Remove the lock"), Modifier.weight(1f), danger = true) { ctl.unlockSight() } }
+                                    }
+                                    else -> {
+                                        Text(tr("Locked with a password you typed in an earlier version of the app. The app replaces it with one of its own as soon as it may; if that did not happen, tap below."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            SecondaryButton(tr("Replace with the app's own password"), Modifier.weight(1f)) { ctl.lockSight() }
+                                            SecondaryButton(tr("Remove the lock"), Modifier.weight(1f), danger = true) { ctl.unlockSight() }
+                                        }
+                                    }
                                 }
-                                if (g.role == "trainer" && state.role == "user" && !state.rolePending) SecondaryButton(tr("Request trainer access"), Modifier.weight(1f)) { ctl.groupRequest() }
+                            } else {
+                                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (!h.pw) SecondaryButton(tr("Set password on this sight"), Modifier.weight(1f), enabled = g.password.length >= 4) { ctl.groupSetPassword(g.password) }
+                                    if (h.pw && state.role == "trainer") {
+                                        SecondaryButton(tr("Change password"), Modifier.weight(1f), enabled = g.password.length >= 4) { ctl.groupSetPassword(g.password) }
+                                        SecondaryButton(tr("Remove password"), Modifier.weight(1f), danger = true) { ctl.groupSetPassword("-") }
+                                    }
+                                    if (g.role == "trainer" && state.role == "user" && !state.rolePending) SecondaryButton(tr("Request trainer access"), Modifier.weight(1f)) { ctl.groupRequest() }
+                                }
+                                if (!h.pw) Text(tr("Setting the first password makes this app the sight's trainer."), color = uv.muted, fontSize = 12.sp)
                             }
-                            if (!h.pw) Text(if (g.role == "single") tr("The sight then answers only after this password.") else tr("Setting the first password makes this app the sight's trainer."), color = uv.muted, fontSize = 12.sp)
                             if (state.role == "trainer") {
                                 LaunchedEffect(state.sight?.id) { ctl.requestTrainers() }
                                 Text(tr("Trainers of this sight"), color = uv.ink, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))

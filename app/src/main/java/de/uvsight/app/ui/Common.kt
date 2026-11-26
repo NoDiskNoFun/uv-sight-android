@@ -215,7 +215,7 @@ fun Collapsible(title: String, summary: String, content: @Composable ColumnScope
 @Composable
 fun GroupBanner(state: de.uvsight.core.AppState) {
     if (state.conn != de.uvsight.core.ConnState.CONNECTED) return
-    if (state.role == "locked") Banner(tr("This sight has a password. Enter the group's password under Settings → Group."))
+    if (state.role == "locked") Banner(if (state.group.role == "single") tr("This sight is locked with a password this app does not know. See Settings → Mode.") else tr("This sight has a password. Enter the group's password under Settings → Mode."))
     else if (!state.primary) Banner(tr("Another archer is connected to this sight; this app only reads until they leave."), info = true)
     else if (state.rolePending) Banner(tr("Trainer access requested; a trainer of this sight has to approve it."), info = true)
 }

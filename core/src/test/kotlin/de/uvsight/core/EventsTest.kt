@@ -282,3 +282,73 @@ class SightDistanceTest {
         } finally { scope.cancel(); dispatcher.close() }
     }
 }
+
+/** The lock of an own sight: a password the app makes up, and the replacement of a typed one from an earlier version. */
+class SightLockTest {
+    private class FakeTransport : Transport {
+        val sent = ArrayList<String>()
+        override var connected = true
+        override fun send(cmd: String) { sent.add(cmd) }
+        override suspend fun ensureConnected(timeoutMs: Long) = true
+        override fun disconnect() { connected = false }
+    }
+    private fun hello(pw: Boolean, role: String) = """{"t":"hello","proto":24,"fw":"7.7","name":"Anchored","imu":true,"log":true,"id":"AAAA000000000009","sname":"Hoyt","bow":0,"pw":$pw,"role":"$role"}"""
+
+    @Test fun lockWithAnAppMadePassword() {
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val transport = FakeTransport()
+        val ctl = SightController(scope, MemoryStore(), transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
+        try {
+            runBlocking {
+                withContext(dispatcher) { ctl.onLinkUp() }
+                delay(100)
+                withContext(dispatcher) {
+                    ctl.onLine(hello(false, "open"))
+                    ctl.lockSight()
+                    val cmd = transport.sent.last { it.startsWith("group set ") }
+                    val pw = cmd.removePrefix("group set ")
+                    assertEquals(20, pw.length)
+                    ctl.onLine("""{"t":"ack","cmd":"group","what":"set","pw":true}""")
+                    assertEquals(pw, ctl.state.value.sight?.autoPw)
+                    // the lock is removed: the password is forgotten
+                    ctl.unlockSight()
+                    assertEquals("group set -", transport.sent.last { it.startsWith("group set") })
+                    ctl.onLine("""{"t":"ack","cmd":"group","what":"set","pw":false}""")
+                    assertEquals(null, ctl.state.value.sight?.autoPw)
+                }
+            }
+        } finally { scope.cancel(); dispatcher.close() }
+    }
+
+    @Test fun typedPasswordIsReplacedAndForgotten() {
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val transport = FakeTransport()
+        val store = MemoryStore()
+        val ctl = SightController(scope, store, transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
+        try {
+            runBlocking {
+                withContext(dispatcher) { ctl.setGroup(ctl.state.value.group.copy(role = "single", password = "sunflower")); ctl.onLinkUp() }
+                delay(100)
+                withContext(dispatcher) {
+                    // locked sight: the typed password of the earlier version unlocks it ...
+                    ctl.onLine(hello(true, "locked"))
+                }
+                delay(200)
+                withContext(dispatcher) {
+                    assertTrue(transport.sent.contains("auth sunflower"), "${transport.sent}")
+                    ctl.onLine("""{"t":"auth","ok":true,"role":"open","pending":false}""")
+                    // ... and is replaced right away by one the app made up
+                    val cmd = transport.sent.last { it.startsWith("group set ") }
+                    val pw = cmd.removePrefix("group set ")
+                    assertEquals(20, pw.length)
+                    ctl.onLine("""{"t":"ack","cmd":"group","what":"set","pw":true}""")
+                    assertEquals(pw, ctl.state.value.sight?.autoPw)
+                    assertEquals("", ctl.state.value.group.password)
+                    assertTrue(store.get(SightController.GROUP_KEY)?.contains("sunflower") != true, "the typed password is gone from storage")
+                }
+            }
+        } finally { scope.cancel(); dispatcher.close() }
+    }
+}

@@ -63,6 +63,7 @@ The *History* tab lists every session with its ends, average and X count, and sh
 - **Not connected**: move the bow and tap **Connect** on the *Status* tab. The app also reconnects on its own when you save scores.
 - **Phone in the pocket**: with the session notification allowed, the connection stays alive and the notification shows the running end.
 - **A second sight, or a club mate's**: *Settings → Sights → Connect a new sight*. The app never connects to a sight it has not been introduced to.
+- **Locking your sight**: *Settings → Mode → On this sight → Lock this sight* makes the sight answer only to this phone. The app invents the password, keeps it and gives it when connecting; you never see or type it. *Remove the lock* undoes it. A factory reset of the sight also removes it.
 - **Sharing a sight in the club**: *Settings → Mode* lets several archers use one sight with their own names and lets a trainer see everyone; see the project page for that.
 
 ## Updates

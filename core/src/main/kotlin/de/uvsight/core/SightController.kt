@@ -302,14 +302,15 @@ class SightController(
             if (!transport.connected) return@launch
             // a locked sight: give the password; without one the link stays up but only the greeting works
             if (s.hello?.role == "locked") {
-                if (g.password.isNotEmpty()) {
+                val pw = passwordFor()
+                if (pw.isNotEmpty()) {
                     val aw = CompletableDeferred<Boolean>()
                     authWait = aw
-                    send("auth ${g.password}")
+                    send("auth $pw")
                     withTimeoutOrNull(4000) { aw.await() }
                     if (authWait === aw) authWait = null
                 }
-                if (s.role == "locked") { set { copy(needsPassword = true) }; toast(tr("This sight has a password. Enter it under Settings → Group."), true) }
+                if (s.role == "locked") { set { copy(needsPassword = true) }; toast(if (g.role == "single") tr("This sight is locked with a password this app does not know. See Settings → Mode.") else tr("This sight has a password. Enter it under Settings → Mode."), true) }
             }
             if (!transport.connected) return@launch
             setConn(ConnState.CONNECTED)
@@ -411,9 +412,9 @@ class SightController(
                     h.proto < PROTO_EXPECTED -> "The sight's firmware is older than this app. Please update the firmware on the sight."
                     else -> "This app is older than the sight's firmware. Please update the app."
                 }) }
-                set { copy(role = h.role, rolePending = h.pending, primary = h.primary, needsPassword = h.role == "locked" && s.group.password.isEmpty()) }
                 helloWait?.complete(true); helloWait = null
                 h.id?.let { onSightIdentified(it, h.sightName, h.bow) }
+                set { copy(role = h.role, rolePending = h.pending, primary = h.primary, needsPassword = h.role == "locked" && passwordFor().isEmpty()) }
                 if (h.role != "locked") afterUnlocked()
             }
             "auth" -> {
@@ -564,6 +565,7 @@ class SightController(
                 if (s.awaitingEnd) setAwaiting(false)
                 if (m.str("code") == "auth") set { copy(needsPassword = true, role = "locked") }
                 groupAckWait?.complete(false); groupAckWait = null
+                pendingAutoPw = null
                 toast(m.str("text") ?: tr("Error"), true)
             }
         }
@@ -576,6 +578,45 @@ class SightController(
         if (s.group.role != "single" && (s.game.enabled || s.group.role == "trainer")) send("badge list")
         val g = s.group
         if (g.role == "trainer" && s.role == "user" && !s.rolePending) send("group request")
+        // single mode, a sight still locked with a password the archer typed in an earlier version of the app:
+        // replace it with one the app makes up, so no password of the archer's own travels over the air again
+        if (g.role == "single" && s.hello?.pw == true && s.sight?.autoPw == null && g.password.isNotEmpty() && pendingAutoPw == null) lockSight()
+    }
+
+    // ------------------------------------------------------------------ own sight: the lock
+    /** The password for the connected sight: in single mode the one this app made up for it, else the group's. */
+    private fun passwordFor(): String = (if (s.group.role == "single") s.sight?.autoPw else null) ?: s.group.password
+    /** The password being set on the sight ("-" = being removed), until the sight confirms it. */
+    private var pendingAutoPw: String? = null
+    /**
+     * Lock the connected sight with a password this app makes up and keeps for it: nobody types it, nobody can
+     * reuse it elsewhere, and the sight then answers only to this phone. On a sight already locked with a typed
+     * password this replaces it (the sight lets whoever gave the current password change it while it has no trainers).
+     */
+    fun lockSight() {
+        if (s.conn != ConnState.CONNECTED) { toast(tr("Connect to the sight first."), true); return }
+        if (s.sight == null) return
+        val pw = newPassword()
+        pendingAutoPw = pw
+        send("group set $pw")
+    }
+    /** Remove the lock from the connected sight; the password this app made up is forgotten with it. */
+    fun unlockSight() {
+        if (s.conn != ConnState.CONNECTED) { toast(tr("Connect to the sight first."), true); return }
+        pendingAutoPw = "-"
+        send("group set -")
+    }
+    /** Single mode, a sight locked with a password from an earlier version: give it once, the app then replaces it. */
+    fun unlockWith(pw: String) {
+        val p = pw.trim()
+        if (p.isEmpty()) return
+        setGroup(s.group.copy(password = p))
+        if (s.conn == ConnState.CONNECTED && s.role == "locked") send("auth $p")
+    }
+    private fun newPassword(): String {
+        val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+        val rnd = java.security.SecureRandom()
+        return (1..20).map { alphabet[rnd.nextInt(alphabet.length)] }.joinToString("")
     }
 
     // ------------------------------------------------------------------ shared sight
@@ -620,7 +661,7 @@ class SightController(
     /** Trainer: give every sight in range the group's password (new sights only) and become its trainer. */
     fun setupAllSights(entries: List<BoardEntry>) {
         val pw = s.group.password
-        if (pw.length < 4) { toast(tr("Set a password of at least 4 characters under Settings → Group first."), true); return }
+        if (pw.length < 4) { toast(tr("Set a password of at least 4 characters under Settings → Mode first."), true); return }
         scope.launch {
             var done = 0; var skipped = 0; var failed = 0
             for ((i, e) in entries.withIndex()) {
@@ -681,7 +722,16 @@ class SightController(
             "group" -> {
                 groupAckWait?.complete(true); groupAckWait = null
                 when (m.str("what")) {
-                    "set" -> toast(if (m.bool("pw") == true) tr("Password set on the sight.") else tr("Password removed from the sight."))
+                    "set" -> {
+                        val pending = pendingAutoPw; pendingAutoPw = null
+                        val locked = m.bool("pw") == true
+                        if (pending != null && s.sight != null) {
+                            // the app's own password: remembered with the sight; a typed one from an earlier version is forgotten now
+                            updateSight { it.copy(autoPw = if (locked && pending != "-") pending else null) }
+                            if (s.group.role == "single" && s.group.password.isNotEmpty()) setGroup(s.group.copy(password = ""))
+                            toast(if (locked) tr("The sight is locked. The app keeps the password for it.") else tr("The lock is removed from the sight."))
+                        } else toast(if (locked) tr("Password set on the sight.") else tr("Password removed from the sight."))
+                    }
                     "request" -> toast(if (m.bool("pending") == true) tr("Trainer access requested. A trainer has to approve it.") else tr("You are a trainer on this sight."))
                     "approve" -> toast(tr("Trainer approved."))
                     "remove" -> toast(tr("Removed."))

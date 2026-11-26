@@ -127,6 +127,7 @@ data class SightInfo(
     val settings: Map<String, String> = emptyMap(),   // shared sight: the setting commands this app sent last, replayed on connect
     val bow: Int? = null,                             // the bow this sight is on, as the sight last said (Bow.*)
     val introduced: Boolean = false,                  // the first-connect dialog (name and bow) was shown for it
+    val autoPw: String? = null,                       // single mode: the password this app made up for the sight and set on it (never typed, never shown)
 ) {
     val label: String get() = name.ifEmpty { "Sight " + id.takeLast(4) }
 }
