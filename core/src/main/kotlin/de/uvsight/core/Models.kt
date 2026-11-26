@@ -128,6 +128,7 @@ data class SightInfo(
     val bow: Int? = null,                             // the bow this sight is on, as the sight last said (Bow.*)
     val introduced: Boolean = false,                  // the first-connect dialog (name and bow) was shown for it
     val autoPw: String? = null,                       // single mode: the password this app made up for the sight and set on it (never typed, never shown)
+    val lockOff: Boolean = false,                     // single mode: the archer removed the lock, so the app does not lock this sight again by itself
 ) {
     val label: String get() = name.ifEmpty { "Sight " + id.takeLast(4) }
 }

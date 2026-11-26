@@ -581,6 +581,15 @@ class SightController(
         // single mode, a sight still locked with a password the archer typed in an earlier version of the app:
         // replace it with one the app makes up, so no password of the archer's own travels over the air again
         if (g.role == "single" && s.hello?.pw == true && s.sight?.autoPw == null && g.password.isNotEmpty() && pendingAutoPw == null) lockSight()
+        autoLock()
+    }
+    /**
+     * The lock is on by default: an own sight that is not locked gets the app's password as soon as it is
+     * introduced (name and bow given), unless the archer removed the lock from it on purpose.
+     */
+    private fun autoLock() {
+        val si = s.sight ?: return
+        if (s.group.role == "single" && s.hello?.pw == false && s.role != "locked" && si.introduced && !si.lockOff && pendingAutoPw == null) lockSight()
     }
 
     // ------------------------------------------------------------------ own sight: the lock
@@ -598,12 +607,14 @@ class SightController(
         if (s.sight == null) return
         val pw = newPassword()
         pendingAutoPw = pw
+        updateSight { it.copy(lockOff = false) }
         send("group set $pw")
     }
-    /** Remove the lock from the connected sight; the password this app made up is forgotten with it. */
+    /** Remove the lock from the connected sight; the password this app made up is forgotten with it, and the sight stays unlocked until you lock it again. */
     fun unlockSight() {
         if (s.conn != ConnState.CONNECTED) { toast(tr("Connect to the sight first."), true); return }
         pendingAutoPw = "-"
+        updateSight { it.copy(lockOff = true) }
         send("group set -")
     }
     /** Single mode, a sight locked with a password from an earlier version: give it once, the app then replaces it. */
@@ -1440,10 +1451,11 @@ class SightController(
         if (n != (s.sight?.name ?: "")) send("name " + n.ifEmpty { "-" })
         send("set bow $bow")
         applyBowSuggestions(bow, Bow.suggestions(bow).map { it.key }.toSet())
+        if (s.conn == ConnState.CONNECTED) autoLock()
         send("save")
     }
     /** The first-connect dialog dismissed: not asked again for this sight. */
-    fun skipIntroduction() { set { copy(introduceSight = false) }; updateSight { it.copy(introduced = true) } }
+    fun skipIntroduction() { set { copy(introduceSight = false) }; updateSight { it.copy(introduced = true) }; if (s.conn == ConnState.CONNECTED) autoLock() }
     fun restoreDefaults() { expectDefaults = true; send("defaults") }
 
     /** The settings as last saved on the sight (k -> v), taken from the first read after connecting and after every save. */

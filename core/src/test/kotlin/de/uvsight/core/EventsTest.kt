@@ -304,8 +304,10 @@ class SightLockTest {
                 withContext(dispatcher) { ctl.onLinkUp() }
                 delay(100)
                 withContext(dispatcher) {
+                    // an introduced own sight that is not locked gets the app's password by itself
                     ctl.onLine(hello(false, "open"))
-                    ctl.lockSight()
+                    assertTrue(transport.sent.none { it.startsWith("group set ") }, "not before the introduction")
+                    ctl.introduceSight("Hoyt", 0)
                     val cmd = transport.sent.last { it.startsWith("group set ") }
                     val pw = cmd.removePrefix("group set ")
                     assertEquals(20, pw.length)
@@ -316,6 +318,13 @@ class SightLockTest {
                     assertEquals("group set -", transport.sent.last { it.startsWith("group set") })
                     ctl.onLine("""{"t":"ack","cmd":"group","what":"set","pw":false}""")
                     assertEquals(null, ctl.state.value.sight?.autoPw)
+                    // removed on purpose: the next connection leaves it unlocked
+                    transport.sent.clear()
+                    ctl.onLine(hello(false, "open"))
+                    assertTrue(transport.sent.none { it.startsWith("group set ") }, "${transport.sent}")
+                    // locked again by hand: locked, and from then on by itself again
+                    ctl.lockSight()
+                    assertTrue(transport.sent.any { it.startsWith("group set ") })
                 }
             }
         } finally { scope.cancel(); dispatcher.close() }

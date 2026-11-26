@@ -139,7 +139,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                     SegRow(tr("Use the sight as"), when (g.role) {
                         "user" -> tr("One archer of several: your sessions carry your name, a shared sight shows you only yours, and your settings go to the sight when you connect.")
                         "trainer" -> tr("Trainer: the Training tab becomes the board of all sights in range, you see every session and approve other trainers.")
-                        else -> tr("Your own sight, just you: no name needed. The sight can be locked so that only this phone reads it; the app makes up the password for that itself.")
+                        else -> tr("Your own sight, just you: no name needed. The app locks the sight so that only this phone reads it, with a password it makes up itself.")
                     }, when (g.role) { "user" -> "User"; "trainer" -> "Trainer"; else -> "Single" }, listOf("Single", "User", "Trainer"), first = true) {
                         ctl.setGroup(g.copy(role = when (it) { "User" -> "user"; "Trainer" -> "trainer"; else -> "single" }))
                     }
@@ -195,7 +195,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                                         }
                                     }
                                     !h.pw -> {
-                                        Text(tr("Not locked: any phone with the app can read this sight. Locking it lets the app make up a password, keep it and give it when connecting; nobody has to remember or type it, and it is worth nothing anywhere else."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                        Text(tr("Not locked: any phone with the app can read this sight. Normally the app locks an own sight by itself, with a password it makes up, keeps and gives when connecting; nobody has to remember or type it, and it is worth nothing anywhere else. This sight stays unlocked because the lock was removed; lock it again here."), color = uv.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                                         Row(Modifier.fillMaxWidth().padding(top = 6.dp)) { SecondaryButton(tr("Lock this sight"), Modifier.weight(1f)) { ctl.lockSight() } }
                                     }
                                     own -> {
