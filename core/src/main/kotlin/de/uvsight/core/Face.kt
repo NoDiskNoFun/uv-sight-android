@@ -15,8 +15,15 @@ import kotlin.math.sqrt
 enum class FaceType(val label: String, val diameterMm: Int, val minRing: Int, val spots: Int = 1) {
     WA40("40 cm", 400, 1), WA60("60 cm", 600, 1), WA80("80 cm", 800, 1), WA122("122 cm", 1220, 1), SPOT40("Spot 40 cm", 400, 6, 3);
     val ringMm: Double get() = diameterMm / 20.0
-    /** Radius of the outer edge of the blue ring (ring 5) in mm: the edge the user marks. */
-    val blueEdgeMm: Double get() = 6 * ringMm
+    /**
+     * Ring widths from the centre to the outer edge of the blue: the edge the user marks. A full face shows
+     * rings 6 and 5 in blue, so the edge lies 6 rings out; a spot shows only ring 6 in blue, its edge lies 5 rings out.
+     */
+    val edgeRings: Int get() = if (minRing >= 6) 5 else 6
+    /** Radius of the outer edge of the blue in mm. */
+    val blueEdgeMm: Double get() = edgeRings * ringMm
+    /** Ring boundaries printed on the face, counted in ring widths from the centre: 1..10 on a full face, 1..5 on a spot. */
+    val printedRings: Int get() = 11 - minRing
 }
 
 data class Pt(val x: Double, val y: Double)

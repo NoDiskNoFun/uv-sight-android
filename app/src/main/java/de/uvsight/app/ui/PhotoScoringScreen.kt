@@ -380,10 +380,12 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 val stroke = Stroke(2.dp.toPx())
                 for (g in geometries) {
                     if (g == null) continue
-                    for (k in faceType.minRing..10) {
-                        val pts = g.circle(k / 6.0).map { toScreen(Offset(it.x.toFloat(), it.y.toFloat())) }
-                        val col = if (k == 6) uv.blue else Color.White.copy(alpha = 0.55f)
-                        for (i in pts.indices) drawLine(col, pts[i], pts[(i + 1) % pts.size], if (k == 6) 2.dp.toPx() else 1.dp.toPx())
+                    // the printed ring boundaries, in units of the marked blue edge (radius 1)
+                    val edgeK = faceType.edgeRings
+                    for (k in 1..faceType.printedRings) {
+                        val pts = g.circle(k.toDouble() / edgeK).map { toScreen(Offset(it.x.toFloat(), it.y.toFloat())) }
+                        val col = if (k == edgeK) uv.blue else Color.White.copy(alpha = 0.55f)
+                        for (i in pts.indices) drawLine(col, pts[i], pts[(i + 1) % pts.size], if (k == edgeK) 2.dp.toPx() else 1.dp.toPx())
                     }
                 }
                 // the face being marked in full colour, the other spots dimmed

@@ -392,3 +392,32 @@ class SightLockTest {
         } finally { scope.cancel(); dispatcher.close() }
     }
 }
+
+/**
+ * The phone runs the controller on Main.immediate: when the greeting arrives, complete() resumes the connect
+ * routine inline, inside the hello handler. Unconfined plus a line from another thread reproduces that; a locked
+ * own sight must still get its password right away.
+ */
+class InlineResumeTest {
+    private class FakeTransport : Transport {
+        val sent = java.util.Collections.synchronizedList(ArrayList<String>())
+        override var connected = true
+        override fun send(cmd: String) { sent.add(cmd) }
+        override suspend fun ensureConnected(timeoutMs: Long) = true
+        override fun disconnect() { connected = false }
+    }
+
+    @Test fun lockedSightGetsItsPasswordWhenResumedInline() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val transport = FakeTransport()
+        val ctl = SightController(scope, MemoryStore(), transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
+        try {
+            ctl.onLinkUp()                       // runs up to the wait for the greeting
+            val t = Thread { ctl.onLine("""{"t":"hello","proto":24,"fw":"7.7","name":"Anchored","imu":true,"log":true,"id":"55871D43D669EE31","sname":"Hoyt Altus","led":true,"pw":true,"role":"locked","pending":false,"primary":true,"bow":0}""") }
+            t.start(); t.join()
+            val auth = transport.sent.firstOrNull { it.startsWith("auth ") }
+            assertTrue(auth != null && auth.length == "auth ".length + 20, "the locked sight is given its password at once: ${transport.sent}")
+            assertTrue(transport.sent.indexOf(auth) < transport.sent.indexOfFirst { it.startsWith("time ") }.let { if (it < 0) Int.MAX_VALUE else it }, "before anything else: ${transport.sent}")
+        } finally { scope.cancel() }
+    }
+}

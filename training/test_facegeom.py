@@ -29,7 +29,15 @@ class FaceGeomTest(unittest.TestCase):
         at = lambda mm: facegeom.ring((mm / 120.0, 0.0), 400)
         self.assertEqual(facegeom.X, at(12)); self.assertEqual(10, at(22)); self.assertEqual(9, at(24))
         self.assertEqual(5, at(119)); self.assertEqual(1, at(199)); self.assertEqual(facegeom.MISS, at(204))
-        self.assertEqual(facegeom.MISS, facegeom.ring((105 / 120.0, 0.0), 400, min_ring=6))
+        self.assertEqual(facegeom.MISS, facegeom.ring((105 / 100.0, 0.0), 400, min_ring=6))
+
+    def test_spot_rings(self):
+        # a spot (rings 6-10, only ring 6 blue): the marked edge lies 5 ring widths out, so 100 mm on a 40 cm spot
+        def at(mm):
+            return facegeom.ring((mm / 100.0, 0.0), 400, 6, 0.0)
+        self.assertEqual(at(15), 10); self.assertEqual(at(50), 8); self.assertEqual(at(90), 6); self.assertEqual(at(105), facegeom.MISS)
+        self.assertAlmostEqual(facegeom.mm_from_center((1.0, 0.0), 400, 6)[0], 100.0)
+        self.assertAlmostEqual(facegeom.mm_from_center((1.0, 0.0), 400)[0], 120.0)
 
     def test_face_keypoints(self):
         r = 120.0

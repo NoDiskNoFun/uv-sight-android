@@ -182,7 +182,8 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                             }, color = uv.muted, fontSize = 13.sp)
                             if (g.role == "single") {
                                 // the lock of your own sight: a password the app makes up and keeps, never typed, never shown
-                                val own = state.sight?.autoPw != null
+                                // locked by this app (derived, or an old random one); a typed password from an earlier version is the other case
+                                val own = g.password.isEmpty()
                                 var legacyPw by remember(state.sight?.id) { mutableStateOf("") }
                                 when {
                                     state.role == "locked" -> {

@@ -199,7 +199,7 @@ def evaluate(val_recs, predict, predict_face=None, truth="hand"):
                     face_hit = False
                     continue
                 face_found += 1
-                face_mm.append(math.hypot(*facegeom.mm_from_center(gu.to_face(hit[1][0]), dia)))
+                face_mm.append(math.hypot(*facegeom.mm_from_center(gu.to_face(hit[1][0]), dia, min_ring)))
                 for a in rec["arrows"]:
                     if facegeom.nearest_geometry(g_users, (a["px"], a["py"])) is not gu:
                         continue
@@ -227,7 +227,7 @@ def evaluate(val_recs, predict, predict_face=None, truth="hand"):
             for a, (px, py, conf) in matched:
                 g = facegeom.nearest_geometry(gs, (a["px"], a["py"]))     # the face (spot) this arrow sits on
                 um = g.to_face((a["px"], a["py"])); up = g.to_face((px, py))
-                m1 = facegeom.mm_from_center(um, dia); m2 = facegeom.mm_from_center(up, dia)
+                m1 = facegeom.mm_from_center(um, dia, min_ring); m2 = facegeom.mm_from_center(up, dia, min_ring)
                 mm_err.append(math.hypot(m1[0] - m2[0], m1[1] - m2[1]))
                 ring_n += 1
                 if facegeom.ring(up, dia, min_ring, rec.get("arrowMm", 6.0)) == a["ring"]:

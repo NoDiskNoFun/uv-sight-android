@@ -201,7 +201,7 @@ fun UsbUnlockButton(ctl: SightController, toast: (String, Boolean) -> Unit, modi
                     busy = false
                     r.onSuccess { reply ->
                         val ok = reply.contains("clear", true) || reply.contains("No password", true) || reply.contains("removed", true)
-                        if (ok) { toast(tr("The lock is removed. Connecting again…"), false); ctl.reconnect() }
+                        if (ok) { toast(tr("The lock is removed. Connecting again…"), false); ctl.greetAgain() }
                         else toast(tr("The sight answered: {reply}", "reply" to reply.take(120).ifEmpty { tr("nothing") }), true)
                     }.onFailure { toast(it.message ?: tr("The command could not be sent to the sight."), true) }
                 }

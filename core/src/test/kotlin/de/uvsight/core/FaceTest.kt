@@ -84,4 +84,21 @@ class CocoTest {
         val b = Coco.ellipseBounds(rec.conic)!!
         assertEquals(1400.0, b[0], 2.0); assertEquals(900.0, b[1], 2.0); assertEquals(2600.0, b[2], 2.0); assertEquals(2100.0, b[3], 2.0)
     }
+
+    /** A spot shows rings 6 to 10, only ring 6 in blue: its marked edge lies 5 ring widths out, not 6. */
+    @Test fun spotRingsFromTheMarkedEdge() {
+        val f = FaceType.SPOT40                      // 40 cm, ring width 20 mm, marked edge at 100 mm
+        assertEquals(100.0, f.blueEdgeMm, 1e-9)
+        fun ringAtMm(mm: Double) = Scoring.ring(Pt(mm / f.blueEdgeMm, 0.0), f, 0.0)
+        assertEquals(Scoring.X, ringAtMm(5.0))
+        assertEquals(10, ringAtMm(15.0))
+        assertEquals(9, ringAtMm(30.0))
+        assertEquals(8, ringAtMm(50.0))
+        assertEquals(7, ringAtMm(70.0))
+        assertEquals(6, ringAtMm(90.0))             // inside the blue ring
+        assertEquals(Scoring.MISS, ringAtMm(105.0))  // outside the spot
+        // a full 40 cm face keeps its edge 6 rings out
+        assertEquals(120.0, FaceType.WA40.blueEdgeMm, 1e-9)
+        assertEquals(5, Scoring.ring(Pt(110.0 / 120.0, 0.0), FaceType.WA40, 0.0))
+    }
 }

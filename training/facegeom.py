@@ -145,9 +145,15 @@ def _fit_conic(center, edge, n):
         return None
 
 
+def edge_rings(min_ring=1):
+    """Ring widths from the centre to the outer edge of the blue, the edge the user marks: 6 on a full face
+    (rings 6 and 5 are blue), 5 on a spot (only ring 6 is blue)."""
+    return 5 if min_ring >= 6 else 6
+
+
 def ring(u, diameter_mm, min_ring=1, arrow_mm=6.0):
     ring_mm = diameter_mm / 20.0
-    r_mm = math.hypot(u[0], u[1]) * 6 * ring_mm
+    r_mm = math.hypot(u[0], u[1]) * edge_rings(min_ring) * ring_mm
     edge = max(0.0, r_mm - arrow_mm / 2)
     rw = edge / ring_mm
     if rw >= 10:
@@ -158,8 +164,8 @@ def ring(u, diameter_mm, min_ring=1, arrow_mm=6.0):
     return X if (n == 10 and rw <= 0.5) else n
 
 
-def mm_from_center(u, diameter_mm):
-    r = 6 * diameter_mm / 20.0
+def mm_from_center(u, diameter_mm, min_ring=1):
+    r = edge_rings(min_ring) * diameter_mm / 20.0
     return (u[0] * r, -u[1] * r)
 
 

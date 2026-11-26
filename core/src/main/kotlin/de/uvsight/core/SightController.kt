@@ -260,9 +260,18 @@ class SightController(
     }
 
     fun send(cmd: String) {
-        logConsole("> $cmd", "in")
+        logConsole("> " + consoleText(cmd), "in")
         rememberSetting(cmd)
         transport.send(cmd)
+    }
+    /** The console shows that a password was sent, never the password itself. */
+    private fun consoleText(cmd: String): String {
+        val l = cmd.trimStart().lowercase()
+        return when {
+            l.startsWith("auth ") -> "auth •••••• (" + (cmd.trim().length - 5) + ")"
+            l.startsWith("group set ") && cmd.trim() != "group set -" -> "group set •••••• (" + (cmd.trim().length - 10) + ")"
+            else -> cmd
+        }
     }
 
     /** A random 16-digit hex id for this app (a signed APK will derive a stable one later). */
@@ -348,6 +357,12 @@ class SightController(
     /** "Connect" tapped: run the chooser / connect to the remembered device. */
     fun connect() { scope.launch { ensureConnected() } }
     fun reconnect() { stopAutoReconnect(); scope.launch { ensureConnected() } }
+    /** Ask the connected sight to greet again, so role and password state are read fresh (e.g. after its lock was removed over USB). */
+    fun greetAgain() {
+        if (s.conn != ConnState.CONNECTED) { reconnect(); return }
+        val g = s.group
+        send(if (g.role == "single") "app on" else "app on ${g.id} ${g.name.ifEmpty { "Archer" }.take(12)}")
+    }
 
     private suspend fun ensureConnected(): Boolean {
         if (s.conn == ConnState.CONNECTED) return true
@@ -414,9 +429,11 @@ class SightController(
                     h.proto < PROTO_EXPECTED -> "The sight's firmware is older than this app. Please update the firmware on the sight."
                     else -> "This app is older than the sight's firmware. Please update the app."
                 }) }
-                helloWait?.complete(true); helloWait = null
+                // Everything onLinkUp reads (the sight, its role) is set before the greeting is reported complete:
+                // on the app's Main.immediate dispatcher complete() resumes onLinkUp right here, inline.
                 h.id?.let { onSightIdentified(it, h.sightName, h.bow) }
                 set { copy(role = h.role, rolePending = h.pending, primary = h.primary, needsPassword = h.role == "locked" && passwordFor().isEmpty()) }
+                helloWait?.complete(true); helloWait = null
                 if (h.role != "locked") afterUnlocked()
             }
             "auth" -> {
@@ -425,7 +442,7 @@ class SightController(
                 authWait?.complete(a.ok); authWait = null
                 if (a.ok) afterUnlocked() else toast(tr("The sight refused the password."), true)
             }
-            "group" -> set { copy(groupInfo = m.toGroup(), role = m.str("role") ?: role, rolePending = m.bool("pending") ?: rolePending) }
+            "group" -> { val gi = m.toGroup(); set { copy(groupInfo = gi, hello = hello?.copy(pw = gi.pw), role = m.str("role") ?: role, rolePending = m.bool("pending") ?: rolePending) } }
             "trainersStart" -> trainerBuf = ArrayList()
             "trainer" -> trainerBuf?.add(m.toTrainer())
             "trainersEnd" -> { trainerBuf?.let { set { copy(trainers = it.toList()) } }; trainerBuf = null }
@@ -624,9 +641,11 @@ class SightController(
     /** The password to give the connected sight: in single mode the one for it (an old stored one, else the derived one), else the group's. */
     private fun passwordFor(): String {
         if (s.group.role != "single") return s.group.password
-        val si = s.sight ?: return ""
+        // the sight that greeted on this link (s.sight may still be the one of an earlier link)
+        val id = s.hello?.id ?: s.sight?.id ?: return ""
+        val si = s.sight?.takeIf { it.id == id } ?: archive.sights().firstOrNull { it.id == id }
         // a stored password (an old random one per sight, or a typed one from before the lock) is tried first; else the derived one
-        return si.autoPw ?: s.group.password.ifEmpty { deriveLockPw(si.id) }
+        return si?.autoPw ?: s.group.password.ifEmpty { deriveLockPw(id) }
     }
     /** The password being set on the sight ("-" = being removed), until the sight confirms it. */
     private var pendingAutoPw: String? = null
@@ -763,6 +782,7 @@ class SightController(
                     "set" -> {
                         val pending = pendingAutoPw; pendingAutoPw = null
                         val locked = m.bool("pw") == true
+                        set { copy(hello = hello?.copy(pw = locked)) }
                         if (pending != null && s.sight != null) {
                             // the lock password is derived from now on, so nothing is kept here; an old stored one is dropped
                             updateSight { it.copy(autoPw = null) }
