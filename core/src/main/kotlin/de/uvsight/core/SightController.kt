@@ -625,7 +625,8 @@ class SightController(
     private fun passwordFor(): String {
         if (s.group.role != "single") return s.group.password
         val si = s.sight ?: return ""
-        return si.autoPw ?: deriveLockPw(si.id)
+        // a stored password (an old random one per sight, or a typed one from before the lock) is tried first; else the derived one
+        return si.autoPw ?: s.group.password.ifEmpty { deriveLockPw(si.id) }
     }
     /** The password being set on the sight ("-" = being removed), until the sight confirms it. */
     private var pendingAutoPw: String? = null
