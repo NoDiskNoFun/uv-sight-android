@@ -44,7 +44,7 @@ Nothing to start: the first shot starts a session by itself, and the sight count
 
 Two things worth knowing:
 
-- **Distance**: set the distance on the Training tab before the first end if the app did not recognise it: − and + walk the usual distances (5, 10, 15, 18, 20, 25, 30 m and the tens above), a tap on the number lets you type any other. The sight remembers the aiming angle per distance and warns with a double or triple blink when the angle does not fit the distance, so an arrow does not fly over the target.
+- **Distance**: set the distance on the Training tab before the first end if the app did not recognise it: − and + walk the usual distances (5, 10, 15, 18, 20, 25, 30 m and the tens above), a tap on the number lets you type any other. The app remembers the last distance for each sight, so a new session starts with the distance you usually shoot with that bow, 18 m on one sight and 50 m on another, say. The sight remembers the aiming angle per distance and warns with a double or triple blink when the angle does not fit the distance, so an arrow does not fly over the target.
 - **Hints**: under the last end the app says what the numbers show, for example a group sitting left, an unsteady hold, a canted bow. Always compared with your own earlier ends, never with anybody else.
 
 A session ends by itself after an hour without a shot, or with **End session** on the Training tab.

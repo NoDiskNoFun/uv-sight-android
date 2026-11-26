@@ -992,7 +992,7 @@ class SightController(
     }
     /** The distances the − and + buttons walk: the usual indoor and outdoor distances, then tens. Any other value can be typed. */
     fun distMinus() = setDist(DIST_STEPS.lastOrNull { it < s.distM } ?: 0)
-    fun distPlus() = setDist(if (s.distM == 0) (store.get(DIST_LAST_KEY)?.toIntOrNull() ?: 18) else DIST_STEPS.firstOrNull { it > s.distM } ?: (s.distM + 10))
+    fun distPlus() = setDist(if (s.distM == 0) (s.sight?.distM?.takeIf { it > 0 } ?: store.get(DIST_LAST_KEY)?.toIntOrNull() ?: 18) else DIST_STEPS.firstOrNull { it > s.distM } ?: (s.distM + 10))
 
     private fun checkNewSession(m: SessionInfo): Boolean {
         val key = m.key ?: return false
@@ -1001,6 +1001,10 @@ class SightController(
         if ((m.dist ?: 0) > 0) { distPresetAt = 0; return false }
         if (distPresetAt != 0L && clock.now() - distPresetAt < DIST_PRESET_MS && s.distM > 0) { distPresetAt = 0; send("dist ${s.distM}"); return true }
         distPresetAt = 0
+        // the sight's usual distance (the last one set with it) is the likely one: a hunting bow's sight at 18 m,
+        // a compound's at 50 m; the session starts with it, and − / + or a typed value change it as always
+        val usual = s.sight?.distM?.takeIf { it > 0 }
+        if (usual != null) { setDist(usual); return true }
         setDist(0, true)
         set { copy(distAuto = false) }
         return true

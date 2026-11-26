@@ -236,3 +236,49 @@ class EventsTest {
         } finally { scope.cancel(); dispatcher.close() }
     }
 }
+
+/** The distance the app presets when a session starts: the one last set with that sight. */
+class SightDistanceTest {
+    private class FakeTransport : Transport {
+        val sent = ArrayList<String>()
+        override var connected = true
+        override fun send(cmd: String) { sent.add(cmd) }
+        override suspend fun ensureConnected(timeoutMs: Long) = true
+        override fun disconnect() { connected = false }
+    }
+
+    @Test fun newSessionStartsWithTheSightsUsualDistance() {
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val transport = FakeTransport()
+        val ctl = SightController(scope, MemoryStore(), transport, object : UiSink { override fun toast(text: String, error: Boolean) {} })
+        fun session(key: Long, dist: Int) = """{"t":"session","counter":true,"active":true,"epoch":$key,"nextId":1,"dist":$dist,"distSrc":"${if (dist > 0) "user" else "none"}","end":1,"endShots":0,"ends":0,"invalidEnds":0,"shots":0,"scored":0,"sum":0,"x":0,"avg":0.0,"min":0,"pending":false}"""
+        try {
+            runBlocking {
+                withContext(dispatcher) { ctl.onLinkUp() }
+                delay(100)
+                withContext(dispatcher) {
+                    // the hunting bow's sight: shot at 18 m once, in a running session
+                    ctl.onLine("""{"t":"hello","proto":24,"fw":"7.7","name":"Anchored","imu":true,"log":true,"id":"AAAA000000000001","sname":"Jagd","bow":3}""")
+                    ctl.onLine(session(1700000000, 0))
+                    ctl.setDist(18)
+                    assertEquals(18, ctl.state.value.sights.first { it.id == "AAAA000000000001" }.distM)
+                    // the compound's sight, shot at 50 m
+                    ctl.onLine("""{"t":"hello","proto":24,"fw":"7.7","name":"Anchored","imu":true,"log":true,"id":"AAAA000000000002","sname":"Hoyt","bow":0}""")
+                    ctl.onLine(session(1700001000, 0))
+                    ctl.setDist(50)
+                    // back on the hunting bow: the restored 18 m, and a new session there is told so
+                    ctl.onLine("""{"t":"hello","proto":24,"fw":"7.7","name":"Anchored","imu":true,"log":true,"id":"AAAA000000000001","sname":"Jagd","bow":3}""")
+                    assertEquals(18, ctl.state.value.distM)
+                    transport.sent.clear()
+                    ctl.onLine(session(1700002000, 0))
+                    assertEquals(18, ctl.state.value.distM)
+                    assertTrue(transport.sent.contains("dist 18"), "the sight is told the usual distance: ${transport.sent}")
+                    // a session the sight already has a distance for keeps that one
+                    ctl.onLine(session(1700003000, 30))
+                    assertEquals(30, ctl.state.value.distM)
+                }
+            }
+        } finally { scope.cancel(); dispatcher.close() }
+    }
+}
