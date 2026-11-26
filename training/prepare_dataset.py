@@ -4,7 +4,8 @@
 Each arrow becomes one object of class "arrow" with a single keypoint: the entry point.
 With --faces the dataset marks the target face instead: a box around the blue edge with five
 keypoints, the centre and the highest, rightmost, lowest and leftmost point of the edge
-(computed from the fitted ellipse, so they are the same for every photo). Photos without a
+(computed from the fitted ellipse, so they are the same for every photo); a spot face gives
+one such object per marked spot. Photos without a
 usable face marking are left out of the face dataset. Either dataset only takes photos whose
 part was marked by hand: what a model proposed in the app never trains that same model.
 
@@ -78,17 +79,23 @@ def split_by_session(recs, val_frac, seed=1):
     return [x for x in recs if (x[0].get("sessionKey") or x[0]["id"]) not in val], [x for x in recs if (x[0].get("sessionKey") or x[0]["id"]) in val]
 
 
-def face_label(r):
-    """YOLO pose line for the face of a record, or None without a usable marking."""
-    g = facegeom.geometry_of_record(r)
-    if g is None:
-        return None
+def face_labels(r):
+    """YOLO pose lines for the faces of a record: one per marked face (three on a spot face); empty without a usable marking."""
     w, h = r["width"], r["height"]
-    k = facegeom.face_keypoints(g)
-    x0, y0, x1, y1 = facegeom.face_box(k, w, h)
-    if x1 - x0 < 8 or y1 - y0 < 8:
-        return None
-    return f"0 {(x0 + x1) / 2 / w:.6f} {(y0 + y1) / 2 / h:.6f} {(x1 - x0) / w:.6f} {(y1 - y0) / h:.6f} " + " ".join(f"{p[0] / w:.6f} {p[1] / h:.6f} 2" for p in k)
+    lines = []
+    for g in facegeom.geometries_of_record(r):
+        k = facegeom.face_keypoints(g)
+        x0, y0, x1, y1 = facegeom.face_box(k, w, h)
+        if x1 - x0 < 8 or y1 - y0 < 8:
+            continue
+        lines.append(f"0 {(x0 + x1) / 2 / w:.6f} {(y0 + y1) / 2 / h:.6f} {(x1 - x0) / w:.6f} {(y1 - y0) / h:.6f} " + " ".join(f"{p[0] / w:.6f} {p[1] / h:.6f} 2" for p in k))
+    return lines
+
+
+def face_label(r):
+    """YOLO pose line for the (first) face of a record, or None without a usable marking."""
+    lines = face_labels(r)
+    return lines[0] if lines else None
 
 
 def hand_marked(rec, part):
@@ -137,7 +144,7 @@ def write_split(recs, out: Path, name: str, faces: bool):
                 cx, cy = a["px"] / w, a["py"] / h
                 lines.append(f"0 {cx:.6f} {cy:.6f} {ARROW_BOX / w:.6f} {ARROW_BOX / h:.6f} {cx:.6f} {cy:.6f} 2")
         else:
-            lines.append(face_label(r))
+            lines.extend(face_labels(r))
         n_obj += len(lines)
         (out / "labels" / name / (r["id"] + ".txt")).write_text("\n".join(lines) + ("\n" if lines else ""))
     return n_obj

@@ -45,7 +45,7 @@ fun NewSightDialog(state: AppState, ctl: SightController) {
         Spacer(Modifier.height(12.dp))
         Text(tr("Bow"), color = uv.ink)
         Spacer(Modifier.height(6.dp))
-        Seg(Bow.label(bow), bowLabels) { bow = bowIndex(it) }
+        Drop(Bow.label(bow), bowLabels) { bow = bowIndex(it) }
         Text(Bow.describe(bow), color = uv.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
     }
 }

@@ -130,6 +130,7 @@ class SightController(
         const val AUTO_FAST_FOR = 2 * 60 * 1000L
         const val AUTO_GIVE_UP = 30 * 60 * 1000L
         const val DIST_PRESET_MS = 30 * 60 * 1000L
+        val DIST_STEPS = listOf(5, 10, 15, 18, 20, 25, 30, 40, 50, 60, 70, 90)
         const val SYNC_MAX_RETRIES = 2
         const val CFG_MAX_RETRIES = 3
         const val DIST_KEY = "uvsight.dist"
@@ -989,8 +990,9 @@ class SightController(
         if (d > 0) store.put(DIST_LAST_KEY, d.toString())
         if (!fromSight) updateSight { it.copy(distM = d) }
     }
-    fun distMinus() = setDist(s.distM - 10)
-    fun distPlus() = setDist(if (s.distM == 0) (store.get(DIST_LAST_KEY)?.toIntOrNull() ?: 10) else s.distM + 10)
+    /** The distances the − and + buttons walk: the usual indoor and outdoor distances, then tens. Any other value can be typed. */
+    fun distMinus() = setDist(DIST_STEPS.lastOrNull { it < s.distM } ?: 0)
+    fun distPlus() = setDist(if (s.distM == 0) (store.get(DIST_LAST_KEY)?.toIntOrNull() ?: 18) else DIST_STEPS.firstOrNull { it > s.distM } ?: (s.distM + 10))
 
     private fun checkNewSession(m: SessionInfo): Boolean {
         val key = m.key ?: return false

@@ -11,9 +11,9 @@ import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** Target faces the photo scoring knows. Ring width = diameter / 20; spots only print rings 6 to 10. */
-enum class FaceType(val label: String, val diameterMm: Int, val minRing: Int) {
-    WA40("40 cm", 400, 1), WA60("60 cm", 600, 1), WA80("80 cm", 800, 1), WA122("122 cm", 1220, 1), SPOT40("Spot 40 cm", 400, 6);
+/** Target faces the photo scoring knows. Ring width = diameter / 20; spots only print rings 6 to 10, three of them on one face. */
+enum class FaceType(val label: String, val diameterMm: Int, val minRing: Int, val spots: Int = 1) {
+    WA40("40 cm", 400, 1), WA60("60 cm", 600, 1), WA80("80 cm", 800, 1), WA122("122 cm", 1220, 1), SPOT40("Spot 40 cm", 400, 6, 3);
     val ringMm: Double get() = diameterMm / 20.0
     /** Radius of the outer edge of the blue ring (ring 5) in mm: the edge the user marks. */
     val blueEdgeMm: Double get() = 6 * ringMm
@@ -228,7 +228,12 @@ data class ArrowMark(
     val shot: Int? = null,                   // index of the sight's shot this arrow was matched to
     val shotConf: Double? = null,            // confidence of that match
     val shotSrc: String? = null,             // "sure" / "guess" / "coin" / "user"
+    val spot: Int? = null,                   // on a spot face: which of the marked spots (0-based) scored this arrow
 )
+
+/** One marked face (or one spot of a spot face) as stored: centre, tapped edge points and the fitted ellipse, in upright image pixels. */
+@Serializable
+data class FaceMarkRec(val center: List<Double>, val edge: List<List<Double>>, val conic: List<Double>?)
 
 /** Everything about one scored photo, saved as a training example. */
 @Serializable
@@ -261,4 +266,8 @@ data class PhotoRecord(
     val faceModel: String? = null,           // face finder that proposed the marking, if any
     val trainArrows: Boolean? = null,        // the arrows were marked by hand: use this photo to train the arrow detector
     val trainFace: Boolean? = null,          // the face was marked by hand (or taken over): use this photo to train the face finder
-)
+    val spots: List<FaceMarkRec>? = null,    // a spot face: every marked spot, top to bottom (the first one is also in center/edge/conic)
+) {
+    /** All marked faces of the photo: the spots, or the single face. */
+    val faces: List<FaceMarkRec> get() = spots ?: center?.let { listOf(FaceMarkRec(it, edge, conic)) } ?: emptyList()
+}

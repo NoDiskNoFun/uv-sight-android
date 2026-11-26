@@ -104,7 +104,10 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
         Text(tr("Distance"), color = uv.muted)
         Spacer(Modifier.width(10.dp))
         RoundButton("−") { ctl.distMinus() }
-        Text("${state.distM} m", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
+        // a tap on the number types the distance; − and + walk the usual distances
+        var askDist by remember { mutableStateOf(false) }
+        Text("${state.distM} m", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { askDist = true }.padding(horizontal = 8.dp))
+        if (askDist) DistancePrompt(state.distM, onDone = { askDist = false; if (it != null) ctl.setDist(it) })
         if (state.distNote.isNotEmpty()) Text(state.distNote, color = uv.muted, fontSize = 12.sp)
         Spacer(Modifier.width(4.dp))
         RoundButton("+") { ctl.distPlus() }
@@ -179,6 +182,22 @@ fun TrainingScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
             confirmButton = { TextButton(onClick = { askStop = false; ctl.endSession() }) { Text(tr("End session"), color = uv.red) } },
             dismissButton = { TextButton(onClick = { askStop = false }) { Text(tr("Cancel")) } })
     }
+}
+
+/** Type a distance in metres (0 = none). */
+@Composable
+private fun DistancePrompt(current: Int, onDone: (Int?) -> Unit) {
+    var text by remember { mutableStateOf(if (current > 0) current.toString() else "") }
+    val value = text.trim().toIntOrNull()?.takeIf { it in 0..150 }
+    AlertDialog(onDismissRequest = { onDone(null) }, title = { Text(tr("Distance")) },
+        text = {
+            androidx.compose.material3.OutlinedTextField(value = text, onValueChange = { text = it.filter { ch -> ch.isDigit() }.take(3) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                label = { Text(tr("Metres, 0 for none")) }, suffix = { Text("m") },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { value?.let { onDone(it) } }))
+        },
+        confirmButton = { TextButton(onClick = { onDone(value) }, enabled = value != null) { Text(tr("OK")) } },
+        dismissButton = { TextButton(onClick = { onDone(null) }) { Text(tr("Cancel")) } })
 }
 
 @Composable

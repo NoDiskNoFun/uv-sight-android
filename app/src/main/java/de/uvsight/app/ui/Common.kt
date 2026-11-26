@@ -23,6 +23,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -150,6 +157,36 @@ fun Seg(current: String, modes: List<String>, enabled: Boolean = true, onPick: (
                 colors = SegmentedButtonDefaults.colors(activeContainerColor = uv.ink, activeContentColor = uv.paper, inactiveContentColor = uv.muted, activeBorderColor = uv.line, inactiveBorderColor = uv.line)) {
                 FitText(tr(m).replaceFirstChar { it.uppercase() })
             }
+        }
+    }
+}
+
+/** A setting with a few named choices as a dropdown: fits any screen width, however long the names. */
+@Composable
+fun DropRow(label: String, desc: String, current: String, options: List<String>, first: Boolean = false, enabled: Boolean = true, onPick: (String) -> Unit) {
+    val uv = LocalUv.current
+    if (!first) HorizontalDivider(color = uv.line)
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Text(label, color = uv.ink)
+        if (desc.isNotEmpty()) Text(desc, color = uv.muted, fontSize = 13.sp)
+        Spacer(Modifier.height(8.dp))
+        Drop(current, options, enabled, onPick)
+    }
+}
+
+/** The dropdown itself: the current choice in a field, the others in a menu. Labels are translated for display. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun Drop(current: String, options: List<String>, enabled: Boolean = true, onPick: (String) -> Unit) {
+    val uv = LocalUv.current
+    var open by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = open && enabled, onExpandedChange = { if (enabled) open = it }) {
+        OutlinedTextField(value = tr(current).replaceFirstChar { it.uppercase() }, onValueChange = {}, readOnly = true, singleLine = true, enabled = enabled,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = uv.ink, unfocusedTextColor = uv.ink, focusedBorderColor = uv.line, unfocusedBorderColor = uv.line, focusedTrailingIconColor = uv.muted, unfocusedTrailingIconColor = uv.muted),
+            modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled))
+        ExposedDropdownMenu(expanded = open && enabled, onDismissRequest = { open = false }) {
+            for (o in options) DropdownMenuItem(text = { Text(tr(o).replaceFirstChar { it.uppercase() }, fontWeight = if (o == current) FontWeight.SemiBold else FontWeight.Normal) }, onClick = { open = false; onPick(o) })
         }
     }
 }

@@ -86,13 +86,19 @@ import kotlin.math.max
 import kotlin.math.min
 import de.uvsight.core.tr
 
+/** One face of the photo (or one spot of a spot face): its tapped centre and edge points (display-bitmap pixels). */
+private data class FaceMark(val center: Offset? = null, val edge: List<Offset> = emptyList()) {
+    val geometry: FaceGeometry? get() = center?.takeIf { edge.size >= 4 }?.let { c -> FaceGeometry.fit(Pt(c.x.toDouble(), c.y.toDouble()), edge.map { Pt(it.x.toDouble(), it.y.toDouble()) }) }
+}
+
 /** One arrow placed on the photo (display-bitmap pixels). */
 private data class Mark(val pos: Offset, val ring: Int, val ringAuto: Int, val tool: String, val moved: Boolean = false, val source: String = "user")
 
 /**
  * Score an end from a photo of the face: mark the face (centre + 4 or more points on the
- * blue ring's outer edge), then tap each arrow where it enters the face. Rings come from the
- * geometry; every mark can be moved, its ring changed or deleted. Works with a stylus or a
+ * blue ring's outer edge; on a spot face each of the three spots in turn, top to bottom), then
+ * tap each arrow where it enters the face. Rings come from the geometry of the nearest face;
+ * every mark can be moved, its ring changed or deleted. Works with a stylus or a
  * finger (a magnifier appears while a finger drags).
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -111,8 +117,16 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     var faceType by remember { mutableStateOf(runCatching { FaceType.valueOf(prefs.face) }.getOrDefault(FaceType.WA40)) }
     // the sight's light sensor tells indoor (artificial light, "dark" for the sensor) from outdoor; else the last choice
     var environment by remember { mutableStateOf(state.status?.takeIf { state.conn == de.uvsight.core.ConnState.CONNECTED }?.let { if (it.dark) "indoor" else "outdoor" } ?: prefs.environment) }
-    var center by remember { mutableStateOf<Offset?>(null) }
-    var edge by remember { mutableStateOf(listOf<Offset>()) }
+    // The faces of the photo: one, or the three spots of a spot face, marked one after the other; faceIdx is the one being marked.
+    var faces by remember { mutableStateOf(listOf(FaceMark())) }
+    var faceIdx by remember { mutableIntStateOf(0) }
+    val spotCount = faceType.spots
+    fun curFace() = faces.getOrElse(faceIdx) { FaceMark() }
+    fun setCur(f: FaceMark) { faces = faces.toMutableList().also { while (it.size <= faceIdx) it.add(FaceMark()); it[faceIdx] = f } }
+    fun setCenter(c: Offset?) = setCur(curFace().copy(center = c))
+    fun setEdge(e: List<Offset>) = setCur(curFace().copy(edge = e))
+    // a change of face type between a spot face and a single face drops the spots beyond the count
+    LaunchedEffect(spotCount) { if (faces.size > spotCount) { faces = faces.take(spotCount); faceIdx = minOf(faceIdx, spotCount - 1) } }
     var skipFace by remember { mutableStateOf(false) }
     var faceFromModel by remember { mutableStateOf(false) }  // marking proposed by the face finder
     var faceEdited by remember { mutableStateOf(false) }     // ... and a point of it dragged by hand: counts as hand-marked
@@ -134,10 +148,15 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
     val endShots = state.endShots
     LaunchedEffect(step) { if (step == 2) ctl.requestShots() }
     var proposalsShown by remember { mutableStateOf(false) }
-    val geometry = remember(center, edge) { val c = center; if (c != null && edge.size >= 4) FaceGeometry.fit(Pt(c.x.toDouble(), c.y.toDouble()), edge.map { Pt(it.x.toDouble(), it.y.toDouble()) }) else null }
-    // The gesture handler below is set up once (pointerInput(Unit)) and would keep the geometry of the first
-    // composition, i.e. none: it reads the current one through this state, so every tap gets its ring.
-    val currentGeometry = rememberUpdatedState(geometry)
+    val geometries = remember(faces) { faces.map { it.geometry } }          // one per face, null while a face is not marked yet
+    val geometry = geometries.getOrNull(faceIdx)                               // the face being marked
+    val allFaces = faces.size == spotCount && geometries.size == spotCount && geometries.all { it != null }
+    // The gesture handler below is set up once (pointerInput(Unit)) and would keep the geometries of the first
+    // composition, i.e. none: it reads the current ones through this state, so every tap gets its ring.
+    val currentGeometries = rememberUpdatedState(geometries)
+    /** The face an image point belongs to (the one it is nearest to in face units), with that geometry. */
+    fun faceOf(p: Offset, gs: List<FaceGeometry?> = geometries): Pair<Int, FaceGeometry>? =
+        gs.withIndex().mapNotNull { (i, g) -> g?.let { i to it } }.minByOrNull { (_, g) -> g.toFace(Pt(p.x.toDouble(), p.y.toDouble())).let { hypot(it.x, it.y) } }
     val currentFace = rememberUpdatedState(faceType)
     val currentArrowMm = rememberUpdatedState(prefs.arrowMm)
     val textMeasurer = rememberTextMeasurer()
@@ -158,34 +177,36 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             rotation = exifRot; fullSize = IntSize(fw, fh); bitmap = upright
             // The face finder proposes the centre and four edge points; without it (or when it finds
             // nothing) the face is marked by hand. (Taking over the last photo's marking was tried and dropped: it confused more than it helped.)
-            var proposed = false
             if (hasFaceModel) {
-                val best = runCatching { modelStore.detector(modelStore.faceFile).use { it.detect(upright, prefs.faceConf) } }.getOrNull()
-                    ?.filter { it.kpts.size >= 5 }?.maxByOrNull { it.conf }
+                // the best face, or on a spot face up to three, top to bottom
+                val found = runCatching { modelStore.detector(modelStore.faceFile).use { it.detect(upright, prefs.faceConf) } }.getOrNull()
+                    ?.filter { it.kpts.size >= 5 && FaceGeometry.fit(it.kpts[0], it.kpts.subList(1, 5)) != null }
+                    ?.sortedByDescending { it.conf }?.take(spotCount)?.sortedBy { it.kpts[0].y } ?: emptyList()
                 // The finder takes a while with a large model. A marking begun by hand in the meantime, or the
-                // arrow step already open, wins: the finder's face is then dropped, not laid over the user's.
-                val untouched = center == null && edge.isEmpty() && step == 1
-                if (best != null && untouched) {
-                    val c = best.kpts[0]; val e = best.kpts.subList(1, 5)
-                    if (FaceGeometry.fit(c, e) != null) {
-                        center = Offset(c.x.toFloat(), c.y.toFloat()); edge = e.map { Offset(it.x.toFloat(), it.y.toFloat()) }
-                        faceFromModel = true; proposed = true
-                    }
+                // arrow step already open, wins: the finder's faces are then dropped, not laid over the user's.
+                val untouched = faces.all { it.center == null && it.edge.isEmpty() } && step == 1
+                if (found.isNotEmpty() && untouched) {
+                    val fm = found.map { d -> FaceMark(Offset(d.kpts[0].x.toFloat(), d.kpts[0].y.toFloat()), d.kpts.subList(1, 5).map { Offset(it.x.toFloat(), it.y.toFloat()) }) }
+                    faces = if (fm.size < spotCount) fm + FaceMark() else fm
+                    faceIdx = minOf(fm.size, spotCount - 1)     // the spots the finder missed are marked by hand
+                    faceFromModel = true
                 }
                 faceLooked = true
             }
         }
     }
-    /** On to the arrows; the marking is kept for the next photo, as fractions of the image. */
+    /** On to the arrows; the first face's marking is kept for the next photo, as fractions of the image. */
     fun goToArrows() {
-        val b = bitmap; val c = center
-        val fm = if (b != null && c != null) listOf(c.x / b.width.toDouble(), c.y / b.height.toDouble()) + edge.flatMap { listOf(it.x / b.width.toDouble(), it.y / b.height.toDouble()) } else prefs.faceMarks
+        val b = bitmap; val f = faces.firstOrNull(); val c = f?.center
+        val fm = if (b != null && c != null) listOf(c.x / b.width.toDouble(), c.y / b.height.toDouble()) + f.edge.flatMap { listOf(it.x / b.width.toDouble(), it.y / b.height.toDouble()) } else prefs.faceMarks
         ctl.setPhotoPrefs(prefs.copy(face = faceType.name, environment = environment, faceMarks = fm)); step = 2
     }
-    // A face the model found goes straight on to the arrows (once); the rings stay on the photo and Face leads back to check.
+    /** Next in the face step: the next spot of a spot face, or on to the arrows. */
+    fun nextFace() { if (faceIdx < spotCount - 1) { faceIdx++; if (faces.size <= faceIdx) faces = faces + FaceMark() } else goToArrows() }
+    // Faces the model found go straight on to the arrows (once); the rings stay on the photo and Face leads back to check.
     var autoJumped by remember { mutableStateOf(false) }
-    LaunchedEffect(faceFromModel, geometry) {
-        if (faceFromModel && geometry != null && step == 1 && !skipFace && !autoJumped) { autoJumped = true; goToArrows(); vm.toast(tr("Face found by the model. Tap Face to check or adjust it.")) }
+    LaunchedEffect(faceFromModel, allFaces) {
+        if (faceFromModel && allFaces && step == 1 && !skipFace && !autoJumped) { autoJumped = true; goToArrows(); vm.toast(if (spotCount > 1) tr("Spots found by the model. Tap Face to check or adjust them.") else tr("Face found by the model. Tap Face to check or adjust it.")) }
     }
     // Fit the image into the container once both are known. The container changes height whenever the
     // panel below grows or shrinks (hints, ring chips): then the view only shifts to keep its centre,
@@ -207,7 +228,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
 
     fun toImage(p: Offset) = Offset((p.x - offset.x) / scale, (p.y - offset.y) / scale)
     fun toScreen(p: Offset) = Offset(p.x * scale + offset.x, p.y * scale + offset.y)
-    fun ringAt(p: Offset): Int = currentGeometry.value?.let { g -> Scoring.ring(g.toFace(Pt(p.x.toDouble(), p.y.toDouble())), currentFace.value, currentArrowMm.value) } ?: -1
+    fun ringAt(p: Offset): Int = faceOf(p, currentGeometries.value)?.let { (_, g) -> Scoring.ring(g.toFace(Pt(p.x.toDouble(), p.y.toDouble())), currentFace.value, currentArrowMm.value) } ?: -1
     // With a model installed, the arrows are looked for as soon as the photo is decoded; the
     // proposals appear when the arrow step is reached (the rings need the face marking).
     LaunchedEffect(bitmap) {
@@ -237,12 +258,13 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             (expected?.let { if (it != proposed.size) " " + tr("The sight counted {n}.", "n" to it) else "" } ?: ""))
     }
     // Marks placed before the face was (re)marked get their ring from the current geometry
-    LaunchedEffect(geometry) {
-        if (geometry == null || marks.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(geometries) {
+        if (geometries.all { it == null } || marks.isEmpty()) return@LaunchedEffect
         marks = marks.map { m -> val r = ringAt(m.pos); if (m.ring < 0 || m.ring == m.ringAuto) m.copy(ringAuto = r, ring = r) else m.copy(ringAuto = r) }
     }
-    /** Positions of the marks in face mm (needs the face geometry). */
-    fun hitsOf(ms: List<Mark>): List<Hit>? = geometry?.let { g -> ms.map { m -> val mm = Scoring.mmFromCenter(g.toFace(Pt(m.pos.x.toDouble(), m.pos.y.toDouble())), faceType); Hit(mm.x, mm.y, m.ring) } }
+    /** Positions of the marks in face mm, each from the centre of its own face or spot (needs at least one face geometry). */
+    fun hitsOf(ms: List<Mark>): List<Hit>? = if (geometries.all { it == null }) null else ms.map { m ->
+        val g = faceOf(m.pos)!!.second; val mm = Scoring.mmFromCenter(g.toFace(Pt(m.pos.x.toDouble(), m.pos.y.toDouble())), faceType); Hit(mm.x, mm.y, m.ring) }
     /** Shot of each mark: the sight's prediction matched to the positions, with the user's choices swapped in. */
     data class ShotAssign(val shotOf: List<Int>, val conf: List<Double>, val src: List<String>, val second: List<Int?>) {
         fun result() = ShotMatch.Result(shotOf, conf, second)
@@ -261,8 +283,9 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         return ShotAssign(shotOf, conf, src, r.second)
     }
     fun nearestFacePoint(p: Offset, radiusPx: Float): Int? {
-        val pts = listOfNotNull(center) + edge
-        if (center == null) return null
+        val f = curFace()
+        val pts = listOfNotNull(f.center) + f.edge
+        if (f.center == null) return null
         val i = pts.indices.minByOrNull { (pts[it] - p).getDistance() } ?: return null
         return i.takeIf { (pts[it] - p).getDistance() <= radiusPx }
     }
@@ -284,7 +307,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
         val tight = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onClose, colors = barButton, contentPadding = tight, modifier = Modifier.defaultMinSize(minWidth = 1.dp)) { Text(tr("Cancel")) }
-            FitText(if (step == 1) tr("Mark the face") else tr("Mark the arrows"), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = uv.ink, modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
+            FitText(if (step == 2) tr("Mark the arrows") else if (spotCount > 1) tr("Mark spot {n} of {count}", "n" to faceIdx + 1, "count" to spotCount) else tr("Mark the face"), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = uv.ink, modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
             TextButton(onClick = { zoomAround(0.7f, Offset(container.width / 2f, container.height / 2f)) }, colors = barButton, contentPadding = tight, modifier = Modifier.defaultMinSize(minWidth = 1.dp)) { Text("−", fontSize = 18.sp) }
             TextButton(onClick = { zoomAround(1.4f, Offset(container.width / 2f, container.height / 2f)) }, colors = barButton, contentPadding = tight, modifier = Modifier.defaultMinSize(minWidth = 1.dp)) { Text("+", fontSize = 18.sp) }
             TextButton(onClick = { bitmap?.let { b -> scale = min(container.width.toFloat() / b.width, container.height.toFloat() / b.height); offset = Offset((container.width - b.width * scale) / 2, (container.height - b.height * scale) / 2) } }, colors = barButton, contentPadding = tight, modifier = Modifier.defaultMinSize(minWidth = 1.dp)) { Text(tr("Fit")) }
@@ -302,7 +325,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     val tool = when (down.type) { PointerType.Stylus -> "stylus"; PointerType.Mouse -> "mouse"; else -> "finger" }
                     val startImg = toImage(down.position)
                     val dragIdx = if (step == 2) nearest(startImg, 28.dp.toPx() / scale) else null
-                    val faceIdx = if (step == 1) nearestFacePoint(startImg, 28.dp.toPx() / scale) else null
+                    val facePt = if (step == 1) nearestFacePoint(startImg, 28.dp.toPx() / scale) else null
                     var moved = false; var zoomed = false
                     val slop = viewConfiguration.touchSlop
                     do {
@@ -325,11 +348,12 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                     marks = marks.toMutableList().also { it[dragIdx] = m.copy(pos = np, ringAuto = ringAt(np), ring = if (m.ring == m.ringAuto || m.ringAuto == -1 && m.ring == -1) ringAt(np) else m.ring, moved = true) }
                                     selected = dragIdx; arrowsEdited = true
                                     if (tool == "finger") { magPos = ch.position; magSrc = toScreen(np) }
-                                } else if (faceIdx != null) {
-                                    if (faceIdx == 0) center = center?.plus(delta / scale)
-                                    else edge = edge.toMutableList().also { it[faceIdx - 1] = it[faceIdx - 1] + delta / scale }
+                                } else if (facePt != null) {
+                                    val f = curFace()
+                                    if (facePt == 0) setCenter(f.center?.plus(delta / scale))
+                                    else setEdge(f.edge.toMutableList().also { it[facePt - 1] = it[facePt - 1] + delta / scale })
                                     faceEdited = true
-                                    if (tool == "finger") { magPos = ch.position; magSrc = (if (faceIdx == 0) center else edge.getOrNull(faceIdx - 1))?.let { toScreen(it) } }
+                                    if (tool == "finger") { magPos = ch.position; magSrc = (if (facePt == 0) curFace().center else curFace().edge.getOrNull(facePt - 1))?.let { toScreen(it) } }
                                 } else offset += delta
                             }
                             ch.consume()
@@ -339,7 +363,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     if (!moved && !zoomed) {
                         // a tap
                         if (step == 1) {
-                            if (center == null) center = startImg else edge = edge + startImg
+                            val f = curFace(); if (f.center == null) setCenter(startImg) else setEdge(f.edge + startImg)
                         } else {
                             val hit = nearest(startImg, 24.dp.toPx() / scale)
                             if (hit != null) selected = hit
@@ -354,15 +378,21 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
             Canvas(Modifier.fillMaxSize()) {
                 photo?.let { img -> withTransform({ translate(offset.x, offset.y); scale(scale, scale, pivot = Offset.Zero) }) { drawImage(img) } }
                 val stroke = Stroke(2.dp.toPx())
-                geometry?.let { g ->
-                    for (k in 1..10) {
+                for (g in geometries) {
+                    if (g == null) continue
+                    for (k in faceType.minRing..10) {
                         val pts = g.circle(k / 6.0).map { toScreen(Offset(it.x.toFloat(), it.y.toFloat())) }
                         val col = if (k == 6) uv.blue else Color.White.copy(alpha = 0.55f)
                         for (i in pts.indices) drawLine(col, pts[i], pts[(i + 1) % pts.size], if (k == 6) 2.dp.toPx() else 1.dp.toPx())
                     }
                 }
-                center?.let { c -> val s = toScreen(c); drawLine(uv.gold, s - Offset(14f, 0f), s + Offset(14f, 0f), 3f); drawLine(uv.gold, s - Offset(0f, 14f), s + Offset(0f, 14f), 3f) }
-                for (e in edge) drawCircle(uv.blue, 6.dp.toPx(), toScreen(e), style = stroke)
+                // the face being marked in full colour, the other spots dimmed
+                faces.forEachIndexed { fi, f ->
+                    val cur = fi == faceIdx || step == 2
+                    val gold = if (cur) uv.gold else uv.gold.copy(alpha = 0.45f); val blue = if (cur) uv.blue else uv.blue.copy(alpha = 0.45f)
+                    f.center?.let { c -> val s = toScreen(c); drawLine(gold, s - Offset(14f, 0f), s + Offset(14f, 0f), 3f); drawLine(gold, s - Offset(0f, 14f), s + Offset(0f, 14f), 3f) }
+                    for (e in f.edge) drawCircle(blue, 6.dp.toPx(), toScreen(e), style = stroke)
+                }
                 marks.forEachIndexed { i, m ->
                     val s = toScreen(m.pos)
                     val sel = i == selected
@@ -393,26 +423,32 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                     FilterChip(selected = environment == "outdoor", onClick = { environment = "outdoor" }, label = { Text(tr("Outdoor")) }, modifier = Modifier.padding(end = 6.dp))
                     FilterChip(selected = environment == "indoor", onClick = { environment = "indoor" }, label = { Text(tr("Indoor")) })
                 }
+                val f = curFace()
+                val last = faceIdx >= spotCount - 1
+                val spotWord = if (spotCount > 1) tr("spot") else tr("face")
                 Text(when {
-                    !faceLooked && center == null -> tr("Looking for the face… Tap its centre to mark it yourself; the finder's result is then ignored.")
-                    faceFromModel && geometry != null -> tr("Face found by the model. Drag a point to adjust, or Clear to mark anew.")
-                    center == null -> tr("Tap the centre of the face.")
-                    edge.size < 4 -> tr("Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right.", "edge" to edge.size)
-                    geometry == null && edge.size == 4 -> tr("The 4 points don't fit an ellipse around the centre. Add a 5th point on the blue edge (that also handles a photo taken from the side), or Undo.")
+                    !faceLooked && f.center == null -> tr("Looking for the face… Tap its centre to mark it yourself; the finder's result is then ignored.")
+                    faceFromModel && geometry != null -> tr("{face} found by the model. Drag a point to adjust, or Clear to mark anew.", "face" to spotWord.replaceFirstChar { it.uppercase() })
+                    f.center == null -> if (spotCount > 1) tr("Tap the centre of spot {n}, counting from the top.", "n" to faceIdx + 1) else tr("Tap the centre of the face.")
+                    f.edge.size < 4 -> tr("Tap 4 points on the outer edge of the blue ring ({edge} of 4), best top, bottom, left and right.", "edge" to f.edge.size)
+                    geometry == null && f.edge.size == 4 -> tr("The 4 points don't fit an ellipse around the centre. Add a 5th point on the blue edge (that also handles a photo taken from the side), or Undo.")
                     geometry == null -> tr("These points don't form an ellipse. Undo and tap again, spread around the blue edge.")
-                    edge.size == 4 -> tr("Face found. A 5th edge point also corrects a photo taken from the side; or continue.")
-                    else -> tr("Face found. Add more edge points for precision, or continue.")
+                    !last -> tr("{face} {n} found. Next marks spot {next}.", "face" to spotWord.replaceFirstChar { it.uppercase() }, "n" to faceIdx + 1, "next" to faceIdx + 2)
+                    f.edge.size == 4 -> tr("{face} found. A 5th edge point also corrects a photo taken from the side; or continue.", "face" to spotWord.replaceFirstChar { it.uppercase() })
+                    else -> tr("{face} found. Add more edge points for precision, or continue.", "face" to spotWord.replaceFirstChar { it.uppercase() })
                 }, color = uv.muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp))
                 // the buttons wrap on a narrow screen; Next takes the rest of its line (a whole line of its own when wrapped)
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SecondaryButton(tr("Undo"), enabled = center != null) { if (edge.isNotEmpty()) edge = edge.dropLast(1) else center = null; faceFromModel = false }
-                    SecondaryButton(tr("Clear"), enabled = center != null) { center = null; edge = emptyList(); faceFromModel = false }
-                    SecondaryButton(tr("Skip face")) { skipFace = true; center = null; edge = emptyList(); step = 2 }
-                    PrimaryButton(tr("Next"), Modifier.weight(1f), enabled = geometry != null) { goToArrows() }
+                    // Undo takes back the last point; on an empty spot it goes back to the spot before
+                    SecondaryButton(tr("Undo"), enabled = f.center != null || faceIdx > 0) { if (f.edge.isNotEmpty()) setEdge(f.edge.dropLast(1)) else if (f.center != null) setCenter(null) else faceIdx--; faceFromModel = false }
+                    SecondaryButton(tr("Clear"), enabled = f.center != null) { setCur(FaceMark()); faceFromModel = false }
+                    SecondaryButton(tr("Skip face")) { skipFace = true; faces = listOf(FaceMark()); faceIdx = 0; step = 2 }
+                    PrimaryButton(if (last) tr("Next") else tr("Next spot"), Modifier.weight(1f), enabled = geometry != null && (!last || allFaces)) { nextFace() }
                 }
             } else {
                 val sightShots = state.session?.takeIf { it.active }?.endShots
-                val hits = if (geometry != null) marks.map { m -> Scoring.mmFromCenter(geometry.toFace(Pt(m.pos.x.toDouble(), m.pos.y.toDouble())), faceType) } else emptyList()
+                // the group centre refers to one face; on a spot face the arrows sit on three, so it is left out there
+                val hits = if (spotCount == 1 && geometry != null) marks.map { m -> Scoring.mmFromCenter(geometry.toFace(Pt(m.pos.x.toDouble(), m.pos.y.toDouble())), faceType) } else emptyList()
                 val gc = Scoring.groupCenterMm(hits)
                 Text(tr("{marks} marked", "marks" to marks.size) + (sightShots?.let { " · sight counted $it" } ?: "") +
                     (gc?.let { " · group centre ${fmt(kotlin.math.abs(it.x) / 10, 1)} cm ${if (it.x < 0) "left" else "right"}, ${fmt(kotlin.math.abs(it.y) / 10, 1)} cm ${if (it.y < 0) "low" else "high"}" } ?: ""),
@@ -422,7 +458,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 if (endShots != null && shotAssign != null) {
                     val acc = ctl.matchAccuracy(state.setups?.active)
                     Text(tr("Shot matching accuracy ") + (acc?.let { "${(it * 100).roundToInt()} %" } ?: "–") + tr("  ·  tap an arrow to set its shot"), color = uv.muted, fontSize = 12.sp)
-                } else if (endShots != null && marks.isNotEmpty() && endShots.shots.size != marks.size && geometry != null)
+                } else if (endShots != null && marks.isNotEmpty() && endShots.shots.size != marks.size && geometries.any { it != null })
                     Text(tr("Shot matching: the sight counted {shots} {shots2}, {marks} marked.", "shots" to endShots.shots.size, "shots2" to (if (endShots.shots.size == 1) tr("shot") else tr("shots")), "marks" to marks.size), color = uv.muted, fontSize = 12.sp)
                 val sel = selected
                 if (sel != null && sel < marks.size) {
@@ -443,7 +479,7 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                 } else Text(tr("Tap each arrow where it enters the face. Tap a mark to change its ring, drag to move it."), color = uv.muted, fontSize = 13.sp)
                 FlowRow(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SecondaryButton(tr("Undo"), enabled = marks.isNotEmpty()) { marks = marks.dropLast(1); selected = null; arrowsEdited = true }
-                    if (!skipFace) SecondaryButton(tr("Face")) { step = 1 }
+                    if (!skipFace) SecondaryButton(tr("Face")) { faceIdx = 0; step = 1 }
                     PrimaryButton(tr("Use scores"), Modifier.weight(1f), enabled = marks.isNotEmpty() && marks.all { it.ring >= 0 }) {
                         val rings = marks.map { it.ring }
                         val hitList: List<Hit>? = hitsOf(marks)
@@ -457,16 +493,23 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                             val tags = listOf(ExifInterface.TAG_EXPOSURE_TIME, ExifInterface.TAG_ISO_SPEED_RATINGS, ExifInterface.TAG_F_NUMBER, ExifInterface.TAG_FOCAL_LENGTH, ExifInterface.TAG_DATETIME, ExifInterface.TAG_ORIENTATION, ExifInterface.TAG_MODEL, ExifInterface.TAG_WHITE_BALANCE)
                             val exifMap = tags.mapNotNull { t -> exif?.getAttribute(t)?.let { t to it } }.toMap()
                             val id = "photo-${System.currentTimeMillis()}"
+                            // every marked face in full-image pixels (the first one also fills the old single-face fields)
+                            val first = faces.firstOrNull()?.takeIf { it.center != null }
+                            val recs = faces.mapIndexedNotNull { fi, f -> val c = f.center ?: return@mapIndexedNotNull null
+                                de.uvsight.core.FaceMarkRec(listOf(c.x * k, c.y * k), f.edge.map { listOf(it.x * k, it.y * k) },
+                                    geometries.getOrNull(fi)?.conic?.let { cc -> listOf(cc[0] / (k * k), cc[1] / (k * k), cc[2] / (k * k), cc[3] / k, cc[4] / k, cc[5]) }) }
                             val rec = PhotoRecord(
                                 id = id, image = "$id.jpg", width = fullSize.width, height = fullSize.height, rotation = rotation,
                                 face = faceType.name, faceDiameterMm = faceType.diameterMm, arrowMm = prefs.arrowMm,
-                                center = center?.let { listOf(it.x * k, it.y * k) }, edge = edge.map { listOf(it.x * k, it.y * k) },
-                                conic = geometry?.conic?.let { c -> listOf(c[0] / (k * k), c[1] / (k * k), c[2] / (k * k), c[3] / k, c[4] / k, c[5]) },
+                                center = first?.center?.let { listOf(it.x * k, it.y * k) }, edge = first?.edge?.map { listOf(it.x * k, it.y * k) } ?: emptyList(),
+                                conic = recs.firstOrNull()?.conic,
+                                spots = if (spotCount > 1) recs else null,
                                 arrows = marks.mapIndexed { i, m ->
-                                    val u = geometry?.toFace(Pt(m.pos.x.toDouble(), m.pos.y.toDouble()))
+                                    val fo = faceOf(m.pos)
+                                    val u = fo?.second?.toFace(Pt(m.pos.x.toDouble(), m.pos.y.toDouble()))
                                     val h = hitList?.getOrNull(i)
                                     ArrowMark(m.pos.x * k, m.pos.y * k, u?.x ?: Double.NaN, u?.y ?: Double.NaN, h?.mmX ?: Double.NaN, h?.mmY ?: Double.NaN, m.ringAuto, m.ring, m.tool, m.moved, m.source,
-                                        shot = sa?.shotOf?.getOrNull(i), shotConf = sa?.conf?.getOrNull(i), shotSrc = sa?.src?.getOrNull(i))
+                                        shot = sa?.shotOf?.getOrNull(i), shotConf = sa?.conf?.getOrNull(i), shotSrc = sa?.src?.getOrNull(i), spot = if (spotCount > 1) fo?.first else null)
                                 },
                                 sightShots = sightShots, distM = state.distM, sessionKey = state.currentSessionKey, endN = state.session?.takeIf { it.active }?.end,
                                 environment = environment, light = state.status?.takeIf { state.conn == de.uvsight.core.ConnState.CONNECTED }?.light, exif = exifMap, device = "${Build.MANUFACTURER} ${Build.MODEL}", app = APP_VERSION, timestamp = System.currentTimeMillis(),
@@ -474,10 +517,10 @@ fun PhotoScoringScreen(vm: SightViewModel, file: File, onClose: () -> Unit) {
                                 shots = endShots?.shots,
                                 // a part a model proposed counts as hand-marked once you corrected it (dragged a face point;
                                 // added, moved, re-ringed or deleted an arrow); accepted untouched, it stays the model's
-                                faceSource = if (center == null) null else if (faceFromModel) (if (faceEdited) "model-adjusted" else "model") else "user",
-                                faceModel = if (center != null && faceFromModel) modelInfo?.face?.name ?: modelInfo?.name else null,
+                                faceSource = if (first == null) null else if (faceFromModel) (if (faceEdited) "model-adjusted" else "model") else "user",
+                                faceModel = if (first != null && faceFromModel) modelInfo?.face?.name ?: modelInfo?.name else null,
                                 trainArrows = marks.isNotEmpty() && (marks.none { it.source == "model" } || arrowsEdited),
-                                trainFace = center != null && (!faceFromModel || faceEdited),
+                                trainFace = first != null && (!faceFromModel || faceEdited),
                             )
                             runCatching { TrainingStore(context).save(rec, file) }.onFailure { vm.toast(tr("Could not keep the photo: {message}", "message" to it.message), true) }
                         }

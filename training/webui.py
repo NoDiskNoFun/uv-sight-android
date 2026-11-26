@@ -113,9 +113,10 @@ def env_note():
 # ----------------------------------------------------------------------------- evaluation
 def evaluate(val_recs, predict, predict_face=None):
     """predict(record, image_path) -> [(x, y, conf)] in upright pixels;
-    predict_face(record, image_path) -> (conf, [centre, top, right, bottom, left]) or None.
-    Returns archery metrics: arrows found, entry error, rings right; face found, centre error and
-    how often the user's arrows get the same ring with the model's face as with the user's."""
+    predict_face(record, image_path) -> [(conf, [centre, top, right, bottom, left])], best first, [] for none.
+    Returns archery metrics: arrows found, entry error, rings right; faces found (every marked face
+    counts, so a spot face counts three), centre error and how often the user's arrows get the same
+    ring with the model's face as with the user's."""
     found = total = false = ring_ok = ring_n = 0
     px_err = []; mm_err = []
     face_n = face_found = face_ring_ok = face_ring_n = 0; face_mm = []
@@ -125,18 +126,30 @@ def evaluate(val_recs, predict, predict_face=None):
         arrows_hand = prepare_dataset.hand_marked(rec, "arrows"); face_hand = prepare_dataset.hand_marked(rec, "face")
         preds = predict(rec, img) if arrows_hand else []
         face_hit = None
-        g_user = facegeom.geometry_of_record(rec)
-        if predict_face and g_user and face_hand:
-            face_n += 1; face_hit = False
-            pf = predict_face(rec, img)
-            gp = facegeom.fit(pf[1][0], pf[1][1:5]) if pf and len(pf[1]) >= 5 else None
-            if gp:
-                face_found += 1; face_hit = True
-                dia, min_ring = facegeom.FACES.get(rec["face"], (rec.get("faceDiameterMm", 400), 1))
-                face_mm.append(math.hypot(*facegeom.mm_from_center(g_user.to_face(pf[1][0]), dia)))
+        g_users = facegeom.geometries_of_record(rec)
+        if predict_face and g_users and face_hand:
+            # every marked face wants a prediction whose centre lies inside it (within the blue ring);
+            # the arrows nearest to that face are then re-scored with the predicted geometry
+            face_hit = True
+            preds_f = [(c, k, facegeom.fit(k[0], k[1:5])) for c, k in (predict_face(rec, img) or []) if len(k) >= 5]
+            preds_f = [(c, k, g) for c, k, g in preds_f if g is not None]
+            dia, min_ring = facegeom.FACES.get(rec["face"], (rec.get("faceDiameterMm", 400), 1))
+            for gu in g_users:
+                face_n += 1
+                hit = None
+                for c, k, gp in preds_f:
+                    if math.hypot(*gu.to_face(k[0])) < 1.0 and (hit is None or c > hit[0]):
+                        hit = (c, k, gp)
+                if hit is None:
+                    face_hit = False
+                    continue
+                face_found += 1
+                face_mm.append(math.hypot(*facegeom.mm_from_center(gu.to_face(hit[1][0]), dia)))
                 for a in rec["arrows"]:
+                    if facegeom.nearest_geometry(g_users, (a["px"], a["py"])) is not gu:
+                        continue
                     face_ring_n += 1
-                    if facegeom.ring(gp.to_face((a["px"], a["py"])), dia, min_ring, rec.get("arrowMm", 6.0)) == a["ring"]:
+                    if facegeom.ring(hit[2].to_face((a["px"], a["py"])), dia, min_ring, rec.get("arrowMm", 6.0)) == a["ring"]:
                         face_ring_ok += 1
         marks = [(a["px"], a["py"], a) for a in rec["arrows"]] if arrows_hand else []
         total += len(marks)
@@ -153,10 +166,11 @@ def evaluate(val_recs, predict, predict_face=None):
                 used.add(best[1]); found += 1; px_err.append(best[0])
                 matched.append((a, preds[best[1]]))
         false += len(preds) - len(used)
-        g = facegeom.geometry_of_record(rec)
-        if g:
+        gs = facegeom.geometries_of_record(rec)
+        if gs:
             dia, min_ring = facegeom.FACES.get(rec["face"], (rec.get("faceDiameterMm", 400), 1))
             for a, (px, py, conf) in matched:
+                g = facegeom.nearest_geometry(gs, (a["px"], a["py"]))     # the face (spot) this arrow sits on
                 um = g.to_face((a["px"], a["py"])); up = g.to_face((px, py))
                 m1 = facegeom.mm_from_center(um, dia); m2 = facegeom.mm_from_center(up, dia)
                 mm_err.append(math.hypot(m1[0] - m2[0], m1[1] - m2[1]))
@@ -280,10 +294,8 @@ def mock_train(job, run, imgsz, train_face):
         return out
 
     def predict_face(rec, img):
-        g = facegeom.geometry_of_record(rec)
-        if g is None or rnd.random() < 0.1:
-            return None
-        return (0.85, [(x + rnd.gauss(0, 4), y + rnd.gauss(0, 4)) for x, y in facegeom.face_keypoints(g)])
+        return [(0.85, [(x + rnd.gauss(0, 4), y + rnd.gauss(0, 4)) for x, y in facegeom.face_keypoints(g)])
+                for g in facegeom.geometries_of_record(rec) if rnd.random() >= 0.1]
     return predict, (predict_face if train_face else None)
 
 
@@ -357,10 +369,10 @@ def real_train(job, run, ds, imgsz, stage):
     def predict_face(rec, img):
         res = trained.predict(str(img), imgsz=imgsz, conf=0.25, verbose=False)[0]
         if res.keypoints is None or res.boxes is None or len(res.boxes.conf) == 0:
-            return None
-        conf = res.boxes.conf.cpu().numpy(); i = int(conf.argmax())
-        kp = res.keypoints.xy[i].cpu().numpy()
-        return (float(conf[i]), [(float(x), float(y)) for x, y in kp])
+            return []
+        conf = res.boxes.conf.cpu().numpy(); kps = res.keypoints.xy.cpu().numpy()
+        out = [(float(conf[i]), [(float(x), float(y)) for x, y in kps[i]]) for i in range(len(conf))]
+        return sorted(out, key=lambda t: -t[0])
     return predict_face if stage == "face" else predict
 
 
@@ -397,7 +409,7 @@ def preview(run, index):
     return {"index": index, "count": len(pool), "id": rec["id"], "width": rec["width"], "height": rec["height"], "rotation": rec.get("rotation", 0),
             "image": f"/files/{run}/dataset/images/{'val' if val else 'train'}/{rec['id']}.jpg",
             "marks": [{"x": a["px"], "y": a["py"], "ring": a["ring"], "source": a.get("source", "user")} for a in rec["arrows"]],
-            "center": rec.get("center"), "edge": rec.get("edge") or [],
+            "center": rec.get("center"), "edge": rec.get("edge") or [], "faces": [{"center": list(c), "edge": [list(p) for p in e]} for c, e in facegeom.faces_of_record(rec)],
             "stats": per.get(rec["id"]), "face": rec["face"], "env": rec.get("environment"), "export": rec.get("_export")}
 
 
@@ -423,7 +435,7 @@ progress{width:100%;height:14px}
 <h1>Nocked trainer</h1><div class="muted" id="gpu">…</div>
 <div class="card"><h2>1. Export from the app</h2>
 <div class="row"><input type="file" id="file" accept=".zip" multiple><button class="sec" id="upload">Upload</button><span id="upmsg" class="muted"></span></div>
-<div class="muted" style="margin-top:8px">Exports from several phones can be uploaded and trained together; tick the ones to use. Every run trains two models: the arrow detector and the face finder (centre and four edge points of the blue ring).</div>
+<div class="muted" style="margin-top:8px">Exports from several phones can be uploaded and trained together; tick the ones to use. Every run trains two models: the arrow detector and the face finder (centre and four edge points of the blue ring; on a spot face each of the three spots is one face).</div>
 <div id="exports" style="margin-top:6px"></div></div>
 <div class="card"><h2>2. Train</h2>
 <div class="row">
@@ -474,8 +486,8 @@ return `<tr><td>${r.name}${r.mock?' <span class="muted">(mock)</span>':''}${peTx
 async function openPreview(run,idx=0){prevRun=run;const p=await api(`/api/preview?run=${encodeURIComponent(run)}&i=${idx}`);if(p.error){alert(p.error);return}prevIdx=p.index;
 $('prevcard').hidden=false;$('pinfo').textContent=`${run}: photo ${p.index+1} of ${p.count} · ${p.id} · ${p.face} · ${p.env||''}`+(p.export?` · from ${p.export}`:'')+(p.stats?` · marks ${p.stats.marks}, found ${p.stats.found}, false ${p.stats.false}`+(p.stats.face==null?'':p.stats.face?', face found':', face missed'):'');
 const img=new Image();img.onload=()=>{const c=$('pv');const k=Math.min(900/img.width,600/img.height);c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);const g=c.getContext('2d');g.drawImage(img,0,0,c.width,c.height);
-if(p.center){g.strokeStyle='#F2C230';g.lineWidth=2;g.beginPath();g.moveTo(p.center[0]*k-8,p.center[1]*k);g.lineTo(p.center[0]*k+8,p.center[1]*k);g.moveTo(p.center[0]*k,p.center[1]*k-8);g.lineTo(p.center[0]*k,p.center[1]*k+8);g.stroke()}
-for(const e of p.edge){g.strokeStyle='#5B93D6';g.lineWidth=2;g.beginPath();g.arc(e[0]*k,e[1]*k,6,0,7);g.stroke()}
+for(const f of (p.faces||[])){const c=f.center;g.strokeStyle='#F2C230';g.lineWidth=2;g.beginPath();g.moveTo(c[0]*k-8,c[1]*k);g.lineTo(c[0]*k+8,c[1]*k);g.moveTo(c[0]*k,c[1]*k-8);g.lineTo(c[0]*k,c[1]*k+8);g.stroke();
+for(const e of f.edge){g.strokeStyle='#5B93D6';g.lineWidth=2;g.beginPath();g.arc(e[0]*k,e[1]*k,6,0,7);g.stroke()}}
 for(const m of p.marks){g.strokeStyle='#58B27E';g.lineWidth=2;g.beginPath();g.arc(m.x*k,m.y*k,9,0,7);g.stroke();g.fillStyle='#58B27E';g.font='bold 12px system-ui';g.fillText(m.ring===11?'X':m.ring===0?'M':m.ring,m.x*k+12,m.y*k+4)}};
 img.src=p.image+'?t='+Date.now();$('prevcard').scrollIntoView({behavior:'smooth'});}
 $('prev').onclick=()=>openPreview(prevRun,prevIdx-1);$('next').onclick=()=>openPreview(prevRun,prevIdx+1);

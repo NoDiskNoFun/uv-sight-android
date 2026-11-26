@@ -41,20 +41,22 @@ object Coco {
                         if (!a.mmX.isNaN()) { put("uv_mm_x", a.mmX); put("uv_mm_y", a.mmY) }
                     })
                 }
-                val c = r.center
-                if (c != null && r.edge.size >= 5) {
-                    val xs = r.edge.map { it[0] } + c[0]; val ys = r.edge.map { it[1] } + c[1]
-                    val bounds = ellipseBounds(r.conic) ?: doubleArrayOf(xs.min(), ys.min(), xs.max(), ys.max())
+                // one face annotation per marked face: a spot face has up to three
+                r.faces.forEachIndexed { spot, f ->
+                    val c = f.center
+                    if (f.edge.size < 5) return@forEachIndexed
+                    val xs = f.edge.map { it[0] } + c[0]; val ys = f.edge.map { it[1] } + c[1]
+                    val bounds = ellipseBounds(f.conic) ?: doubleArrayOf(xs.min(), ys.min(), xs.max(), ys.max())
                     val kps = ArrayList<Double>()
                     kps.addAll(listOf(c[0], c[1], 2.0))
-                    for (e in r.edge) kps.addAll(listOf(e[0], e[1], 2.0))
+                    for (e in f.edge) kps.addAll(listOf(e[0], e[1], 2.0))
                     add(buildJsonObject {
                         put("id", annId++); put("image_id", i + 1); put("category_id", 2)
                         put("bbox", num(bounds[0], bounds[1], bounds[2] - bounds[0], bounds[3] - bounds[1]))
                         put("area", (bounds[2] - bounds[0]) * (bounds[3] - bounds[1])); put("iscrowd", 0)
-                        put("keypoints", JsonArray(kps.map { JsonPrimitive(it) })); put("num_keypoints", 1 + r.edge.size)
-                        put("uv_face", r.face); put("uv_face_diameter_mm", r.faceDiameterMm)
-                        r.conic?.let { put("uv_conic", JsonArray(it.map { v -> JsonPrimitive(v) })) }
+                        put("keypoints", JsonArray(kps.map { JsonPrimitive(it) })); put("num_keypoints", 1 + f.edge.size)
+                        put("uv_face", r.face); put("uv_face_diameter_mm", r.faceDiameterMm); put("uv_spot", spot)
+                        f.conic?.let { put("uv_conic", JsonArray(it.map { v -> JsonPrimitive(v) })) }
                     })
                 }
             }

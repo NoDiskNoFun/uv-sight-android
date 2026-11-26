@@ -229,7 +229,7 @@ fun SettingsScreen(state: AppState, ctl: SightController, vm: SightViewModel, on
                             val bow = ctl.bow()
                             var suggestFor by remember { mutableStateOf<Int?>(null) }
                             val labels = (0..3).map { de.uvsight.core.Bow.label(it) }
-                            SegRow(tr("Bow"), de.uvsight.core.Bow.describe(bow), de.uvsight.core.Bow.label(bow), labels) { picked ->
+                            DropRow(tr("Bow"), de.uvsight.core.Bow.describe(bow), de.uvsight.core.Bow.label(bow), labels) { picked ->
                                 val i = labels.indexOf(picked).coerceAtLeast(0); if (i != bow) { ctl.setBow(i); suggestFor = i }
                             }
                             Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.End) { SecondaryButton(tr("Suggested values for this bow")) { suggestFor = bow } }

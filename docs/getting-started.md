@@ -44,7 +44,7 @@ Nothing to start: the first shot starts a session by itself, and the sight count
 
 Two things worth knowing:
 
-- **Distance**: tap the distance on the Training tab before the first end if the app did not recognise it. The sight remembers the aiming angle per distance and warns with a double or triple blink when the angle does not fit the distance, so an arrow does not fly over the target.
+- **Distance**: set the distance on the Training tab before the first end if the app did not recognise it: − and + walk the usual distances (5, 10, 15, 18, 20, 25, 30 m and the tens above), a tap on the number lets you type any other. The sight remembers the aiming angle per distance and warns with a double or triple blink when the angle does not fit the distance, so an arrow does not fly over the target.
 - **Hints**: under the last end the app says what the numbers show, for example a group sitting left, an unsteady hold, a canted bow. Always compared with your own earlier ends, never with anybody else.
 
 A session ends by itself after an hour without a shot, or with **End session** on the Training tab.
@@ -74,7 +74,7 @@ The project publishes every new build of the app and of the sight's firmware on 
 
 ## Scoring from photos and the arrow detector
 
-**Score from photo** on the Training tab photographs the face. You mark the centre of the face and four points on the edge of the blue ring, then the arrows where they enter the face; the app reads the rings. Once enough photos have been collected (*Settings → Photo scoring → Collect training data*), a model can be trained on a computer that finds the face and the arrows on its own; the app then proposes the marks, and you only check them. That part is described on the project page under "Detection models".
+**Score from photo** on the Training tab photographs the face. You mark the centre of the face and four points on the edge of the blue ring (on a 40 cm spot face each of the three spots in turn, top to bottom, with **Next spot** between them), then the arrows where they enter the face; the app reads the rings, on a spot face from the spot the arrow sits in. Once enough photos have been collected (*Settings → Photo scoring → Collect training data*), a model can be trained on a computer that finds the face and the arrows on its own; the app then proposes the marks, and you only check them. That part is described on the project page under "Detection models".
 
 ## If something does not work
 

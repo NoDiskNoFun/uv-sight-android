@@ -163,11 +163,36 @@ def mm_from_center(u, diameter_mm):
     return (u[0] * r, -u[1] * r)
 
 
+def faces_of_record(rec):
+    """Every marked face of a PhotoRecord (dict) as (centre, edge points): the spots of a spot face
+    (newer apps store them under "spots", top to bottom), else the single face. Empty when nothing was marked."""
+    spots = rec.get("spots")
+    if spots:
+        return [(tuple(f["center"]), [tuple(p) for p in f.get("edge") or []]) for f in spots if f.get("center")]
+    if rec.get("center"):
+        return [(tuple(rec["center"]), [tuple(p) for p in rec.get("edge") or []])]
+    return []
+
+
+def geometries_of_record(rec):
+    """FaceGeometry of every marked face of the record that fits an ellipse (one per spot on a spot face)."""
+    out = []
+    for c, e in faces_of_record(rec):
+        g = fit(c, e) if len(e) >= 4 else None
+        if g is not None:
+            out.append(g)
+    return out
+
+
 def geometry_of_record(rec):
-    """FaceGeometry of a PhotoRecord (dict), or None if the face was not marked."""
-    if not rec.get("center") or len(rec.get("edge") or []) < 4:
-        return None
-    return fit(tuple(rec["center"]), [tuple(p) for p in rec["edge"]])
+    """FaceGeometry of a PhotoRecord (dict), or None if the face was not marked. On a spot face: the first spot."""
+    gs = geometries_of_record(rec)
+    return gs[0] if gs else None
+
+
+def nearest_geometry(gs, p):
+    """Of several face geometries the one the image point p lies nearest to (in face units), or None."""
+    return min(gs, key=lambda g: math.hypot(*g.to_face(p)), default=None)
 
 
 FACE_KPT = ["centre", "top", "right", "bottom", "left"]
